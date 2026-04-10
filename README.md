@@ -33,51 +33,14 @@ User query → LLM Planner (Nemotron/Claude) → JSON Plan
 pip install streamlit pandas numpy networkx pyarrow requests openai anthropic scikit-learn
 ```
 
-## Setup & Run
+## Quick Start
 
-### Step 1: Pull raw data from NYC Open Data
-
-```bash
-python pull_all.py
-```
-
-This downloads ~10 datasets from NYC Open Data (Socrata API) into `raw/`. Takes ~5-10 minutes depending on connection.
-
-### Step 2: Clean and normalize
+The `data/` and `stage/` directories are **included in the repo** — you don't need to regenerate them. Just clone and run:
 
 ```bash
-python clean_all.py
-```
-
-Processes raw data into standardized parquet files in `stage/`. Handles coordinate conversions, schema normalization, and deduplication.
-
-### Step 3: Build the resource mart
-
-```bash
-python build_mart.py
-```
-
-Combines all staged datasets into a unified `data/resource_mart.parquet` (~7,700 resources across 19 types) with safety scores, quality scores, and spatial attributes.
-
-### Step 4: Build the knowledge graph
-
-```bash
-python build_graph.py
-```
-
-Constructs a NetworkX graph with resource nodes, transit stations, census tracts, and edges (NEAR, WALK_TO_TRANSIT, IN_TRACT, TRANSIT_LINK). Saved as `data/graph.pkl`.
-
-### Step 5 (optional): Build SPO triples and txt2kg
-
-```bash
-python build_triples.py
-```
-
-Generates subject-predicate-object triples for the knowledge graph and 311 complaint extraction.
-
-### Step 6: Run the app
-
-```bash
+git clone https://github.com/Nishant-ZFYII/nyc_hack.git
+cd nyc_hack
+pip install -r requirements.txt
 ANTHROPIC_API_KEY=your-key-here streamlit run app.py
 ```
 
@@ -88,14 +51,22 @@ OPENAI_API_KEY=your-key-here streamlit run app.py
 
 The app will be available at `http://localhost:8501`.
 
-## Quick Start (if you have pre-built data)
+> **Data also available on Google Drive:** https://drive.google.com/drive/folders/1gcCU1-kqGn64PfQ51Hw93J96nt-GI0br
 
-If someone shares the `data/` directory with you (contains `resource_mart.parquet` and `graph.pkl`), you can skip steps 1-5:
+## Rebuilding Data from Scratch (optional)
+
+If you want to regenerate the data from NYC Open Data:
 
 ```bash
-# Just copy data/ into the project root, then:
-ANTHROPIC_API_KEY=your-key-here streamlit run app.py
+pip install sodapy tqdm scipy
+python pull_all.py       # Step 1: Download raw data (~5-10 min)
+python clean_all.py      # Step 2: Clean and normalize
+python build_mart.py     # Step 3: Build resource mart (7,759 resources)
+python build_graph.py    # Step 4: Build knowledge graph
+python build_triples.py  # Step 5: Build SPO triples (optional)
 ```
+
+See [DATA_PIPELINE.md](DATA_PIPELINE.md) for detailed documentation on each step.
 
 ## Project Structure
 
