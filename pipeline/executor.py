@@ -14,7 +14,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-DATA = Path("/media/nishant/SeeGayt2/nyc_hack_data/data")
+DATA = Path(__file__).resolve().parent / "data"
 
 # ── Cached state ──────────────────────────────────────────────────────────────
 _mart: pd.DataFrame | None = None
@@ -348,7 +348,7 @@ def execute(plan: dict) -> dict[str, Any]:
         target   = plan.get("target", "")
         try:
             import importlib.util as _ilu
-            _sp = _ilu.spec_from_file_location("kg_conf", "/media/nishant/SeeGayt2/nyc_hack_data/engine/confidence.py")
+            _sp = _ilu.spec_from_file_location("kg_conf", str(Path(__file__).resolve().parent.parent / "engine" / "confidence.py"))
             _cm = _ilu.module_from_spec(_sp)
             _sp.loader.exec_module(_cm)
             explain_underserved = _cm.explain_underserved

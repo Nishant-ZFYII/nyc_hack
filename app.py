@@ -11,9 +11,9 @@ import pandas as pd
 import pydeck as pdk
 import streamlit as st
 
-sys.path.insert(0, "/home/nishant/MS_Project/temp_proj/Spark")
+ROOT = Path(__file__).resolve().parent; sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, "/media/nishant/SeeGayt2/nyc_hack_data")
+sys.path.insert(0, str(ROOT))
 
 from pipeline.planner  import generate_plan
 from pipeline.executor import execute, load_state
@@ -25,7 +25,7 @@ from llm.client        import get_active_provider
 import importlib.util
 _spec = importlib.util.spec_from_file_location(
     "kg_embeddings",
-    "/media/nishant/SeeGayt2/nyc_hack_data/engine/embeddings.py")
+    str(ROOT / "engine" / "embeddings.py"))
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 find_similar = _mod.find_similar
@@ -160,7 +160,7 @@ with st.sidebar:
 
     # Triples + KGE status
     try:
-        triples_df = pd.read_parquet("/media/nishant/SeeGayt2/nyc_hack_data/data/triples.parquet")
+        triples_df = pd.read_parquet(str(ROOT / "data" / "triples.parquet"))
         st.success(f"Triples: {len(triples_df):,} SPO facts")
         st.info(f"Predicates: {triples_df['predicate'].nunique()} · Sources: {triples_df['source'].nunique()}")
     except Exception:

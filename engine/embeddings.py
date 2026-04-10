@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-DATA = Path("/media/nishant/SeeGayt2/nyc_hack_data/data")
+DATA = Path(__file__).resolve().parent.parent / "data"
 
 _embeddings: dict | None = None      # {resource_id: np.array}
 _feature_names: list | None = None   # feature dimension names

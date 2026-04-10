@@ -30,8 +30,8 @@ except ImportError:
     GPU = False
     print("[CPU] Using pandas (cuDF not available)")
 
-DATA  = Path("/media/nishant/SeeGayt2/nyc_hack_data/data")
-STAGE = Path("/media/nishant/SeeGayt2/nyc_hack_data/stage")
+DATA  = Path(__file__).resolve().parent / "data"
+STAGE = Path(__file__).resolve().parent / "stage"
 
 # ── Confidence rules ──────────────────────────────────────────────────────────
 

@@ -7,7 +7,7 @@ Combines all ~14K resource rows into one resource_mart.parquet with:
   - Quality score: 311 complaint density within 500m (inverted)
   - Nearest transit station + walk distance
 
-Output: /media/nishant/SeeGayt2/nyc_hack_data/data/resource_mart.parquet
+Output: data/resource_mart.parquet
 
 Run: python build_mart.py
 """
@@ -23,13 +23,13 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/media/nishant/SeeGayt2/nyc_hack_data/build_mart.log"),
+        logging.FileHandler(str(Path(__file__).resolve().parent / "build_mart.log")),
     ],
 )
 log = logging.getLogger(__name__)
 
-STAGE = Path("/media/nishant/SeeGayt2/nyc_hack_data/stage")
-DATA  = Path("/media/nishant/SeeGayt2/nyc_hack_data/data")
+STAGE = Path(__file__).resolve().parent / "stage"
+DATA  = Path(__file__).resolve().parent / "data"
 DATA.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────────────────────────────────────────────────────────────────

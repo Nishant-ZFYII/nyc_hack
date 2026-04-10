@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, "/home/nishant/MS_Project/temp_proj/Spark")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from llm.client import synth_chat
 
 SYNTH_PROMPT = """You are an NYC Department of Social Services AI assistant.

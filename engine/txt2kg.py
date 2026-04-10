@@ -17,7 +17,7 @@ from typing import Optional
 import pandas as pd
 from tqdm import tqdm
 
-STAGE = Path("/media/nishant/SeeGayt2/nyc_hack_data/stage")
+STAGE = Path(__file__).resolve().parent.parent / "stage"
 
 # ── Mapping: complaint_type + descriptor → structured issue triples ───────────
 
@@ -147,7 +147,7 @@ def llm_extract_sample(n: int = 10) -> list[dict]:
 
     On DGX: replace with NVIDIA txt2kg pipeline.
     """
-    sys.path.insert(0, "/home/nishant/MS_Project/temp_proj/Spark")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from llm.client import chat
 
     df = pd.read_parquet(STAGE / "311_complaints.parquet")
@@ -255,7 +255,7 @@ if __name__ == "__main__":
 
     # Save
     df = pd.DataFrame(triples)
-    outpath = Path("/media/nishant/SeeGayt2/nyc_hack_data/data/triples_311.parquet")
+    outpath = Path(str(Path(__file__).resolve().parent.parent / "data" / "triples_311.parquet"))
     df.to_parquet(outpath, index=False)
     print(f"Saved: {outpath} ({outpath.stat().st_size / 1e6:.1f} MB)")
 

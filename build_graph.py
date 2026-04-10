@@ -40,13 +40,13 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/media/nishant/SeeGayt2/nyc_hack_data/build_graph.log"),
+        logging.FileHandler(str(Path(__file__).resolve().parent / "build_graph.log")),
     ],
 )
 log = logging.getLogger(__name__)
 
-DATA  = Path("/media/nishant/SeeGayt2/nyc_hack_data/data")
-STAGE = Path("/media/nishant/SeeGayt2/nyc_hack_data/stage")
+DATA  = Path(__file__).resolve().parent / "data"
+STAGE = Path(__file__).resolve().parent / "stage"
 
 # Approximate meters per degree at NYC latitude
 LAT_M = 111_320

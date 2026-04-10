@@ -7,7 +7,7 @@ and returns the reasoning path with cumulative confidence at each hop.
 import pandas as pd
 from pathlib import Path
 
-DATA = Path("/media/nishant/SeeGayt2/nyc_hack_data/data")
+DATA = Path(__file__).resolve().parent.parent / "data"
 
 _triples: pd.DataFrame | None = None
 

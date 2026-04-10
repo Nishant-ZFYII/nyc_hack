@@ -4,7 +4,7 @@ Each dataset gets a consistent schema with: resource_id, resource_type, name,
 address, borough, latitude, longitude, and type-specific columns.
 
 Run: python clean_all.py
-Output: /media/nishant/SeeGayt2/nyc_hack_data/stage/
+Output: stage/
 """
 
 import re
@@ -19,13 +19,13 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/media/nishant/SeeGayt2/nyc_hack_data/clean.log"),
+        logging.FileHandler(str(Path(__file__).resolve().parent / "clean.log")),
     ],
 )
 log = logging.getLogger(__name__)
 
-RAW   = Path("/media/nishant/SeeGayt2/nyc_hack_data/raw")
-STAGE = Path("/media/nishant/SeeGayt2/nyc_hack_data/stage")
+RAW   = Path(__file__).resolve().parent / "raw"
+STAGE = Path(__file__).resolve().parent / "stage"
 STAGE.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import time
 
 import pandas as pd
 
-sys.path.insert(0, "/home/nishant/MS_Project/temp_proj/Spark")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from llm.client import chat
 
 

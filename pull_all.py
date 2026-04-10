@@ -1,6 +1,6 @@
 """
 Pull all NYC Open Data datasets for the Social Services Intelligence Engine.
-Saves to /media/nishant/SeeGayt2/nyc_hack_data/raw/
+Saves to raw/
 
 Usage:
     python pull_all.py                          # all datasets
@@ -18,12 +18,12 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/media/nishant/SeeGayt2/nyc_hack_data/pull.log"),
+        logging.FileHandler(str(Path(__file__).resolve().parent / "pull.log")),
     ],
 )
 log = logging.getLogger(__name__)
 
-RAW = Path("/media/nishant/SeeGayt2/nyc_hack_data/raw")
+RAW = Path(__file__).resolve().parent / "raw"
 RAW.mkdir(parents=True, exist_ok=True)
 
 APP_TOKEN = os.environ.get("NYC_APP_TOKEN")
