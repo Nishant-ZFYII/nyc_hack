@@ -35,7 +35,24 @@ pip install streamlit pandas numpy networkx pyarrow requests openai anthropic sc
 
 ## Quick Start
 
-The `data/` and `stage/` directories are **included in the repo** — you don't need to regenerate them. Just clone and run:
+The `data/` and `stage/` directories are **included in the repo** — you don't need to regenerate them.
+
+### On DGX Spark (no API key needed)
+
+The system uses **Nemotron-3-Nano-30B** running locally via NIM or vLLM. No external API key required.
+
+```bash
+git clone https://github.com/Nishant-ZFYII/nyc_hack.git
+cd nyc_hack
+pip install -r requirements.txt
+
+# Start Nemotron via NIM or vLLM on port 8000 first, then:
+streamlit run app.py
+```
+
+### On your laptop (API key required)
+
+Without a local GPU to run Nemotron, you need a cloud LLM API key:
 
 ```bash
 git clone https://github.com/Nishant-ZFYII/nyc_hack.git
@@ -44,10 +61,7 @@ pip install -r requirements.txt
 ANTHROPIC_API_KEY=your-key-here streamlit run app.py
 ```
 
-Or with OpenAI:
-```bash
-OPENAI_API_KEY=your-key-here streamlit run app.py
-```
+Or with OpenAI: `OPENAI_API_KEY=your-key-here streamlit run app.py`
 
 The app will be available at `http://localhost:8501`.
 
