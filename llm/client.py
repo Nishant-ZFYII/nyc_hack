@@ -46,12 +46,6 @@ class Provider:
 
 PROVIDERS: list[Provider] = [
     Provider(
-        name="Ollama Qwen3-30B MoE (DGX Spark)",
-        base_url="http://127.0.0.1:11434/v1",
-        api_key="ollama",
-        model="qwen3-30b",
-    ),
-    Provider(
         name="Ollama Nemotron Mini (DGX Spark)",
         base_url="http://127.0.0.1:11434/v1",
         api_key="ollama",
