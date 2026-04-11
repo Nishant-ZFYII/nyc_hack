@@ -3,133 +3,687 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NYC Social Services - Help Finder</title>
+<title>NYC Social Services Intelligence Engine</title>
 <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#0a0a0f; color:#e0e0e0; height:100vh; overflow:hidden; }
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg-deep: #06060b;
+  --bg-panel: #0c0c14;
+  --bg-card: #10101a;
+  --bg-elevated: #161622;
+  --border: #1a1a2e;
+  --border-hover: #2a2a44;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888a0;
+  --text-muted: #55556a;
+  --green: #76b900;
+  --green-dim: #76b90033;
+  --green-glow: #76b90066;
+  --orange: #ffb74d;
+  --red: #ef5350;
+  --blue: #42a5f5;
+  --purple: #ab47bc;
+  --coral: #ff7043;
+  --teal: #4db6ac;
+  --font-ui: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+}
+body {
+  font-family: var(--font-ui);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
 
-/* Layout */
-.app { display:grid; grid-template-columns:420px 1fr; height:100vh; }
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+.app { display: grid; grid-template-columns: 440px 1fr; height: 100vh; }
 
-/* Sidebar */
-.sidebar { background:#111118; border-right:1px solid #1e1e2a; display:flex; flex-direction:column; height:100vh; overflow:hidden; }
-.sidebar-header { padding:20px 20px 14px; border-bottom:1px solid #1e1e2a; }
-.sidebar-header h1 { color:#76b900; font-size:24px; font-weight:700; letter-spacing:-0.5px; }
-.sidebar-header p { color:#777; font-size:13px; margin-top:4px; }
-.sidebar-header .powered { color:#444; font-size:10px; margin-top:8px; letter-spacing:0.5px; text-transform:uppercase; }
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+.sidebar {
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
 
-/* Tabs */
-.tabs { display:flex; border-bottom:1px solid #1e1e2a; }
-.tab { flex:1; padding:10px; text-align:center; font-size:13px; color:#666; cursor:pointer; border-bottom:2px solid transparent; transition:all 0.2s; }
-.tab:hover { color:#aaa; }
-.tab.active { color:#76b900; border-bottom-color:#76b900; }
-.tab-content { display:none; flex:1; flex-direction:column; overflow:hidden; min-height:0; }
-.tab-content.active { display:flex; }
+/* Header */
+.sidebar-header {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #0e0e18 0%, var(--bg-panel) 100%);
+  position: relative;
+}
+.sidebar-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--green-dim), transparent);
+}
+.sidebar-header h1 {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, var(--green) 0%, #a0e030 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.sidebar-header .subtitle {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-top: 4px;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+}
+.header-stats {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+.header-stat {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.header-stat span {
+  color: var(--green);
+  font-weight: 600;
+}
 
-/* Category pills */
-.categories { padding:12px 16px; display:flex; flex-wrap:wrap; gap:6px; border-bottom:1px solid #1e1e2a; flex-shrink:0; }
-.cat-btn { background:#1a1a24; border:1px solid #2a2a3a; border-radius:20px; padding:7px 14px; color:#ccc; font-size:12px; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; gap:5px; }
-.cat-btn:hover, .cat-btn.active { border-color:#76b900; color:#76b900; background:#76b90012; }
-.cat-icon { font-size:14px; }
+/* ── Tabs ─────────────────────────────────────────────────────────────────── */
+.tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab {
+  flex: 1;
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.tab:hover { color: var(--text-secondary); }
+.tab.active { color: var(--green); border-bottom-color: var(--green); }
+.tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0; }
+.tab-content.active { display: flex; }
 
-/* Chat area */
-.chat-area { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; min-height:0; }
-.msg { max-width:95%; padding:12px 16px; border-radius:14px; font-size:14px; line-height:1.65; animation:msgIn 0.3s ease-out; }
-@keyframes msgIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-.msg.user { background:linear-gradient(135deg,#1e3a00,#2a4a00); border:1px solid #76b90033; align-self:flex-end; border-radius:14px 14px 4px 14px; }
-.msg.assistant { background:#16161e; border:1px solid #2a2a3a; align-self:flex-start; border-radius:14px 14px 14px 4px; }
-.msg.system { background:transparent; border:none; color:#555; font-size:13px; text-align:center; align-self:center; padding:8px; }
+/* ── Category Pills ───────────────────────────────────────────────────────── */
+.categories {
+  padding: 10px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.cat-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 11px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-ui);
+}
+.cat-btn:hover, .cat-btn.active {
+  border-color: var(--green);
+  color: var(--green);
+  background: rgba(118,185,0,0.06);
+  box-shadow: 0 0 12px rgba(118,185,0,0.08);
+}
+.cat-icon { font-size: 13px; }
 
-/* Resource cards */
-.results-grid { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
-.resource-card { background:#12121a; border:1px solid #2a2a3a; border-radius:10px; padding:12px 14px; transition:all 0.25s; cursor:pointer; position:relative; overflow:hidden; }
-.resource-card:hover { border-color:#76b900; transform:translateX(3px); box-shadow:0 2px 12px #76b90022; }
-.resource-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:3px 0 0 3px; }
-.resource-card.type-shelter::before { background:#76b900; }
-.resource-card.type-food_bank::before { background:#ffb74d; }
-.resource-card.type-hospital::before { background:#ef5350; }
-.resource-card.type-school::before { background:#42a5f5; }
-.resource-card.type-benefits_center::before { background:#ab47bc; }
-.resource-card.type-domestic_violence::before { background:#ff7043; }
-.resource-card .rc-header { display:flex; justify-content:space-between; align-items:flex-start; }
-.resource-card .rc-name { color:#e8e8e8; font-weight:600; font-size:14px; flex:1; }
-.resource-card .rc-addr { color:#888; font-size:12px; margin-top:3px; }
-.resource-card .rc-tags { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
-.rc-tag { padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
-.rc-tag.type { background:#76b90018; color:#76b900; border:1px solid #76b90033; }
-.rc-tag.borough { background:#42a5f518; color:#42a5f5; border:1px solid #42a5f533; }
-.rc-tag.safety { border:1px solid #2a2a3a; }
-.rc-tag.safety.high { color:#76b900; border-color:#76b90033; }
-.rc-tag.safety.med { color:#ffb74d; border-color:#ffb74d33; }
-.rc-tag.safety.low { color:#ef5350; border-color:#ef535033; }
-.rc-tag.need { background:#ab47bc18; color:#ab47bc; border:1px solid #ab47bc33; }
-.resource-card .rc-actions { display:flex; gap:6px; margin-top:8px; }
-.rc-action { background:#1a1a24; border:1px solid #2a2a3a; border-radius:6px; padding:4px 10px; font-size:11px; color:#aaa; cursor:pointer; transition:all 0.2s; }
-.rc-action:hover { border-color:#76b900; color:#76b900; }
+/* ── Chat Area ────────────────────────────────────────────────────────────── */
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.msg {
+  max-width: 95%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  animation: msgIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.msg.user {
+  background: linear-gradient(135deg, #1a3200, #243d00);
+  border: 1px solid var(--green-dim);
+  align-self: flex-end;
+  border-radius: 12px 12px 3px 12px;
+}
+.msg.assistant {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  align-self: flex-start;
+  border-radius: 12px 12px 12px 3px;
+}
+.msg.system {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-align: center;
+  align-self: center;
+  padding: 8px;
+  max-width: 85%;
+}
 
-/* Urgency indicator */
-.urgency-banner { background:linear-gradient(90deg,#b71c1c,#e53935); color:white; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:600; text-align:center; margin-bottom:8px; animation:urgencyPulse 2s infinite; }
-@keyframes urgencyPulse { 0%,100%{opacity:1} 50%{opacity:0.85} }
+/* ── Resource Cards ───────────────────────────────────────────────────────── */
+.results-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 
-/* Input area */
-.input-area { padding:12px 16px; border-top:1px solid #1e1e2a; background:#111118; flex-shrink:0; }
-.input-row { display:flex; gap:8px; }
-.input-area textarea { flex:1; background:#0a0a0f; border:1px solid #2a2a3a; border-radius:12px; padding:10px 14px; color:#e0e0e0; font-size:14px; font-family:inherit; resize:none; outline:none; transition:all 0.2s; }
-.input-area textarea:focus { border-color:#76b900; box-shadow:0 0 12px #76b90018; }
-.input-area textarea::placeholder { color:#444; }
-.send-btn { background:linear-gradient(135deg,#76b900,#5a8f00); color:white; border:none; border-radius:12px; padding:10px 22px; font-weight:600; cursor:pointer; transition:all 0.2s; font-size:14px; white-space:nowrap; }
-.send-btn:hover { background:linear-gradient(135deg,#8cd600,#76b900); box-shadow:0 4px 16px #76b90044; transform:translateY(-1px); }
-.send-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+.resource-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.resource-card:hover {
+  border-color: var(--border-hover);
+  transform: translateX(2px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.resource-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+}
+.resource-card.type-shelter::before { background: var(--green); }
+.resource-card.type-food_bank::before { background: var(--orange); }
+.resource-card.type-hospital::before { background: var(--red); }
+.resource-card.type-school::before { background: var(--blue); }
+.resource-card.type-benefits_center::before { background: var(--purple); }
+.resource-card.type-domestic_violence::before { background: var(--coral); }
+.resource-card.type-dropin_center::before { background: var(--teal); }
 
-/* Quick actions */
-.quick-actions { padding:6px 16px; display:flex; flex-wrap:wrap; gap:4px; flex-shrink:0; border-top:1px solid #1e1e2a; }
-.quick-btn { background:none; border:1px solid #222; border-radius:14px; padding:4px 10px; color:#666; font-size:11px; cursor:pointer; transition:all 0.2s; }
-.quick-btn:hover { border-color:#76b900; color:#76b900; }
+.resource-card .rc-name {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.3;
+}
+.resource-card .rc-addr {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-weight: 400;
+  letter-spacing: 0.2px;
+}
 
-/* Map */
-.map-container { position:relative; }
-#map { width:100%; height:100%; }
+/* Why-it-matches line */
+.rc-match {
+  margin-top: 6px;
+  padding: 5px 8px;
+  background: rgba(118,185,0,0.05);
+  border-radius: 4px;
+  border-left: 2px solid var(--green-dim);
+}
+.rc-match-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--green);
+  font-family: var(--font-mono);
+}
+.rc-match-text {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+  line-height: 1.4;
+}
+
+/* Tags */
+.rc-tags { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+.rc-tag {
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.rc-tag.type { background: rgba(118,185,0,0.1); color: var(--green); border: 1px solid var(--green-dim); }
+.rc-tag.borough { background: rgba(66,165,245,0.08); color: var(--blue); border: 1px solid rgba(66,165,245,0.2); }
+.rc-tag.safety { border: 1px solid var(--border); }
+.rc-tag.safety.high { color: var(--green); border-color: var(--green-dim); }
+.rc-tag.safety.med { color: var(--orange); border-color: rgba(255,183,77,0.2); }
+.rc-tag.safety.low { color: var(--red); border-color: rgba(239,83,80,0.2); }
+
+/* Urgency badge */
+.rc-urgency {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  background: rgba(239,83,80,0.12);
+  color: var(--red);
+  border: 1px solid rgba(239,83,80,0.25);
+  animation: urgencyBadgePulse 2.5s ease-in-out infinite;
+}
+.rc-urgency::before {
+  content: '';
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: urgencyDot 1.5s ease-in-out infinite;
+}
+@keyframes urgencyBadgePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,83,80,0); }
+  50% { box-shadow: 0 0 8px 0 rgba(239,83,80,0.15); }
+}
+@keyframes urgencyDot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Card actions */
+.rc-actions { display: flex; gap: 5px; margin-top: 8px; }
+.rc-action {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-ui);
+}
+.rc-action:hover { border-color: var(--green); color: var(--green); }
+
+/* ── Emergency / Urgency Styles ───────────────────────────────────────────── */
+.urgency-banner {
+  background: linear-gradient(135deg, #2a0a0a, #1a0505);
+  border: 1px solid rgba(239,83,80,0.3);
+  color: var(--red);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  animation: criticalFlash 3s ease-in-out infinite;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.urgency-banner::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: urgencyDot 1s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes criticalFlash {
+  0%, 100% { box-shadow: 0 0 15px rgba(239,83,80,0.1); }
+  50% { box-shadow: 0 0 30px rgba(239,83,80,0.25); }
+}
+
+.resource-card.emergency {
+  border-color: rgba(239,83,80,0.2);
+  animation: cardEmergencyPulse 4s ease-in-out infinite;
+}
+@keyframes cardEmergencyPulse {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(239,83,80,0); }
+  50% { box-shadow: inset 0 0 20px rgba(239,83,80,0.04); }
+}
+
+/* ── Follow-up Prompt ─────────────────────────────────────────────────────── */
+.followup-prompt {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  animation: msgIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
+}
+.followup-prompt input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  outline: none;
+}
+.followup-prompt input::placeholder { color: var(--text-muted); }
+.followup-send {
+  background: var(--green);
+  border: none;
+  color: #000;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+.followup-send:hover { background: #8cd600; box-shadow: 0 0 12px var(--green-glow); }
+
+/* ── Input Area ───────────────────────────────────────────────────────────── */
+.input-area {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+.input-row { display: flex; gap: 8px; }
+.input-area textarea {
+  flex: 1;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  resize: none;
+  outline: none;
+  transition: all 0.2s;
+}
+.input-area textarea:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(118,185,0,0.08);
+}
+.input-area textarea::placeholder { color: var(--text-muted); }
+.send-btn {
+  background: var(--green);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-weight: 700;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.send-btn:hover {
+  background: #8cd600;
+  box-shadow: 0 4px 20px rgba(118,185,0,0.3);
+  transform: translateY(-1px);
+}
+.send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ── Quick Actions ────────────────────────────────────────────────────────── */
+.quick-actions {
+  padding: 8px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+.quick-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 9px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-ui);
+}
+.quick-btn:hover { border-color: var(--green); color: var(--green); }
+
+/* ── Powered-By Footer ────────────────────────────────────────────────────── */
+.powered-footer {
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-deep);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.powered-label {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-right: 2px;
+}
+.powered-badge {
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+  background: rgba(118,185,0,0.06);
+  color: rgba(118,185,0,0.6);
+  border: 1px solid rgba(118,185,0,0.1);
+  transition: all 0.3s;
+}
+.powered-badge:hover {
+  color: var(--green);
+  border-color: var(--green-dim);
+  background: rgba(118,185,0,0.1);
+  box-shadow: 0 0 8px rgba(118,185,0,0.1);
+}
+
+/* ── Map ──────────────────────────────────────────────────────────────────── */
+.map-container { position: relative; }
+#map { width: 100%; height: 100%; }
 
 /* Map overlays */
-.map-overlay { position:absolute; z-index:10; background:#111118ee; backdrop-filter:blur(10px); border:1px solid #1e1e2a; border-radius:12px; }
-.status-pill { top:16px; right:16px; padding:8px 14px; font-size:12px; display:flex; align-items:center; gap:6px; }
-.dot { width:8px; height:8px; border-radius:50%; background:#76b900; animation:dotPulse 2s infinite; }
-@keyframes dotPulse { 0%,100%{box-shadow:0 0 0 0 #76b90066} 50%{box-shadow:0 0 0 6px #76b90000} }
+.map-overlay {
+  position: absolute;
+  z-index: 10;
+  background: rgba(12,12,20,0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.status-pill {
+  top: 16px; right: 16px;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green-glow);
+  animation: dotPulse 2s infinite;
+}
+@keyframes dotPulse {
+  0%, 100% { box-shadow: 0 0 4px var(--green-glow); }
+  50% { box-shadow: 0 0 10px var(--green-glow); }
+}
 
-.legend { bottom:16px; right:16px; padding:12px 16px; }
-.legend-title { font-size:11px; color:#666; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
-.legend-item { display:flex; align-items:center; gap:8px; font-size:12px; color:#aaa; margin:4px 0; }
-.legend-dot { width:10px; height:10px; border-radius:50%; }
+.legend {
+  bottom: 16px; right: 16px;
+  padding: 10px 14px;
+}
+.legend-title {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 6px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 3px 0;
+}
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; }
 
-.timing-bar { bottom:16px; left:16px; padding:8px 14px; font-size:11px; color:#666; display:none; }
+.timing-bar {
+  bottom: 16px; left: 16px;
+  padding: 6px 12px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  display: none;
+}
 
-/* Loading */
-.loading { display:none; padding:20px; text-align:center; }
-.loading.active { display:flex; align-items:center; justify-content:center; gap:10px; }
-.spinner { width:20px; height:20px; border:2px solid #2a2a3a; border-top-color:#76b900; border-radius:50%; animation:spin 0.7s linear infinite; }
-@keyframes spin { to{transform:rotate(360deg)} }
-.loading-text { color:#666; font-size:13px; }
+/* ── Loading ──────────────────────────────────────────────────────────────── */
+.loading { display: none; padding: 20px; text-align: center; }
+.loading.active { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+}
 
-/* Map markers with CSS animations */
-.marker-shelter { width:14px; height:14px; background:#76b900; border-radius:50%; border:2px solid #76b90066; box-shadow:0 0 8px #76b90044; animation:markerPulse 3s infinite; }
-@keyframes markerPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.2)} }
-.marker-food { width:12px; height:12px; background:#ffb74d; border-radius:50%; border:2px solid #ffb74d66; }
-.marker-hospital { width:14px; height:14px; background:#ef5350; border-radius:3px; border:2px solid #ef535066; animation:emergencyFlash 2s infinite; }
-@keyframes emergencyFlash { 0%,100%{box-shadow:0 0 4px #ef535044} 50%{box-shadow:0 0 12px #ef535088} }
+/* ── Guided Search ────────────────────────────────────────────────────────── */
+.guided-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.guided-card:hover {
+  border-color: var(--border-hover);
+  transform: translateX(2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+.guided-card.selected {
+  border-color: var(--green);
+  background: rgba(118,185,0,0.04);
+  box-shadow: 0 0 16px rgba(118,185,0,0.06);
+}
+.guided-card .gc-icon { font-size: 22px; margin-bottom: 4px; }
+.guided-card .gc-title { font-weight: 600; font-size: 14px; }
+.guided-card .gc-desc { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; }
 
-/* Scrollbar */
-::-webkit-scrollbar { width:5px; }
-::-webkit-scrollbar-track { background:transparent; }
-::-webkit-scrollbar-thumb { background:#2a2a3a; border-radius:3px; }
-::-webkit-scrollbar-thumb:hover { background:#3a3a4a; }
+/* Guided form inputs */
+.guided-form-group { margin-bottom: 10px; }
+.guided-label {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 4px;
+}
+.guided-select, .guided-input {
+  width: 100%;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.guided-select:focus, .guided-input:focus { border-color: var(--green); }
+.guided-checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.guided-checkbox-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
 
-/* Responsive */
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .app { grid-template-columns:1fr; grid-template-rows:1fr 40vh; }
-  .sidebar { border-right:none; border-bottom:1px solid #1e1e2a; }
+  .app { grid-template-columns: 1fr; grid-template-rows: 1fr 40vh; }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
 }
 </style>
 </head>
@@ -137,9 +691,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 <div class="app">
   <div class="sidebar">
     <div class="sidebar-header">
-      <h1>NYC Help Finder</h1>
-      <p>Find shelters, food, healthcare, benefits & more</p>
-      <div class="powered">Powered by NVIDIA Nemotron + cuGraph + RAPIDS</div>
+      <h1>NYC Services Engine</h1>
+      <p class="subtitle">Social Services Intelligence &mdash; City-Scale Operations</p>
+      <div class="header-stats">
+        <div class="header-stat"><span id="statResources">--</span> resources</div>
+        <div class="header-stat"><span id="statEdges">--</span> graph edges</div>
+        <div class="header-stat"><span id="statLLM">...</span></div>
+      </div>
     </div>
 
     <!-- Tabs -->
@@ -151,83 +709,84 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <!-- Chat Tab -->
     <div class="tab-content active" id="tab-chat">
       <div class="categories" id="categories">
-        <button class="cat-btn" data-q="I need a shelter tonight in Brooklyn"><span class="cat-icon">🏠</span> Shelter</button>
-        <button class="cat-btn" data-q="Where can I get free food near me?"><span class="cat-icon">🍎</span> Food</button>
-        <button class="cat-btn" data-q="I need to see a doctor, no insurance"><span class="cat-icon">🏥</span> Healthcare</button>
-        <button class="cat-btn" data-q="How do I apply for SNAP and Medicaid?"><span class="cat-icon">📋</span> Benefits</button>
-        <button class="cat-btn" data-q="I don't feel safe at home, I have a child"><span class="cat-icon">🛡</span> Safety</button>
-        <button class="cat-btn" data-q="I just arrived in NYC and need help"><span class="cat-icon">🌍</span> New to NYC</button>
+        <button class="cat-btn" data-q="I need a shelter tonight in Brooklyn"><span class="cat-icon">&#127968;</span> Shelter</button>
+        <button class="cat-btn" data-q="Where can I get free food near me?"><span class="cat-icon">&#127822;</span> Food</button>
+        <button class="cat-btn" data-q="I need to see a doctor, no insurance"><span class="cat-icon">&#127973;</span> Healthcare</button>
+        <button class="cat-btn" data-q="How do I apply for SNAP and Medicaid?"><span class="cat-icon">&#128203;</span> Benefits</button>
+        <button class="cat-btn" data-q="I don't feel safe at home, I have a child"><span class="cat-icon">&#128737;</span> Safety</button>
+        <button class="cat-btn" data-q="I just arrived in NYC and need help"><span class="cat-icon">&#127758;</span> New to NYC</button>
       </div>
 
       <div class="chat-area" id="chat">
         <div class="msg system">
-          Hi! I'm here to help you find services in NYC.<br>
-          Tell me what's going on, or tap a category above.
+          Describe what's going on &mdash; or tap a category above.<br>
+          I'll find the right services across all of NYC.
         </div>
       </div>
 
       <div class="loading" id="loading">
         <div class="spinner"></div>
-        <span class="loading-text">Searching NYC resources for you...</span>
+        <span class="loading-text">Searching NYC resources...</span>
       </div>
 
       <div class="quick-actions">
         <button class="quick-btn" data-q="I'm Tina, 4 kids, income $28K, losing housing in Flatbush next week">Family losing housing</button>
         <button class="quick-btn" data-q="Someone broke into my apartment. I have a 6 year old. I don't feel safe.">Crime victim</button>
-        <button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Emergency ops</button>
+        <button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button>
+        <button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>
       </div>
 
       <div class="input-area">
         <div class="input-row">
           <textarea id="queryInput" rows="2" placeholder="Tell me what's happening..."></textarea>
-          <button class="send-btn" id="sendBtn" onclick="sendQuery()">Find Help</button>
+          <button class="send-btn" id="sendBtn" onclick="sendQuery()">Send</button>
         </div>
       </div>
     </div>
 
     <!-- Guided Search Tab -->
     <div class="tab-content" id="tab-guided">
-      <div style="padding:20px;flex:1;overflow-y:auto;">
-        <div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">What do you need?</div>
+      <div style="padding:16px;flex:1;overflow-y:auto;">
+        <div style="font-family:var(--font-mono);color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Select a need</div>
 
         <div class="guided-options" id="guidedOptions">
           <div class="guided-card" onclick="guidedSelect('housing')">
-            <div style="font-size:24px;margin-bottom:6px;">🏠</div>
-            <div style="font-weight:600;">Housing & Shelter</div>
-            <div style="color:#888;font-size:12px;margin-top:2px;">Emergency shelter, transitional housing, NYCHA</div>
+            <div class="gc-icon">&#127968;</div>
+            <div class="gc-title">Housing & Shelter</div>
+            <div class="gc-desc">Emergency shelter, transitional housing, NYCHA</div>
           </div>
           <div class="guided-card" onclick="guidedSelect('food')">
-            <div style="font-size:24px;margin-bottom:6px;">🍎</div>
-            <div style="font-weight:600;">Food & Meals</div>
-            <div style="color:#888;font-size:12px;margin-top:2px;">Food pantries, soup kitchens, SNAP enrollment</div>
+            <div class="gc-icon">&#127822;</div>
+            <div class="gc-title">Food & Meals</div>
+            <div class="gc-desc">Food pantries, soup kitchens, SNAP enrollment</div>
           </div>
           <div class="guided-card" onclick="guidedSelect('health')">
-            <div style="font-size:24px;margin-bottom:6px;">🏥</div>
-            <div style="font-weight:600;">Healthcare</div>
-            <div style="color:#888;font-size:12px;margin-top:2px;">Hospitals, clinics, mental health, Medicaid</div>
+            <div class="gc-icon">&#127973;</div>
+            <div class="gc-title">Healthcare</div>
+            <div class="gc-desc">Hospitals, clinics, mental health, Medicaid</div>
           </div>
           <div class="guided-card" onclick="guidedSelect('safety')">
-            <div style="font-size:24px;margin-bottom:6px;">🛡</div>
-            <div style="font-weight:600;">Safety & DV</div>
-            <div style="color:#888;font-size:12px;margin-top:2px;">Domestic violence, crime victim services</div>
+            <div class="gc-icon">&#128737;</div>
+            <div class="gc-title">Safety & DV</div>
+            <div class="gc-desc">Domestic violence, crime victim services</div>
           </div>
           <div class="guided-card" onclick="guidedSelect('benefits')">
-            <div style="font-size:24px;margin-bottom:6px;">📋</div>
-            <div style="font-weight:600;">Benefits & Aid</div>
-            <div style="color:#888;font-size:12px;margin-top:2px;">SNAP, Medicaid, cash assistance, WIC</div>
+            <div class="gc-icon">&#128203;</div>
+            <div class="gc-title">Benefits & Aid</div>
+            <div class="gc-desc">SNAP, Medicaid, cash assistance, WIC</div>
           </div>
           <div class="guided-card" onclick="guidedSelect('children')">
-            <div style="font-size:24px;margin-bottom:6px;">👶</div>
-            <div style="font-weight:600;">Children & Schools</div>
-            <div style="color:#888;font-size:12px;margin-top:2px;">Childcare, schools, after-school programs</div>
+            <div class="gc-icon">&#128118;</div>
+            <div class="gc-title">Children & Schools</div>
+            <div class="gc-desc">Childcare, schools, after-school programs</div>
           </div>
         </div>
 
-        <div id="guidedForm" style="display:none;margin-top:16px;">
-          <div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Tell us more</div>
-          <div style="margin-bottom:10px;">
-            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;">Borough</label>
-            <select id="guidedBorough" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;border-radius:8px;padding:8px 12px;color:#e0e0e0;font-size:14px;">
+        <div id="guidedForm" style="display:none;margin-top:14px;">
+          <div style="font-family:var(--font-mono);color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Tell us more</div>
+          <div class="guided-form-group">
+            <label class="guided-label">Borough</label>
+            <select id="guidedBorough" class="guided-select">
               <option value="">Any borough</option>
               <option value="Brooklyn">Brooklyn</option>
               <option value="Manhattan">Manhattan</option>
@@ -236,27 +795,45 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
               <option value="Staten Island">Staten Island</option>
             </select>
           </div>
-          <div style="margin-bottom:10px;">
-            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;">Household size</label>
-            <input id="guidedHousehold" type="number" value="1" min="1" max="20" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;border-radius:8px;padding:8px 12px;color:#e0e0e0;font-size:14px;">
+          <div class="guided-form-group">
+            <label class="guided-label">Household Size</label>
+            <input id="guidedHousehold" type="number" value="1" min="1" max="20" class="guided-input">
           </div>
-          <div style="margin-bottom:10px;">
-            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;">Any special needs?</label>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;">
-              <label style="color:#aaa;font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
-                <input type="checkbox" id="guidedADA"> Wheelchair accessible
-              </label>
-              <label style="color:#aaa;font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
-                <input type="checkbox" id="guidedChildren"> Have children
-              </label>
-              <label style="color:#aaa;font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
-                <input type="checkbox" id="guidedUrgent"> Urgent / tonight
-              </label>
+          <div class="guided-form-group">
+            <label class="guided-label">Special Needs</label>
+            <div class="guided-checkbox-group">
+              <label class="guided-checkbox-label"><input type="checkbox" id="guidedADA"> Wheelchair accessible</label>
+              <label class="guided-checkbox-label"><input type="checkbox" id="guidedChildren"> Have children</label>
+              <label class="guided-checkbox-label"><input type="checkbox" id="guidedUrgent"> Urgent / tonight</label>
             </div>
+          </div>
+          <div class="guided-form-group">
+            <label class="guided-label">Language (optional)</label>
+            <select id="guidedLanguage" class="guided-select">
+              <option value="">English</option>
+              <option value="Spanish">Spanish</option>
+              <option value="Mandarin">Mandarin</option>
+              <option value="Cantonese">Cantonese</option>
+              <option value="Haitian Creole">Haitian Creole</option>
+              <option value="Russian">Russian</option>
+              <option value="Arabic">Arabic</option>
+              <option value="Bengali">Bengali</option>
+            </select>
           </div>
           <button class="send-btn" style="width:100%;margin-top:8px;" onclick="sendGuidedQuery()">Find Resources</button>
         </div>
       </div>
+    </div>
+
+    <!-- Powered-by Footer -->
+    <div class="powered-footer">
+      <span class="powered-label">Powered by</span>
+      <span class="powered-badge">Nemotron</span>
+      <span class="powered-badge">cuDF</span>
+      <span class="powered-badge">cuGraph</span>
+      <span class="powered-badge">cuOpt</span>
+      <span class="powered-badge">RAPIDS</span>
+      <span class="powered-badge">PyKEEN</span>
     </div>
   </div>
 
@@ -265,30 +842,54 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div id="map"></div>
     <div class="map-overlay status-pill" id="status">
       <span class="dot"></span>
-      <span id="statusText">Loading...</span>
+      <span id="statusText">Connecting...</span>
     </div>
     <div class="map-overlay legend">
       <div class="legend-title">Resource Types</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#76b900;"></span> Shelters</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#ffb74d;"></span> Food Banks</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#ef5350;"></span> Hospitals</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#42a5f5;"></span> Schools</div>
-      <div class="legend-item"><span class="legend-dot" style="background:#ab47bc;"></span> Benefits</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--green);"></span> Shelters</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--orange);"></span> Food Banks</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--red);"></span> Hospitals</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--blue);"></span> Schools</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--purple);"></span> Benefits</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--coral);"></span> DV Services</div>
     </div>
     <div class="map-overlay timing-bar" id="timing"></div>
   </div>
 </div>
 
-<style>
-/* Guided search cards */
-.guided-card { background:#12121a; border:1px solid #2a2a3a; border-radius:10px; padding:14px; margin-bottom:8px; cursor:pointer; transition:all 0.2s; }
-.guided-card:hover { border-color:#76b900; transform:translateX(3px); box-shadow:0 2px 10px #76b90015; }
-.guided-card.selected { border-color:#76b900; background:#76b90010; }
-</style>
-
 <script>
 // ── State ───────────────────────────────────────────────────────────────────
 let guidedNeed = '';
+let lastQuery = '';
+let isEmergency = false;
+
+const EMERGENCY_KEYWORDS = [
+  'emergency', 'urgent', 'tonight', 'right now', 'immediately', 'cold emergency',
+  'hit capacity', 'outside', 'don\'t feel safe', 'not safe', 'broke in', 'break in',
+  'domestic violence', 'dv', 'fleeing', 'danger', 'crisis', '15 degrees',
+  'freezing', 'hypothermia', 'overdose'
+];
+
+function detectEmergency(query) {
+  const q = query.toLowerCase();
+  return EMERGENCY_KEYWORDS.some(kw => q.includes(kw));
+}
+
+// Generate "why this matches" text from need field and resource type
+function getMatchReason(resource, query) {
+  const parts = [];
+  if (resource.need) {
+    const needs = resource.need.split('+').map(n => n.trim().replace(/_/g, ' '));
+    needs.forEach(n => {
+      const capitalized = n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      parts.push(capitalized);
+    });
+  }
+  if (parts.length === 0 && resource.type) {
+    parts.push(resource.type.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+  }
+  return parts.join(' + ');
+}
 
 // ── Tabs ────────────────────────────────────────────────────────────────────
 function switchTab(tab) {
@@ -312,20 +913,31 @@ function sendGuidedQuery() {
   const ada = document.getElementById('guidedADA').checked;
   const children = document.getElementById('guidedChildren').checked;
   const urgent = document.getElementById('guidedUrgent').checked;
+  const language = document.getElementById('guidedLanguage').value;
 
   const needMap = {
-    housing: 'shelter', food: 'food bank', health: 'hospital',
-    safety: 'domestic violence services', benefits: 'benefits and SNAP',
-    children: 'childcare and schools',
+    housing: 'emergency shelter and housing assistance',
+    food: 'food — a food pantry or soup kitchen',
+    health: 'medical care at a hospital or clinic',
+    safety: 'help with a domestic violence or safety situation',
+    benefits: 'benefits enrollment — SNAP, Medicaid, and cash assistance',
+    children: 'childcare and schools for my children',
   };
 
-  let q = `I need ${needMap[guidedNeed] || 'help'}`;
-  if (borough) q += ` in ${borough}`;
-  if (household > 1) q += `. Family of ${household}`;
-  if (children) q += ` with children`;
-  if (ada) q += `. Need wheelchair accessible`;
-  if (urgent) q += `. This is urgent, I need help tonight`;
+  // Build a natural-sounding query
+  const parts = [];
+  if (household > 1) {
+    parts.push(`I have a family of ${household}${children ? ' with children' : ''}`);
+    parts.push(`and we need ${needMap[guidedNeed] || 'help'}`);
+  } else {
+    parts.push(`I need ${needMap[guidedNeed] || 'help'}`);
+  }
+  if (borough) parts.push(`in ${borough}`);
+  if (ada) parts.push('I need wheelchair accessible facilities');
+  if (language) parts.push(`We speak ${language}`);
+  if (urgent) parts.push('This is urgent — we need help tonight');
 
+  const q = parts.join('. ') + '.';
   switchTab('chat');
   document.getElementById('queryInput').value = q;
   sendQuery();
@@ -346,49 +958,59 @@ let allResources = [];
 const TYPE_COLORS = {
   shelter: [118,185,0], food_bank: [255,183,77], hospital: [239,83,80],
   school: [66,165,245], benefits_center: [171,71,188],
-  domestic_violence: [255,112,67], transit_station: [80,80,80],
-  community_center: [100,100,100], senior_services: [77,182,172],
+  domestic_violence: [255,112,67], transit_station: [60,60,70],
+  community_center: [90,90,100], senior_services: [77,182,172],
   childcare: [129,199,132], mental_health: [149,117,205],
+  dropin_center: [77,182,172], police_precinct: [100,100,120],
 };
 
-fetch('/api/resources').then(r=>r.json()).then(data => {
+fetch('/api/resources').then(r => r.json()).then(data => {
   allResources = data;
   updateMap(data);
+}).catch(() => {});
+
+fetch('/api/status').then(r => r.json()).then(data => {
+  const count = (data.resources || 0);
+  const edges = (data.edges || 0);
+  document.getElementById('statusText').textContent = `${count.toLocaleString()} resources | ${data.llm || '...'}`;
+  document.getElementById('statResources').textContent = count.toLocaleString();
+  document.getElementById('statEdges').textContent = edges.toLocaleString();
+  document.getElementById('statLLM').textContent = data.llm || '...';
+}).catch(() => {
+  document.getElementById('statusText').textContent = 'Offline';
 });
 
-fetch('/api/status').then(r=>r.json()).then(data => {
-  document.getElementById('statusText').textContent =
-    `${(data.resources||0).toLocaleString()} resources | ${data.llm||'...'}`;
-});
-
-function updateMap(bg, results=[]) {
-  const resultNames = new Set(results.map(r=>r.name));
-  const bgFiltered = (bg||[]).filter(r=>r.latitude&&r.longitude&&!resultNames.has(r.name));
-  const fg = results.filter(r=>r.lat&&r.lon);
+function updateMap(bg, results = []) {
+  const resultNames = new Set(results.map(r => r.name));
+  const bgFiltered = (bg || []).filter(r => r.latitude && r.longitude && !resultNames.has(r.name));
+  const fg = results.filter(r => r.lat && r.lon);
 
   const layers = [
     new deck.ScatterplotLayer({
-      id:'bg', data:bgFiltered,
-      getPosition:d=>[d.longitude,d.latitude],
-      getRadius:25, getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),35],
-      radiusMinPixels:1.5, radiusMaxPixels:5, pickable:true,
-      onHover:({object})=>{ document.getElementById('map').title=object?`${object.name} (${object.resource_type})`:''; },
+      id: 'bg', data: bgFiltered,
+      getPosition: d => [d.longitude, d.latitude],
+      getRadius: 25,
+      getFillColor: d => [...(TYPE_COLORS[d.resource_type] || [80,80,80]), 30],
+      radiusMinPixels: 1.5, radiusMaxPixels: 5, pickable: true,
+      onHover: ({object}) => { document.getElementById('map').title = object ? `${object.name} (${object.resource_type})` : ''; },
     }),
     new deck.ScatterplotLayer({
-      id:'results', data:fg,
-      getPosition:d=>[d.lon,d.lat],
-      getRadius:100, getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],
-      radiusMinPixels:8, radiusMaxPixels:25, pickable:true,
-      stroked:true, getLineColor:[255,255,255,200], lineWidthMinPixels:2,
+      id: 'results', data: fg,
+      getPosition: d => [d.lon, d.lat],
+      getRadius: 100,
+      getFillColor: d => [...(TYPE_COLORS[d.type] || [118,185,0]), 220],
+      radiusMinPixels: 8, radiusMaxPixels: 25, pickable: true,
+      stroked: true, getLineColor: [255,255,255,180], lineWidthMinPixels: 2,
     }),
   ];
 
-  if(deckOverlay){deckOverlay.setProps({layers})} else{deckOverlay=new deck.MapboxOverlay({layers});map.addControl(deckOverlay);}
+  if (deckOverlay) { deckOverlay.setProps({layers}); }
+  else { deckOverlay = new deck.MapboxOverlay({layers}); map.addControl(deckOverlay); }
 
-  if(fg.length>0){
-    const aLat=fg.reduce((s,d)=>s+d.lat,0)/fg.length;
-    const aLon=fg.reduce((s,d)=>s+d.lon,0)/fg.length;
-    map.flyTo({center:[aLon,aLat],zoom:13,pitch:50,duration:1500});
+  if (fg.length > 0) {
+    const aLat = fg.reduce((s,d) => s + d.lat, 0) / fg.length;
+    const aLon = fg.reduce((s,d) => s + d.lon, 0) / fg.length;
+    map.flyTo({center: [aLon, aLat], zoom: 13, pitch: 50, duration: 1500});
   }
 }
 
@@ -402,42 +1024,77 @@ function addMsg(html, role) {
   chat.scrollTop = chat.scrollHeight;
 }
 
-function makeCards(resources) {
-  if(!resources||!resources.length) return '';
-  let html = '<div class="results-grid">';
-  for(const r of resources){
-    const safetyPct = r.safety ? Math.round(r.safety*100) : null;
-    const safetyClass = safetyPct>=70?'high':safetyPct>=40?'med':'low';
+function makeCards(resources, emergency) {
+  if (!resources || !resources.length) return '';
+  let html = '';
+
+  if (emergency) {
+    html += '<div class="urgency-banner">Emergency &mdash; Priority resources shown first</div>';
+  }
+
+  html += '<div class="results-grid">';
+  for (const r of resources) {
+    const safetyPct = r.safety ? Math.round(r.safety * 100) : null;
+    const safetyClass = safetyPct >= 70 ? 'high' : safetyPct >= 40 ? 'med' : 'low';
+    const matchReason = getMatchReason(r, lastQuery);
+    const emergencyClass = emergency ? ' emergency' : '';
+    const escapedName = (r.name || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+
     html += `
-    <div class="resource-card type-${r.type||'shelter'}" onclick="flyTo(${r.lat},${r.lon})">
-      <div class="rc-header">
-        <div class="rc-name">${r.name||'Unknown'}</div>
+    <div class="resource-card type-${r.type || 'shelter'}${emergencyClass}" onclick="flyTo(${r.lat},${r.lon})">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div class="rc-name">${r.name || 'Unknown'}</div>
+        ${emergency ? '<span class="rc-urgency">Urgent</span>' : ''}
       </div>
-      <div class="rc-addr">${r.address||'Address not listed'}</div>
+      <div class="rc-addr">${r.address || 'Address not listed'}</div>
+      ${matchReason ? `
+      <div class="rc-match">
+        <div class="rc-match-label">Why this matches</div>
+        <div class="rc-match-text">${matchReason}</div>
+      </div>` : ''}
       <div class="rc-tags">
-        <span class="rc-tag type">${(r.type||'').replace('_',' ')}</span>
-        ${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}
-        ${r.need?`<span class="rc-tag need">${r.need.replace('+',' + ')}</span>`:''}
-        ${safetyPct!==null?`<span class="rc-tag safety ${safetyClass}">Safety ${safetyPct}%</span>`:''}
+        <span class="rc-tag type">${(r.type || '').replace(/_/g, ' ')}</span>
+        ${r.borough ? `<span class="rc-tag borough">${r.borough}</span>` : ''}
+        ${safetyPct !== null ? `<span class="rc-tag safety ${safetyClass}">Safety ${safetyPct}%</span>` : ''}
       </div>
       <div class="rc-actions">
-        <span class="rc-action" onclick="event.stopPropagation();flyTo(${r.lat},${r.lon})">View on Map</span>
-        <span class="rc-action" onclick="event.stopPropagation();reportIssue('${(r.name||'').replace(/'/g,'\\&#39;')}')">Report Issue</span>
+        <span class="rc-action" onclick="event.stopPropagation();flyTo(${r.lat},${r.lon})">Map</span>
+        <span class="rc-action" onclick="event.stopPropagation();reportIssue('${escapedName}')">Report Issue</span>
       </div>
     </div>`;
   }
-  return html+'</div>';
+  html += '</div>';
+
+  // Follow-up prompt
+  html += `
+  <div class="followup-prompt">
+    <input type="text" placeholder="Tell me more about your situation..." onkeydown="if(event.key==='Enter'){sendFollowup(this)}">
+    <button class="followup-send" onclick="sendFollowup(this.previousElementSibling)">Send</button>
+  </div>`;
+
+  return html;
 }
 
-function flyTo(lat,lon){if(lat&&lon)map.flyTo({center:[lon,lat],zoom:15,pitch:55,duration:1000});}
+function sendFollowup(input) {
+  const text = input.value.trim();
+  if (!text) return;
+  document.getElementById('queryInput').value = text;
+  input.value = '';
+  sendQuery();
+}
+
+function flyTo(lat, lon) {
+  if (lat && lon) map.flyTo({center: [lon, lat], zoom: 15, pitch: 55, duration: 1000});
+}
 
 function reportIssue(name) {
   const issue = prompt(`What's wrong with ${name}?\n(e.g. "full", "closed", "wrong address")`);
-  if(issue){
-    fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({resource_name:name,issue:issue,detail:issue})
-    }).then(r=>r.json()).then(d=>{
-      addMsg(`Got it — we've noted the issue with <b>${name}</b> and will exclude it from future results.`,'assistant');
+  if (issue) {
+    fetch('/api/feedback', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({resource_name: name, issue: issue, detail: issue})
+    }).then(r => r.json()).then(() => {
+      addMsg(`Noted &mdash; <b>${name}</b> flagged and excluded from future results.`, 'assistant');
     });
   }
 }
@@ -445,8 +1102,10 @@ function reportIssue(name) {
 async function sendQuery() {
   const input = document.getElementById('queryInput');
   const q = input.value.trim();
-  if(!q) return;
+  if (!q) return;
 
+  lastQuery = q;
+  isEmergency = detectEmergency(q);
   addMsg(q, 'user');
   input.value = '';
 
@@ -455,39 +1114,42 @@ async function sendQuery() {
 
   try {
     const resp = await fetch('/api/query', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({query:q,demo_mode:true}),
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: q, demo_mode: true}),
     });
     const data = await resp.json();
 
-    let answerHtml = (data.answer||'No response').replace(/\n/g,'<br>');
-    if(data.resources && data.resources.length>0){
-      answerHtml += makeCards(data.resources);
+    let answerHtml = (data.answer || 'No response').replace(/\n/g, '<br>');
+    if (data.resources && data.resources.length > 0) {
+      answerHtml += makeCards(data.resources, isEmergency);
     }
     addMsg(answerHtml, 'assistant');
 
-    if(data.resources&&data.resources.length>0) updateMap(allResources, data.resources);
+    if (data.resources && data.resources.length > 0) updateMap(allResources, data.resources);
 
-    if(data.timing){
-      const t=data.timing;
-      const el=document.getElementById('timing');
-      el.textContent=`${t.total}s total | Plan ${t.plan}s | Execute ${t.execute}s | Synth ${t.synth}s | ${data.llm||''}`;
-      el.style.display='block';
+    if (data.timing) {
+      const t = data.timing;
+      const el = document.getElementById('timing');
+      el.textContent = `${t.total}s total | Plan ${t.plan}s | Execute ${t.execute}s | Synth ${t.synth}s | ${data.llm || ''}`;
+      el.style.display = 'block';
     }
   } catch(err) {
-    addMsg(`Something went wrong: ${err.message}. Please try again.`,'system');
+    addMsg(`Connection error: ${err.message}. Is the backend running?`, 'system');
   }
 
   document.getElementById('loading').classList.remove('active');
-  document.getElementById('sendBtn').disabled=false;
+  document.getElementById('sendBtn').disabled = false;
 }
 
-// ── Event listeners ─────────────────────────────────────────────────────────
-document.getElementById('queryInput').addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendQuery();}
+// ── Event Listeners ─────────────────────────────────────────────────────────
+document.getElementById('queryInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
 });
-document.querySelectorAll('.cat-btn,.quick-btn').forEach(b=>{
-  b.addEventListener('click',()=>{document.getElementById('queryInput').value=b.dataset.q;sendQuery();});
+document.querySelectorAll('.cat-btn,.quick-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.getElementById('queryInput').value = b.dataset.q;
+    sendQuery();
+  });
 });
 </script>
 </body>
