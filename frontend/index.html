@@ -331,7 +331,13 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
     <div class="centered">
       <div style="font-family:var(--display);font-size:24px;font-weight:300;margin:16px 0 6px;text-align:center">Choose a borough</div>
       <div style="color:var(--t2);font-size:13px;text-align:center;margin-bottom:24px">Tap to browse resources on the map</div>
-      <div class="borough-grid" id="boroughGrid"></div>
+      <div class="borough-grid" id="boroughGrid">
+        <div class="borough-card" onclick="selectExploreBorough('MN')"><div class="b-icon">&#127961;&#65039;</div><div class="b-name">Manhattan</div><div class="b-count" id="bc-MN">Loading...</div></div>
+        <div class="borough-card" onclick="selectExploreBorough('BK')"><div class="b-icon">&#127753;</div><div class="b-name">Brooklyn</div><div class="b-count" id="bc-BK">Loading...</div></div>
+        <div class="borough-card" onclick="selectExploreBorough('QN')"><div class="b-icon">&#9992;&#65039;</div><div class="b-name">Queens</div><div class="b-count" id="bc-QN">Loading...</div></div>
+        <div class="borough-card" onclick="selectExploreBorough('BX')"><div class="b-icon">&#127934;</div><div class="b-name">Bronx</div><div class="b-count" id="bc-BX">Loading...</div></div>
+        <div class="borough-card" onclick="selectExploreBorough('SI')" style="grid-column:span 2"><div class="b-icon">&#9972;&#65039;</div><div class="b-name">Staten Island</div><div class="b-count" id="bc-SI">Loading...</div></div>
+      </div>
     </div>
   </div>
   <div id="explore-map" style="display:none;flex:1;position:relative">
@@ -587,7 +593,9 @@ function updateResultMapLayers(){
   if(!resultMap)return;
   const fg=lastResources.filter(r=>r.lat&&r.lon);
   const layers=[
-    new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2,onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''}}),
+    new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2,
+      onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''},
+      onClick:({object})=>{if(object)showResultResourceInfo(object)}}),
   ];
   if(resultDeck)resultDeck.setProps({layers});else{resultDeck=new deck.MapboxOverlay({layers});resultMap.addControl(resultDeck)}
   if(fg.length){
@@ -648,6 +656,25 @@ async function setManualLocation(){
       }
     } else {const ls=document.getElementById('locStatus');if(ls){ls.textContent='Address not found — try a more specific NYC address';ls.style.color='var(--orange)'}}
   }catch(e){console.error('Location error:',e);const ls=document.getElementById('locStatus');if(ls){ls.textContent='Error looking up address';ls.style.color='var(--red)'}}
+}
+
+// ── Result map dot click ───────────────────────────────────
+function showResultResourceInfo(resource){
+  // Fly to on map
+  if(resultMap)resultMap.flyTo({center:[resource.lon,resource.lat],zoom:16,pitch:50,duration:800});
+  // Remove old direction UI
+  document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt').forEach(el=>el.remove());
+  // Add directions prompt to results
+  const eName=(resource.name||'').replace(/'/g,'&#39;');
+  const c=document.getElementById('resultsContent');
+  c.insertAdjacentHTML('beforeend',`<div class="answer-box fade-in directions-picker" style="border-color:var(--green-d)">
+    <div style="font-weight:700;font-size:16px;margin-bottom:4px">${resource.name||'Unknown'}</div>
+    <div style="font-size:12px;color:var(--t2);font-family:var(--mono);margin-bottom:8px">${resource.address||''}</div>
+    <button class="btn-primary" style="padding:10px 16px;font-size:12px;width:auto" onclick="getDirections(${resource.lat},${resource.lon},'${eName}')">&#128204; Get Directions</button>
+  </div>`);
+  // Scroll to it
+  const scrollEl=c.parentElement;
+  scrollEl.scrollTop=scrollEl.scrollHeight;
 }
 
 // ── Sponsored Ride ─────────────────────────────────────────
@@ -982,9 +1009,8 @@ function toggleExploreFilter(type){
 fetch('/api/resources').then(r=>r.json()).then(d=>{
   allResources=d;
   for(const r of d){const b=r.borough||'';boroughCounts[b]=(boroughCounts[b]||0)+1}
-  // Build borough grid
-  const grid=document.getElementById('boroughGrid');
-  grid.innerHTML=BOROUGHS.map(b=>`<div class="borough-card" onclick="selectExploreBorough('${b.abbr}')"><div class="b-icon">${b.icon}</div><div class="b-name">${b.name}</div><div class="b-count">${(boroughCounts[b.abbr]||0).toLocaleString()} resources</div></div>`).join('');
+  // Update borough counts
+  for(const b of BOROUGHS){const el=document.getElementById('bc-'+b.abbr);if(el)el.textContent=(boroughCounts[b.abbr]||0).toLocaleString()+' resources';}
 }).catch(()=>{});
 
 fetch('/api/status').then(r=>r.json()).then(d=>{}).catch(()=>{});
