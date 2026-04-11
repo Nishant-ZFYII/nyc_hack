@@ -526,13 +526,13 @@ body {
     <div class="map-overlay" id="backBtn" style="top:16px;left:60px;padding:7px 14px;font-size:11px;font-family:var(--font-mono);cursor:pointer;display:none;transition:all 0.2s" onclick="showBoroughView()">&#8592; All Boroughs</div>
     <div class="map-overlay" id="filterBar" style="top:56px;left:16px;padding:8px 10px;display:none;flex-wrap:wrap;gap:4px;max-width:320px">
       <button class="filter-btn active" data-type="all" onclick="toggleFilter('all')">All</button>
-      <button class="filter-btn active" data-type="shelter" onclick="toggleFilter('shelter')"><span style="color:#76b900">&#9679;</span> Shelter</button>
-      <button class="filter-btn active" data-type="food_bank" onclick="toggleFilter('food_bank')"><span style="color:#ffb74d">&#9679;</span> Food</button>
-      <button class="filter-btn active" data-type="hospital" onclick="toggleFilter('hospital')"><span style="color:#ef5350">&#9679;</span> Hospital</button>
-      <button class="filter-btn active" data-type="clinic" onclick="toggleFilter('clinic')"><span style="color:#ef7878">&#9679;</span> Clinic</button>
-      <button class="filter-btn active" data-type="school" onclick="toggleFilter('school')"><span style="color:#42a5f5">&#9679;</span> School</button>
-      <button class="filter-btn active" data-type="childcare" onclick="toggleFilter('childcare')"><span style="color:#81c784">&#9679;</span> Childcare</button>
-      <button class="filter-btn active" data-type="youth_services" onclick="toggleFilter('youth_services')"><span style="color:#ffd54f">&#9679;</span> Youth</button>
+      <button class="filter-btn active" data-type="shelter" onclick="toggleFilter('shelter')">&#127968; Shelter</button>
+      <button class="filter-btn active" data-type="food_bank" onclick="toggleFilter('food_bank')">&#127822; Food</button>
+      <button class="filter-btn active" data-type="hospital" onclick="toggleFilter('hospital')">&#127973; Hospital</button>
+      <button class="filter-btn active" data-type="clinic" onclick="toggleFilter('clinic')">&#129658; Clinic</button>
+      <button class="filter-btn active" data-type="school" onclick="toggleFilter('school')">&#128218; School</button>
+      <button class="filter-btn active" data-type="childcare" onclick="toggleFilter('childcare')">&#128118; Childcare</button>
+      <button class="filter-btn active" data-type="youth_services" onclick="toggleFilter('youth_services')">&#127934; Youth</button>
     </div>
   </div>
 </div>
@@ -754,11 +754,45 @@ function toggleFilter(type){
   if(zoomedBorough)refreshBoroughIcons();
 }
 
+// Pre-render emoji to canvas → data URL for IconLayer
+const _emojiIconCache={};
+function getEmojiIcon(emoji){
+  if(_emojiIconCache[emoji]) return _emojiIconCache[emoji];
+  const size=64;
+  const canvas=document.createElement('canvas');
+  canvas.width=size; canvas.height=size;
+  const ctx=canvas.getContext('2d');
+  ctx.font=`${size*0.7}px serif`;
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(emoji, size/2, size/2);
+  _emojiIconCache[emoji]=canvas.toDataURL();
+  return _emojiIconCache[emoji];
+}
+
+// Build icon mapping for IconLayer
+const ICON_MAPPING={};
+const ICON_ATLAS_ENTRIES=Object.entries(TYPE_EMOJI);
+// Pre-render all emoji icons on load
+const _iconAtlasCanvas=document.createElement('canvas');
+const _iconSize=64;
+_iconAtlasCanvas.width=_iconSize*ICON_ATLAS_ENTRIES.length;
+_iconAtlasCanvas.height=_iconSize;
+const _ictx=_iconAtlasCanvas.getContext('2d');
+_ictx.font=`${_iconSize*0.65}px serif`;
+_ictx.textAlign='center';
+_ictx.textBaseline='middle';
+ICON_ATLAS_ENTRIES.forEach(([type,emoji],i)=>{
+  _ictx.fillText(emoji, i*_iconSize+_iconSize/2, _iconSize/2);
+  ICON_MAPPING[type]={x:i*_iconSize, y:0, width:_iconSize, height:_iconSize, anchorY:_iconSize/2};
+});
+const ICON_ATLAS_URL=_iconAtlasCanvas.toDataURL();
+
 function refreshBoroughIcons(){
   const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===zoomedBorough&&activeFilters.has(r.resource_type));
   const layers=[
-    // Colored dots for borough resources — larger and brighter than background
-    new deck.ScatterplotLayer({id:'icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],getRadius:60,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[118,185,0]),200],radiusMinPixels:5,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,120],lineWidthMinPixels:1,onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
+    // Emoji icons via IconLayer
+    new deck.IconLayer({id:'icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],iconAtlas:ICON_ATLAS_URL,iconMapping:ICON_MAPPING,getIcon:d=>ICON_MAPPING[d.resource_type]?d.resource_type:'shelter',getSize:32,sizeMinPixels:18,sizeMaxPixels:40,pickable:true,onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
     // Dim dots for other boroughs
     new deck.ScatterplotLayer({id:'bg-other',data:allResources.filter(r=>r.latitude&&r.longitude&&r.borough!==zoomedBorough),getPosition:d=>[d.longitude,d.latitude],getRadius:20,getFillColor:[80,80,80,15],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
   ];
