@@ -412,7 +412,12 @@ async function sendQuery(){
     document.getElementById('userLabel').textContent=n;
     try{await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,name:n})})}catch(e){}
   }
-  console.log('sendQuery userLocation:', userLocation);
+  // Fallback: if no location set but user selected a borough, use borough centroid
+  if(!userLocation && exploreBoro){
+    const boro=BOROUGHS.find(b=>b.abbr===exploreBoro);
+    if(boro) userLocation={lat:boro.center[1],lon:boro.center[0]};
+  }
+  console.log('sendQuery userLocation:', userLocation, 'exploreBoro:', exploreBoro);
   lastQuery=q;isEmergency=detectEmergency(q);
   document.getElementById('loadingOverlay').classList.add('active');
   document.getElementById('sendBtn').disabled=true;
