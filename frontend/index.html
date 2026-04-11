@@ -185,33 +185,17 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
         <div style="color:var(--t2);font-size:14px;margin-top:8px">Find shelters, food, healthcare, benefits &amp; more</div>
       </div>
 
-      <div class="choice-card fade-in-d1" onclick="showNewUser()">
+      <div class="choice-card fade-in-d1" onclick="goTo('page-ask')">
         <div class="choice-icon">&#128075;</div>
         <div><div class="choice-title">I need help</div><div class="choice-desc">Tell us what's going on &mdash; we'll find the right resources</div></div>
       </div>
-      <div class="choice-card fade-in-d2" onclick="showReturning()">
+      <div class="choice-card fade-in-d2" onclick="goTo('page-returning')">
         <div class="choice-icon">&#128260;</div>
         <div><div class="choice-title">I've been here before</div><div class="choice-desc">Enter your case ID to continue where you left off</div></div>
       </div>
       <div class="choice-card fade-in-d3" onclick="goTo('page-explore')">
         <div class="choice-icon">&#128506;</div>
         <div><div class="choice-title">Find Aid</div><div class="choice-desc">Browse resources on the map by borough</div></div>
-      </div>
-
-      <div id="newUserForm" style="display:none;margin-top:16px" class="fade-in">
-        <div class="section-label">Your name</div>
-        <input type="text" id="newNameInput" class="big-input" placeholder="e.g. Tina" style="margin-bottom:12px;font-size:14px;padding:12px 16px" onkeydown="if(event.key==='Enter')doNewUser()">
-        <button class="btn-primary" onclick="doNewUser()">Get Started</button>
-      </div>
-
-      <div id="returningForm" style="display:none;margin-top:16px" class="fade-in">
-        <div class="section-label">Your case ID</div>
-        <input type="text" id="loginInput" class="big-input" placeholder="e.g. tina-a3f2" style="margin-bottom:12px;font-size:14px;padding:12px 16px" onkeydown="if(event.key==='Enter')doLogin()">
-        <button class="btn-primary" onclick="doLogin()">Continue</button>
-      </div>
-
-      <div style="text-align:center;margin-top:20px" class="fade-in-d4">
-        <a href="#" onclick="skipLogin();return false" style="color:var(--t3);font-size:11px;text-decoration:none;font-family:var(--mono)">Use anonymously &rarr;</a>
       </div>
 
       <div class="powered fade-in-d4">
@@ -227,6 +211,21 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   </div>
 </div>
 
+<!-- ═══════════ PAGE: RETURNING USER ═══════════ -->
+<div class="page" id="page-returning">
+  <div class="topbar">
+    <button class="topbar-back" onclick="goTo('page-welcome')">&#8592; Back</button>
+    <span class="topbar-title">Welcome Back</span>
+  </div>
+  <div class="page-scroll">
+    <div class="centered" style="display:flex;flex-direction:column;justify-content:center;min-height:70vh">
+      <div style="font-family:var(--display);font-size:24px;font-weight:300;text-align:center;margin-bottom:20px">Enter your case ID</div>
+      <input type="text" id="loginInput" class="big-input" placeholder="e.g. tina-a3f2" style="margin-bottom:12px;font-size:15px;padding:14px 18px;text-align:center" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="btn-primary" onclick="doLogin()">Continue</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ PAGE 2: WHAT'S HAPPENING ═══════════ -->
 <div class="page" id="page-ask">
   <div class="topbar">
@@ -236,7 +235,13 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   </div>
   <div class="page-scroll">
     <div class="centered">
-      <div style="font-family:var(--display);font-size:24px;font-weight:300;margin-bottom:6px;margin-top:16px" class="fade-in">What's going on?</div>
+      <!-- Optional name -->
+      <div class="fade-in" style="margin-top:16px;margin-bottom:16px">
+        <div class="section-label">Your name (optional)</div>
+        <input type="text" id="newNameInput" class="big-input" placeholder="e.g. Tina" style="font-size:13px;padding:10px 14px" onkeydown="if(event.key==='Enter')document.getElementById('queryInput').focus()">
+      </div>
+
+      <div style="font-family:var(--display);font-size:24px;font-weight:300;margin-bottom:6px" class="fade-in-d1">What's going on?</div>
       <div style="color:var(--t2);font-size:13px;margin-bottom:20px" class="fade-in-d1">Tell us your situation and where you are &mdash; we'll find the closest help.</div>
 
       <!-- Location first -->
@@ -381,21 +386,9 @@ function goTo(pageId){
 }
 
 // ── Login ──────────────────────────────────────────────────
-function showNewUser(){document.getElementById('newUserForm').style.display='block';document.getElementById('returningForm').style.display='none'}
-function showReturning(){document.getElementById('returningForm').style.display='block';document.getElementById('newUserForm').style.display='none'}
-
-async function doNewUser(){
-  const val=document.getElementById('newNameInput').value.trim();if(!val)return;
-  currentCaseId=val.toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-')+'-'+Date.now().toString(36).slice(-4);
-  currentUserName=val;
-  try{await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,name:val})})}catch(e){}
-  document.getElementById('userLabel').textContent=val;
-  goTo('page-ask');
-}
-
 async function doLogin(){
   const val=document.getElementById('loginInput').value.trim();if(!val)return;
-  currentCaseId=val; currentUserName=val;
+  currentCaseId=val;currentUserName=val;
   try{
     const resp=await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:val,name:val})});
     const data=await resp.json();
@@ -405,13 +398,20 @@ async function doLogin(){
   goTo('page-ask');
 }
 
-function skipLogin(){currentCaseId=null;currentUserName='Anonymous';document.getElementById('userLabel').textContent='';goTo('page-ask')}
-
 // ── Query ──────────────────────────────────────────────────
 function quickAsk(q){document.getElementById('queryInput').value=q;sendQuery()}
 
 async function sendQuery(){
   const q=document.getElementById('queryInput').value.trim();if(!q)return;
+  // Grab name if provided and no case yet
+  const nameInput=document.getElementById('newNameInput');
+  if(nameInput&&nameInput.value.trim()&&!currentCaseId){
+    const n=nameInput.value.trim();
+    currentCaseId=n.toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-')+'-'+Date.now().toString(36).slice(-4);
+    currentUserName=n;
+    document.getElementById('userLabel').textContent=n;
+    try{await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,name:n})})}catch(e){}
+  }
   lastQuery=q;isEmergency=detectEmergency(q);
   document.getElementById('loadingOverlay').classList.add('active');
   document.getElementById('sendBtn').disabled=true;
