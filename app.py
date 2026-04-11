@@ -196,6 +196,13 @@ with st.sidebar:
             st.session_state["query_input"] = eq
 
     st.divider()
+    st.subheader("Speed Settings")
+    demo_mode = st.toggle("⚡ Demo Mode (skip verification)", value=False,
+                          help="Skip LLM verification for 2-3x faster responses. "
+                               "Use during live demos for speed.")
+    st.session_state["demo_mode"] = demo_mode
+
+    st.divider()
     if st.button("🔄 Start Over", use_container_width=True):
         for k in ["conv_history", "active_query", "_pending_clarify_q",
                   "_pending_clarify_turn", "_clarify_rerun", "query_input",
@@ -295,16 +302,29 @@ if (run or _clarify_rerun) and query.strip():
         st.write(response)
 
     # ── Verification + Reasoning (for ALL intents) ─────────────────────────────
-    with st.spinner("Phase 2 — Verifying claims against data…"):
-        t4 = time.time()
-        verification = verify_answer(response, result)
-        verify_time = time.time() - t4
+    _demo_mode = st.session_state.get("demo_mode", False)
+
+    if not _demo_mode:
+        with st.spinner("Phase 2 — Verifying claims against data…"):
+            t4 = time.time()
+            verification = verify_answer(response, result)
+            verify_time = time.time() - t4
+    else:
+        verification = {"verified": True, "confidence": "SKIPPED", "claims": []}
+        verify_time = 0.0
 
     total_time = time.time() - t0
 
     # Verification banner
     v_conf = verification.get("confidence", "LOW")
-    if verification.get("verified"):
+    if _demo_mode:
+        st.markdown(
+            '<div style="background:linear-gradient(90deg,#9c27b0,#ba68c8);color:white;'
+            'padding:10px 16px;border-radius:8px;font-weight:bold;text-align:center;'
+            'margin:8px 0;box-shadow:0 2px 4px rgba(156,39,176,0.3);">'
+            '⚡ DEMO MODE — Verification skipped for speed</div>',
+            unsafe_allow_html=True)
+    elif verification.get("verified"):
         if v_conf == "HIGH":
             st.markdown(
                 '<div style="background:linear-gradient(90deg,#00c853,#00e676);color:white;'
@@ -435,7 +455,7 @@ if (run or _clarify_rerun) and query.strip():
 
     # ── Multi-turn clarification ──────────────────────────────────────────────
     turn = len(st.session_state.conv_history)
-    if turn < 2:
+    if turn < 2 and not _demo_mode:
         with st.spinner("Thinking of a follow-up…"):
             clarify_q = get_clarifying_question(
                 st.session_state.active_query, response, turn
