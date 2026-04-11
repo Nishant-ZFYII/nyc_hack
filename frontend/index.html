@@ -278,6 +278,42 @@ body {
 .loc-btn.active{border-color:#4fc3f7;color:#4fc3f7;background:rgba(79,195,247,0.08)}
 .loc-label{font-size:8px;font-weight:600;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase}
 
+/* Budget Picker */
+.budget-picker{margin-top:8px;padding:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;animation:stageIn 0.3s ease both}
+.budget-picker-label{font-size:10px;font-weight:600;font-family:var(--font-mono);color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
+.budget-options{display:flex;gap:6px;flex-wrap:wrap}
+.budget-btn{background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:8px 14px;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:var(--font-ui);flex:1;text-align:center;min-width:70px}
+.budget-btn:hover{border-color:var(--green);color:var(--green);background:rgba(118,185,0,0.06)}
+.budget-btn .budget-icon{font-size:16px;display:block;margin-bottom:2px}
+.budget-btn .budget-text{font-size:10px;color:var(--text-muted)}
+
+/* Directions Panel */
+.directions-panel{margin-top:10px;animation:stageIn 0.4s ease both}
+.dir-header{font-weight:600;font-size:14px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.dir-recommendation{color:var(--green);font-size:12px;line-height:1.5;margin-bottom:10px;padding:8px 10px;background:rgba(118,185,0,0.04);border-radius:6px;border-left:2px solid var(--green-dim)}
+.dir-metrocard{background:rgba(255,152,0,0.06);border:1px solid rgba(255,152,0,0.15);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px;cursor:pointer;transition:all 0.2s}
+.dir-metrocard:hover{border-color:var(--orange);transform:translateX(2px)}
+.dir-metrocard-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--orange);font-family:var(--font-mono);margin-bottom:4px}
+.dir-option{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px;margin:6px 0;cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden}
+.dir-option:hover{border-color:var(--green);transform:translateX(2px)}
+.dir-option.recommended{border-color:var(--green-dim)}
+.dir-option.recommended::after{content:'BEST';position:absolute;top:8px;right:8px;font-size:8px;font-weight:700;font-family:var(--font-mono);color:var(--green);background:rgba(118,185,0,0.1);padding:2px 6px;border-radius:3px;letter-spacing:0.5px}
+.dir-option-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.dir-mode-icon{font-size:20px}
+.dir-mode-label{font-weight:600;font-size:13px}
+.dir-stats{display:flex;gap:10px;font-size:11px;font-family:var(--font-mono);color:var(--text-secondary)}
+.dir-stat{display:flex;align-items:center;gap:3px}
+.dir-stat.time{color:var(--text-primary);font-weight:600}
+.dir-stat.cost-free{color:var(--green)}
+.dir-stat.cost-paid{color:var(--orange)}
+.dir-steps{margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.dir-step{display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-size:11.5px;color:var(--text-secondary)}
+.dir-step-icon{font-size:13px;width:20px;text-align:center;flex-shrink:0;margin-top:1px}
+.dir-step-text{flex:1;line-height:1.4}
+.dir-step-time{font-family:var(--font-mono);font-size:10px;color:var(--text-muted);flex-shrink:0}
+.dir-step.transit{color:var(--text-primary);font-weight:500}
+.dir-station-badge{display:inline-block;background:rgba(66,165,245,0.1);color:var(--blue);border:1px solid rgba(66,165,245,0.2);border-radius:3px;padding:1px 5px;font-size:9px;font-family:var(--font-mono);font-weight:600;margin-left:4px}
+
 .powered-footer{padding:8px 16px;border-top:1px solid var(--border);background:var(--bg-deep);display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap}
 .powered-label{font-size:8px;font-weight:600;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:1px;text-transform:uppercase;margin-right:2px}
 .powered-badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:600;font-family:var(--font-mono);background:rgba(118,185,0,0.06);color:rgba(118,185,0,0.6);border:1px solid rgba(118,185,0,0.1);transition:all 0.3s}
@@ -716,48 +752,120 @@ async function setManualLocation() {
   } catch(e) { addMsg('Could not look up address.', 'system'); }
 }
 
-async function getDirections(toLat, toLon, name) {
-  if (!userLocation) { addMsg('Set your location first (type address above).', 'system'); return; }
-  addMsg(`Getting directions to <b>${name}</b>...`, 'system');
+// Store pending directions target for budget picker callback
+let _pendingDir = null;
+
+function getDirections(toLat, toLon, name) {
+  if (!userLocation) { addMsg('Set your location first — use the location bar at the bottom.', 'system'); return; }
+  _pendingDir = {toLat, toLon, name};
+  // Show inline budget picker instead of prompt()
+  const html = `
+  <div class="budget-picker">
+    <div class="budget-picker-label">How much can you spend on travel?</div>
+    <div class="budget-options">
+      <button class="budget-btn" onclick="fetchDirections(0)"><span class="budget-icon">&#128694;</span>$0<span class="budget-text">Walk only</span></button>
+      <button class="budget-btn" onclick="fetchDirections(2.9)"><span class="budget-icon">&#128647;</span>$2.90<span class="budget-text">Single ride</span></button>
+      <button class="budget-btn" onclick="fetchDirections(10)"><span class="budget-icon">&#128176;</span>$10+<span class="budget-text">Any option</span></button>
+      <button class="budget-btn" onclick="fetchDirections(null)"><span class="budget-icon">&#128269;</span>Show all<span class="budget-text">Compare</span></button>
+    </div>
+  </div>`;
+  addMsg(html, 'assistant');
+}
+
+async function fetchDirections(budget) {
+  if (!_pendingDir || !userLocation) return;
+  const {toLat, toLon, name} = _pendingDir;
+  _pendingDir = null;
+
+  // Remove budget picker
+  const pickers = document.querySelectorAll('.budget-picker');
+  pickers.forEach(p => p.closest('.msg')?.remove());
+
+  showTyping();
   try {
-    const budget = prompt('How much money do you have for travel? (Enter 0 for none, or leave blank for any)');
-    const b = budget === null || budget === '' ? null : parseFloat(budget);
     const resp = await fetch('/api/directions', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({from_lat: userLocation.lat, from_lon: userLocation.lon, to_lat: toLat, to_lon: toLon, budget: b}),
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({from_lat:userLocation.lat,from_lon:userLocation.lon,to_lat:toLat,to_lon:toLon,budget:budget}),
     });
+    hideTyping();
     const data = await resp.json();
-    let html = `<div style="margin-bottom:8px;font-weight:600;">Directions to ${name}</div>`;
-    html += `<div style="color:#76b900;margin-bottom:10px;">${data.recommendation || ''}</div>`;
+
+    let html = '<div class="directions-panel">';
+    html += `<div class="dir-header">&#128506; Directions to ${name}</div>`;
+
+    if (data.recommendation) {
+      html += `<div class="dir-recommendation">${data.recommendation}</div>`;
+    }
+
+    // Free MetroCard card
     if (data.free_metrocard_location) {
       const hra = data.free_metrocard_location;
-      html += `<div style="background:#ff980020;border:1px solid #ff980044;border-radius:8px;padding:8px;margin-bottom:8px;font-size:12px;">`;
-      html += `<b>Free MetroCard:</b> ${hra.name} at ${hra.address} (${hra.distance_miles} mi from you)`;
+      html += `<div class="dir-metrocard" onclick="flyTo(${hra.lat},${hra.lon})">`;
+      html += `<div class="dir-metrocard-label">&#127915; Free MetroCard available</div>`;
+      html += `<div style="font-weight:600;font-size:13px;">${hra.name}</div>`;
+      html += `<div style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;">${hra.address}</div>`;
+      html += `<div style="font-size:11px;margin-top:4px;color:var(--orange);">${hra.distance_miles} mi from you &middot; Get a free MetroCard or travel voucher here</div>`;
       html += `</div>`;
     }
-    for (const opt of (data.options || [])) {
-      const icon = opt.mode === 'walk' ? '&#128694;' : '&#128647;';
-      const cost = opt.cost > 0 ? `$${opt.cost.toFixed(2)}` : 'Free';
-      html += `<div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:10px;margin:6px 0;">`;
-      html += `<div style="font-weight:600;">${icon} ${opt.mode==='walk'?'Walk':'Subway'} — ${opt.duration_min} min — ${cost}</div>`;
-      if (opt.steps) {
-        html += '<div style="margin-top:6px;font-size:12px;color:#aaa;">';
+
+    // Route options
+    const options = data.options || [];
+    const bestIdx = options.length > 1 ? (budget === 0 ? 0 : options.length - 1) : 0;
+
+    for (let i = 0; i < options.length; i++) {
+      const opt = options[i];
+      const isWalk = opt.mode === 'walk';
+      const isBest = i === bestIdx;
+      const icon = isWalk ? '&#128694;' : '&#128647;';
+      const modeLabel = isWalk ? 'Walk' : 'Subway';
+      const costClass = opt.cost > 0 ? 'cost-paid' : 'cost-free';
+      const costText = opt.cost > 0 ? `$${opt.cost.toFixed(2)}` : 'Free';
+
+      html += `<div class="dir-option${isBest ? ' recommended' : ''}">`;
+      html += `<div class="dir-option-header"><span class="dir-mode-icon">${icon}</span><span class="dir-mode-label">${modeLabel}</span></div>`;
+      html += `<div class="dir-stats">`;
+      html += `<span class="dir-stat time">&#9201; ${opt.duration_min} min</span>`;
+      html += `<span class="dir-stat ${costClass}">${costText}</span>`;
+      html += `<span class="dir-stat">${opt.distance_miles} mi</span>`;
+      html += `</div>`;
+
+      if (opt.steps && opt.steps.length) {
+        html += '<div class="dir-steps">';
         for (const s of opt.steps) {
-          const si = (s.mode||opt.mode) === 'transit' ? '&#128647;' : '&#128694;';
-          html += `<div style="margin:3px 0;">${si} ${s.instruction} (${s.duration_min} min)</div>`;
+          const stepMode = s.mode || opt.mode;
+          const si = stepMode === 'transit' ? '&#128647;' : '&#128694;';
+          const stepClass = stepMode === 'transit' ? ' transit' : '';
+          // Extract station/line info for badges
+          let instr = s.instruction || '';
+          const lineMatch = instr.match(/\(([A-Z0-9,\s]+)\)\s*$/);
+          let badge = '';
+          if (lineMatch) {
+            const lines = lineMatch[1].split(/[,\s]+/).filter(l=>l.length<=2);
+            badge = lines.map(l=>`<span class="dir-station-badge">${l}</span>`).join(' ');
+            instr = instr.replace(lineMatch[0], '');
+          }
+          html += `<div class="dir-step${stepClass}"><span class="dir-step-icon">${si}</span><span class="dir-step-text">${instr} ${badge}</span><span class="dir-step-time">${s.duration_min} min</span></div>`;
         }
         html += '</div>';
       }
       html += '</div>';
     }
+    html += '</div>';
+
     addMsg(html, 'assistant', true);
+
     // Draw route on map
-    const walkOpt = data.options?.find(o => o.mode === 'walk' && o.geometry);
+    const walkOpt = options.find(o => o.mode === 'walk' && o.geometry);
     if (walkOpt && walkOpt.geometry) {
       if (map.getSource('route')) map.getSource('route').setData(walkOpt.geometry);
-      else { map.addSource('route', {type:'geojson',data:walkOpt.geometry}); map.addLayer({id:'route',type:'line',source:'route',paint:{'line-color':'#76b900','line-width':4,'line-opacity':0.8}}); }
+      else { map.addSource('route',{type:'geojson',data:walkOpt.geometry}); map.addLayer({id:'route',type:'line',source:'route',paint:{'line-color':'#76b900','line-width':4,'line-opacity':0.8}}); }
     }
-  } catch(err) { addMsg(`Directions error: ${err.message}`, 'system'); }
+
+    // Fly to show both origin and destination
+    const bounds = [[Math.min(userLocation.lon,toLon)-0.01, Math.min(userLocation.lat,toLat)-0.01],[Math.max(userLocation.lon,toLon)+0.01, Math.max(userLocation.lat,toLat)+0.01]];
+    map.fitBounds(bounds, {padding:60, duration:1500});
+
+  } catch(err) { hideTyping(); addMsg(`Directions error: ${err.message}`, 'system'); }
 }
 </script>
 </body>
