@@ -416,10 +416,13 @@ body {
         <button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button>
         <button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>
       </div>
-      <div class="input-area"><div class="input-row">
-        <textarea id="queryInput" rows="2" placeholder="Tell me what's happening..."></textarea>
-        <button class="send-btn" id="sendBtn" onclick="sendQuery()">Send</button>
-      </div></div>
+      <div class="input-area">
+        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px">Ask anything about NYC services</div>
+        <div class="input-row">
+          <textarea id="queryInput" rows="3" placeholder="Describe your situation... e.g. 'I have 4 kids and we're losing our apartment next week'"></textarea>
+          <button class="send-btn" id="sendBtn" onclick="sendQuery()" style="padding:12px 24px;font-size:13px">Send</button>
+        </div>
+      </div>
     </div>
 
     <div class="tab-content" id="tab-guided">
@@ -474,6 +477,7 @@ body {
       <div class="legend-item"><span class="legend-dot" style="background:var(--coral);"></span> DV Services</div>
     </div>
     <div class="map-overlay timing-bar" id="timing"></div>
+    <div class="map-overlay" id="backBtn" style="top:16px;left:60px;padding:7px 14px;font-size:11px;font-family:var(--font-mono);cursor:pointer;display:none;transition:all 0.2s" onclick="showBoroughView()">&#8592; All Boroughs</div>
   </div>
 </div>
 
@@ -536,12 +540,37 @@ function sendGuidedQuery(){
   switchTab('chat');document.getElementById('queryInput').value=p.join('. ')+'.';sendQuery();
 }
 
-// Map
-const map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:11,pitch:45,bearing:-10});
+// Map — start zoomed out to show all boroughs
+const map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:10.3,pitch:30,bearing:-10});
 map.addControl(new maplibregl.NavigationControl(),'top-left');
 let deckOverlay=null,allResources=[];
+let zoomedBorough=null; // track which borough is zoomed
 
-fetch('/api/resources').then(r=>r.json()).then(d=>{allResources=d;updateMap(d)}).catch(()=>{});
+// Emoji icons per resource type
+const TYPE_EMOJI={shelter:'🏠',food_bank:'🍎',hospital:'🏥',school:'📚',benefits_center:'📋',domestic_violence:'🛡',transit_station:'🚇',community_center:'🏛',senior_services:'👴',childcare:'👶',mental_health:'💜',dropin_center:'☕',police_precinct:'👮'};
+
+// Borough data for landing labels
+const BOROUGHS=[
+  {name:'Manhattan',abbr:'MN',center:[-73.97,40.78],zoom:13},
+  {name:'Brooklyn',abbr:'BK',center:[-73.95,40.65],zoom:12.5},
+  {name:'Queens',abbr:'QN',center:[-73.79,40.73],zoom:12},
+  {name:'Bronx',abbr:'BX',center:[-73.87,40.85],zoom:12.5},
+  {name:'Staten Island',abbr:'SI',center:[-74.15,40.58],zoom:12.5},
+];
+
+// Resource counts per borough (computed after load)
+let boroughCounts={};
+
+fetch('/api/resources').then(r=>r.json()).then(d=>{
+  allResources=d;
+  // Count resources per borough
+  for(const r of d){
+    const b=r.borough||'';
+    boroughCounts[b]=(boroughCounts[b]||0)+1;
+  }
+  showBoroughView();
+}).catch(()=>{});
+
 fetch('/api/status').then(r=>r.json()).then(d=>{
   const c=d.resources||0,e=d.edges||0;
   document.getElementById('statusText').textContent=`${c.toLocaleString()} resources | ${d.llm||'...'}`;
@@ -550,12 +579,49 @@ fetch('/api/status').then(r=>r.json()).then(d=>{
   document.getElementById('statLLM').textContent=d.llm||'...';
 }).catch(()=>{document.getElementById('statusText').textContent='Offline'});
 
+function showBoroughView(){
+  // Show borough labels + dim background dots
+  zoomedBorough=null;
+  document.getElementById('backBtn').style.display='none';
+  const bgData=(allResources||[]).filter(r=>r.latitude&&r.longitude);
+  const boroughData=BOROUGHS.map(b=>({...b,count:boroughCounts[b.abbr]||0}));
+
+  const layers=[
+    // Dim background dots
+    new deck.ScatterplotLayer({id:'bg',data:bgData,getPosition:d=>[d.longitude,d.latitude],getRadius:30,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),20],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
+    // Borough labels
+    new deck.TextLayer({id:'borough-labels',data:boroughData,getPosition:d=>d.center,getText:d=>`${d.name}\n${(d.count||0).toLocaleString()} resources`,getSize:18,getColor:[230,230,240,200],getTextAnchor:'middle',getAlignmentBaseline:'center',fontFamily:'DM Sans',fontWeight:'600',pickable:true,onClick:({object})=>{if(object)zoomToBorough(object)},outlineWidth:2,outlineColor:[6,6,11,200],sizeMinPixels:14,sizeMaxPixels:22}),
+  ];
+  if(deckOverlay)deckOverlay.setProps({layers});else{deckOverlay=new deck.MapboxOverlay({layers});map.addControl(deckOverlay)}
+  map.flyTo({center:NYC,zoom:10.3,pitch:30,bearing:-10,duration:1200});
+}
+
+function zoomToBorough(borough){
+  zoomedBorough=borough.abbr||borough.name;
+  const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===zoomedBorough);
+
+  // Show emoji icons instead of dots when zoomed in
+  const layers=[
+    // Zoomed borough resources as emoji icons
+    new deck.TextLayer({id:'icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],getText:d=>TYPE_EMOJI[d.resource_type]||'📍',getSize:20,sizeMinPixels:14,sizeMaxPixels:28,pickable:true,onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
+    // Other boroughs as dim dots
+    new deck.ScatterplotLayer({id:'bg-other',data:allResources.filter(r=>r.latitude&&r.longitude&&r.borough!==zoomedBorough),getPosition:d=>[d.longitude,d.latitude],getRadius:20,getFillColor:[80,80,80,15],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
+  ];
+  if(deckOverlay)deckOverlay.setProps({layers});
+  map.flyTo({center:borough.center,zoom:borough.zoom||13,pitch:45,duration:1500});
+
+  document.getElementById('backBtn').style.display='block';
+  addMsg(`Browsing ${borough.name} — ${filtered.length.toLocaleString()} resources. Set your location below for distance-sorted results.`,'system');
+}
+
 function updateMap(bg,results=[],showArcs=false){
   const rNames=new Set(results.map(r=>r.name));
   const bgF=(bg||[]).filter(r=>r.latitude&&r.longitude&&!rNames.has(r.name));
   const fg=results.filter(r=>r.lat&&r.lon);
   if(pulseAnimId){cancelAnimationFrame(pulseAnimId);pulseAnimId=null}
   if(arcAnimId){cancelAnimationFrame(arcAnimId);arcAnimId=null}
+
+  // When showing results, use emoji icons for results + dim dots for bg
   const layers=[
     new deck.ScatterplotLayer({id:'bg',data:bgF,getPosition:d=>[d.longitude,d.latitude],getRadius:25,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),30],radiusMinPixels:1.5,radiusMaxPixels:5,pickable:true,onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${object.resource_type})`:''}}),
     new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2}),
