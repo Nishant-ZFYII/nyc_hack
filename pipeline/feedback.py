@@ -12,6 +12,7 @@ This closes the loop: AI recommends → user verifies → AI adapts.
 """
 import sys
 import re
+from pathlib import Path
 
 import pandas as pd
 
