@@ -373,13 +373,32 @@ body {
 
     <!-- PHASE 0: Login / Case ID -->
     <div id="phase-login" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:30px 24px;">
-      <div style="font-family:var(--font-display);font-size:24px;font-weight:300;color:var(--text-primary);text-align:center;margin-bottom:6px;animation:onbFadeIn 0.6s ease both">Welcome</div>
-      <div style="font-size:12px;color:var(--text-secondary);text-align:center;margin-bottom:24px;animation:onbFadeIn 0.6s ease 0.1s both">Enter your name to get started, or your case ID to pick up where you left off</div>
-      <div style="animation:onbFadeIn 0.6s ease 0.2s both">
-        <input type="text" id="loginInput" placeholder="Your name or case ID..." style="width:100%;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-family:var(--font-ui);outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')doLogin()">
+      <div style="font-family:var(--font-display);font-size:24px;font-weight:300;color:var(--text-primary);text-align:center;margin-bottom:20px;animation:onbFadeIn 0.6s ease both">Welcome</div>
+
+      <div style="display:flex;flex-direction:column;gap:10px;animation:onbFadeIn 0.6s ease 0.15s both">
+        <div class="mood-card" onclick="document.getElementById('newUserForm').style.display='block';document.getElementById('returningForm').style.display='none'">
+          <div class="mood-icon" style="font-size:24px">&#128075;</div>
+          <div class="mood-text"><div class="mood-label">I'm new here</div><div class="mood-hint">Create a new profile to get started</div></div>
+        </div>
+        <div class="mood-card" onclick="document.getElementById('returningForm').style.display='block';document.getElementById('newUserForm').style.display='none'">
+          <div class="mood-icon" style="font-size:24px">&#128260;</div>
+          <div class="mood-text"><div class="mood-label">I've been here before</div><div class="mood-hint">Enter your case ID to continue</div></div>
+        </div>
+      </div>
+
+      <div id="newUserForm" style="display:none;margin-top:16px;animation:onbFadeIn 0.3s ease both">
+        <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Your name</div>
+        <input type="text" id="newNameInput" placeholder="e.g. Tina" style="width:100%;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-family:var(--font-ui);outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')doNewUser()">
+        <button class="send-btn" style="width:100%;padding:12px;font-size:13px" onclick="doNewUser()">Get Started</button>
+      </div>
+
+      <div id="returningForm" style="display:none;margin-top:16px;animation:onbFadeIn 0.3s ease both">
+        <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Your case ID</div>
+        <input type="text" id="loginInput" placeholder="e.g. tina-2024" style="width:100%;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-family:var(--font-ui);outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')doLogin()">
         <button class="send-btn" style="width:100%;padding:12px;font-size:13px" onclick="doLogin()">Continue</button>
       </div>
-      <div style="text-align:center;margin-top:14px;animation:onbFadeIn 0.6s ease 0.3s both">
+
+      <div style="text-align:center;margin-top:16px;animation:onbFadeIn 0.6s ease 0.3s both">
         <a href="#" onclick="skipLogin();return false;" style="color:var(--text-muted);font-size:11px;text-decoration:none;font-family:var(--font-mono);letter-spacing:0.5px">Use anonymously &rarr;</a>
       </div>
     </div>
@@ -546,6 +565,20 @@ function animateCounter(el,target,dur=1500){
 let selectedBoroughName='';
 let currentCaseId=null;
 let currentUserName='';
+
+async function doNewUser(){
+  const input=document.getElementById('newNameInput');
+  const val=input.value.trim();
+  if(!val)return;
+  currentCaseId=val.toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-')+'-'+Date.now().toString(36).slice(-4);
+  currentUserName=val;
+  try{
+    await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,name:val})});
+  }catch(e){}
+  document.getElementById('phase-login').style.display='none';
+  document.getElementById('phase-borough').style.display='flex';
+  window._welcomeMsg=`Welcome, ${val}! Your case ID is <b>${currentCaseId}</b> — save it to continue later.`;
+}
 
 async function doLogin(){
   const input=document.getElementById('loginInput');
