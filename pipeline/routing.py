@@ -132,7 +132,7 @@ def _consolidate_walk_steps(raw_steps: list) -> list:
         verb = MANEUVER_MAP.get(mtype, "Continue on")
         instruction = f"{verb} {name}" if name else verb
         # Recalculate duration based on 3mph walk speed
-        walk_min = round((dist_m / 1609.34) * 20, 1)
+        walk_min = round((dist_m / 1609.34) * 20)
 
         consolidated.append({
             "instruction": instruction,
@@ -188,8 +188,8 @@ def get_transit_estimate(from_lat, from_lon, to_lat, to_lon) -> dict:
         direct_dist = haversine_miles(
             float(origin_station["latitude"]), float(origin_station["longitude"]),
             float(dest_station["latitude"]), float(dest_station["longitude"]))
-        # More realistic subway speed: ~17mph avg including stops
-        subway_time = max(direct_dist / 17 * 60, 3)  # min 3 min
+        # NYC subway avg ~20mph including stops (express can be 30+)
+        subway_time = max(direct_dist / 20 * 60, 3)  # min 3 min
 
         total_time = walk_to_station + subway_time + walk_from_station
         origin_lines = str(origin_station.get("subway_lines", ""))
