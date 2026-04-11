@@ -124,10 +124,17 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 #mapEl{width:100%;height:100%}
 .map-wrap{flex:1;position:relative}
 .map-overlay{position:absolute;z-index:10;background:rgba(255,255,255,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow)}
-.filter-bar{top:16px;left:16px;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
-.filter-btn{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--t3);font-size:11px;cursor:pointer;transition:all 0.2s;font-family:var(--ui)}
-.filter-btn:hover{border-color:var(--green);color:var(--t2)}
-.filter-btn.active{border-color:var(--green);color:var(--green);background:rgba(118,185,0,0.08)}
+.filter-bar{top:70px;left:16px;padding:10px;display:flex;flex-direction:column;gap:6px;width:160px}
+.filter-btn{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--t2);font-size:13px;cursor:pointer;transition:all 0.2s;font-family:var(--ui);text-align:left;box-shadow:var(--shadow);font-weight:500}
+.filter-btn:hover{border-color:var(--green);color:var(--t1);box-shadow:var(--shadow-hover)}
+.filter-btn.active{border-color:var(--green);color:var(--green);background:rgba(58,125,10,0.06);font-weight:600}
+.filter-more{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--t3);font-size:12px;cursor:pointer;transition:all 0.2s;font-family:var(--ui);text-align:left;box-shadow:var(--shadow)}
+.filter-more:hover{border-color:var(--border2);color:var(--t2)}
+.filter-more-panel{display:none;flex-direction:column;gap:4px;margin-top:4px;padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);max-height:200px;overflow-y:auto}
+.filter-more-panel.open{display:flex}
+.filter-more-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--t2);font-size:12px;cursor:pointer;transition:all 0.2s;font-family:var(--ui);text-align:left}
+.filter-more-btn:hover{border-color:var(--green);color:var(--t1)}
+.filter-more-btn.active{border-color:var(--green);color:var(--green);background:rgba(58,125,10,0.06)}
 .map-legend{bottom:16px;right:16px;padding:10px 14px}
 .map-legend-title{font-size:9px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px}
 .map-legend-item{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--t2);margin:3px 0}
@@ -330,13 +337,23 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   <div id="explore-map" style="display:none;flex:1;position:relative">
     <div id="exploreMapEl" style="width:100%;height:100%"></div>
     <div class="map-overlay filter-bar" id="exploreFilters">
-      <button class="filter-btn" data-type="all" onclick="toggleExploreFilter('all')">All</button>
+      <button class="filter-btn" data-type="all" onclick="toggleExploreFilter('all')">&#128204; All Resources</button>
       <button class="filter-btn" data-type="shelter" onclick="toggleExploreFilter('shelter')">&#127968; Shelter</button>
-      <button class="filter-btn" data-type="food_bank" onclick="toggleExploreFilter('food_bank')">&#127822; Food</button>
+      <button class="filter-btn" data-type="food_bank" onclick="toggleExploreFilter('food_bank')">&#127822; Food Bank</button>
       <button class="filter-btn" data-type="hospital" onclick="toggleExploreFilter('hospital')">&#127973; Hospital</button>
       <button class="filter-btn" data-type="clinic" onclick="toggleExploreFilter('clinic')">&#129658; Clinic</button>
       <button class="filter-btn" data-type="school" onclick="toggleExploreFilter('school')">&#128218; School</button>
       <button class="filter-btn" data-type="childcare" onclick="toggleExploreFilter('childcare')">&#128118; Childcare</button>
+      <button class="filter-more" onclick="document.getElementById('moreFilters').classList.toggle('open')">&#8943; More types</button>
+      <div class="filter-more-panel" id="moreFilters">
+        <button class="filter-more-btn" data-type="youth_services" onclick="toggleExploreFilter('youth_services')">&#127934; Youth Services</button>
+        <button class="filter-more-btn" data-type="community_center" onclick="toggleExploreFilter('community_center')">&#127963; Community Center</button>
+        <button class="filter-more-btn" data-type="senior_services" onclick="toggleExploreFilter('senior_services')">&#128116; Senior Services</button>
+        <button class="filter-more-btn" data-type="library" onclick="toggleExploreFilter('library')">&#128214; Library</button>
+        <button class="filter-more-btn" data-type="emergency_services" onclick="toggleExploreFilter('emergency_services')">&#128680; Emergency</button>
+        <button class="filter-more-btn" data-type="education" onclick="toggleExploreFilter('education')">&#127891; Education</button>
+        <button class="filter-more-btn" data-type="legal_aid" onclick="toggleExploreFilter('legal_aid')">&#9878;&#65039; Legal Aid</button>
+      </div>
     </div>
     <div class="map-overlay" style="top:16px;left:16px;padding:8px 14px;font-size:12px;cursor:pointer" onclick="backToBoroughs()">&#8592; All boroughs</div>
     <div class="map-overlay map-legend">
@@ -786,8 +803,8 @@ function toggleExploreFilter(type){
     document.querySelectorAll('#exploreFilters .filter-btn').forEach(b=>{allOn?b.classList.remove('active'):b.classList.add('active')});
     if(allOn)exploreFilters.clear();else exploreFilters=new Set(['shelter','food_bank','hospital','clinic','school','childcare','youth_services','community_center','senior_services','library','emergency_services','education','legal_aid']);
   }else{
-    const btn=document.querySelector(`#exploreFilters .filter-btn[data-type="${type}"]`);
-    if(exploreFilters.has(type)){exploreFilters.delete(type);btn.classList.remove('active')}else{exploreFilters.add(type);btn.classList.add('active')}
+    const btn=document.querySelector(`#exploreFilters .filter-btn[data-type="${type}"]`)||document.querySelector(`#exploreFilters .filter-more-btn[data-type="${type}"]`);
+    if(btn){if(exploreFilters.has(type)){exploreFilters.delete(type);btn.classList.remove('active')}else{exploreFilters.add(type);btn.classList.add('active')}}
   }
   refreshExploreIcons();
 }
