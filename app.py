@@ -241,73 +241,48 @@ hr {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🗽 NYC Social Services Intelligence Engine")
+st.markdown("""
+<div style="padding:8px 0;">
+    <span style="font-size:36px;font-weight:bold;color:#76b900;">NYC Social Services</span>
+    <span style="font-size:36px;font-weight:300;color:#e0e0e0;"> Intelligence Engine</span>
+</div>
+""", unsafe_allow_html=True)
 st.caption("Powered by NVIDIA Nemotron · cuGraph · RAPIDS · cuOpt — DGX Spark")
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<h2 style="color:#76b900;">System Status</h2>', unsafe_allow_html=True)
-
-    # Stats bar
-    _mart_count = 0
-    _edge_count = 0
-    _triple_count = 0
+    # Preload data silently
     try:
         mart, payload = load_state()
-        _mart_count = len(mart) if hasattr(mart, '__len__') else 0
-        edges = payload.get("edges")
-        G = payload.get("graph")
-        if G is not None and hasattr(G, 'number_of_edges'):
-            _edge_count = G.number_of_edges()
-        elif edges is not None:
-            _edge_count = len(edges)
     except Exception:
-        pass
-    try:
-        triples_df = pd.read_parquet(str(ROOT / "data" / "triples.parquet"))
-        _triple_count = len(triples_df)
-    except Exception:
-        pass
+        mart, payload = None, {}
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Resources", f"{_mart_count:,}")
-    c2.metric("Graph Edges", f"{_edge_count:,}" if _edge_count < 100000 else f"{_edge_count/1e6:.1f}M")
-    c3.metric("Triples", f"{_triple_count:,}" if _triple_count < 100000 else f"{_triple_count/1e3:.0f}K")
+    st.markdown("""
+    <div style="text-align:center;padding:16px 0 8px 0;">
+        <div style="font-size:28px;font-weight:bold;color:#76b900;">NYC DSS</div>
+        <div style="font-size:13px;color:#888;letter-spacing:1px;">CASEWORKER ASSISTANT</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # LLM provider
-    try:
-        provider = get_active_provider()
-        st.markdown(f'<div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:8px 12px;margin:4px 0;">'
-                    f'<span style="color:#76b900;">LLM</span> {provider}</div>',
-                    unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"LLM: {e}")
-
-    # Backend
-    try:
-        backend = payload.get('backend', 'networkx')
-        st.markdown(f'<div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:8px 12px;margin:4px 0;">'
-                    f'<span style="color:#76b900;">Backend</span> {backend} · cuDF · cuOpt</div>',
-                    unsafe_allow_html=True)
-    except Exception:
-        pass
+    st.markdown("""
+    <div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:10px;padding:14px;margin:8px 0;">
+        <div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">How can I help?</div>
+        <div style="color:#ccc;font-size:13px;line-height:1.6;">
+            Describe any situation — housing crisis, benefits questions, emergency response — and I'll find the right resources, screen for eligibility, and create an action plan.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.divider()
-    st.subheader("Try these queries")
+    st.markdown('<div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Common Situations</div>', unsafe_allow_html=True)
 
     EXAMPLES = {
-        "🏠 Caseworker — Family at risk": "I'm Tina, I have 4 kids ages 12-16, my income is $28K, and my sister is kicking us out of her Flatbush apartment next week. What do we do?",
-        "🚨 Caseworker — Crime victim": "Someone broke into my apartment last night. I don't feel safe going back. I have a 6 year old. What should I do?",
-        "🌍 Caseworker — Migrant family": "I just arrived from Haiti with my two children. We speak Haitian Creole and need shelter tonight near Flatbush.",
-        "🔍 Lookup — Brooklyn shelters": "What shelters in Brooklyn have available beds right now?",
-        "🏥 Lookup — Wheelchair hospitals": "Find wheelchair accessible hospitals near Jamaica Queens that accept Medicaid",
-        "🍎 Lookup — Bronx food banks": "How many food banks are open in the Bronx?",
-        "❄️  Sim — Cold emergency": "A cold emergency is declared. 3 Brooklyn shelters just hit capacity. 200 people are still outside. It's 15°F. What do we do?",
-        "📊 Sim — Resource gap": "Which NYC boroughs are most underserved by social services?",
-        "🏗️  Sim — Capacity change": "What happens if we add 500 shelter beds in the Bronx?",
-        "🌍 Sim — Migrant allocation": "A migrant bus just arrived with 80 people who speak Spanish and Mandarin. They need shelter, food, and schools for children.",
-        "🧠 Explain — Why underserved?": "Why is the Bronx the most underserved borough for social services?",
-        "🧠 Explain — Emergency confidence": "How confident are you in the cold emergency plan for Brooklyn?",
+        "Family losing housing": "I'm Tina, I have 4 kids ages 12-16, my income is $28K, and my sister is kicking us out of her Flatbush apartment next week. What do we do?",
+        "Crime victim with child": "Someone broke into my apartment last night. I don't feel safe going back. I have a 6 year old. What should I do?",
+        "Newly arrived migrant family": "I just arrived from Haiti with my two children. We speak Haitian Creole and need shelter tonight near Flatbush.",
+        "Find shelters in Brooklyn": "What shelters in Brooklyn have available beds right now?",
+        "Accessible hospitals in Queens": "Find wheelchair accessible hospitals near Jamaica Queens that accept Medicaid",
+        "Food banks in the Bronx": "How many food banks are open in the Bronx?",
     }
 
     for label, eq in EXAMPLES.items():
@@ -315,31 +290,59 @@ with st.sidebar:
             st.session_state["query_input"] = eq
 
     st.divider()
-    st.subheader("Speed Settings")
-    demo_mode = st.toggle("⚡ Demo Mode (skip verification)", value=False,
-                          help="Skip LLM claim verification for faster responses. "
-                               "Follow-up questions and all other features remain active.")
-    st.session_state["demo_mode"] = demo_mode
+    st.markdown('<div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;">City Operations</div>', unsafe_allow_html=True)
+
+    OPS_EXAMPLES = {
+        "Cold emergency response": "A cold emergency is declared. 3 Brooklyn shelters just hit capacity. 200 people are still outside. It's 15°F. What do we do?",
+        "Underserved boroughs": "Which NYC boroughs are most underserved by social services?",
+        "Add 500 beds in the Bronx": "What happens if we add 500 shelter beds in the Bronx?",
+        "Migrant bus arrival": "A migrant bus just arrived with 80 people who speak Spanish and Mandarin. They need shelter, food, and schools for children.",
+    }
+
+    for label, eq in OPS_EXAMPLES.items():
+        if st.button(label, use_container_width=True):
+            st.session_state["query_input"] = eq
 
     st.divider()
-    if st.button("🔄 Start Over", use_container_width=True):
+    demo_mode = st.toggle("Fast Mode", value=False,
+                          help="Skip claim verification for faster responses.")
+    st.session_state["demo_mode"] = demo_mode
+
+    if st.button("Start Over", use_container_width=True):
         for k in ["conv_history", "active_query", "_pending_clarify_q",
                   "_pending_clarify_turn", "_clarify_rerun", "query_input",
                   "excluded_resources", "feedback_log"]:
             st.session_state.pop(k, None)
         st.rerun()
 
+    # Tech details tucked away
+    with st.expander("System Info", expanded=False):
+        try:
+            st.caption(f"LLM: {get_active_provider()}")
+        except Exception:
+            pass
+        try:
+            _mc = len(mart) if hasattr(mart, '__len__') else 0
+            _ec = payload.get("edges")
+            _ec = len(_ec) if _ec is not None else 0
+            st.caption(f"Resources: {_mc:,} | Graph: {_ec:,} edges")
+            st.caption(f"Backend: {payload.get('backend', 'networkx')}")
+        except Exception:
+            pass
+
 
 # ── Main query interface ──────────────────────────────────────────────────────
+st.markdown('<p style="color:#aaa;margin-bottom:4px;">Describe the situation or ask a question:</p>', unsafe_allow_html=True)
 query = st.text_area(
-    "Describe the situation or ask a question:",
+    "query_label",
     value=st.session_state.get("query_input", ""),
     height=100,
-    placeholder="e.g. 'I'm a family of 4 losing housing next week in Brooklyn. What help is available?'",
+    placeholder="e.g. 'Family of 4 losing housing next week in Brooklyn — kids ages 8 and 12, income $24K. What help is available?'",
     key="query_input",
+    label_visibility="collapsed",
 )
 
-run = st.button("Run Query", type="primary", use_container_width=True)
+run = st.button("Get Help", type="primary", use_container_width=True)
 
 # ── Detect clarification answer submitted via Enter key ──────────────────────
 # Must happen BEFORE the pipeline block so the rerun flag is set first.
