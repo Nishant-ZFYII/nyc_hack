@@ -195,7 +195,7 @@ def _cuopt_allocate(sites_df, people, centroid_lat, centroid_lon):
 
         cost_df = _cudf_opt.DataFrame(cost)
 
-        # Set up VRP: 1 "vehicle" per site, capacity = site capacity or people/n_sites
+        # Set up VRP: 1 "vehicle" per site (vehicle = transport route to that shelter)
         capacities = []
         for _, row in sites_df.iterrows():
             cap = row.get("capacity", None)
@@ -203,26 +203,41 @@ def _cuopt_allocate(sites_df, people, centroid_lat, centroid_lon):
                 cap = max(people // n_sites, 20)
             capacities.append(int(cap))
 
+        # n locations, n_sites vehicles
         data_model = cuopt_routing.DataModel(n, n_sites)
         data_model.add_cost_matrix(cost_df)
 
-        # Demands: depot=0, each site gets proportional demand
-        demands = [0]  # depot
+        # Demands per order: depot=0, each shelter order gets proportional demand
+        demands = [0]  # depot (location 0)
         per_site = people // n_sites
         remainder = people % n_sites
         for i in range(n_sites):
             demands.append(per_site + (1 if i < remainder else 0))
-        data_model.set_order_demands(demands)
 
-        # Vehicle capacities
-        data_model.set_vehicle_capacities(capacities)
+        # Add capacity dimension: "people" with demand per order and capacity per vehicle
+        data_model.add_capacity_dimension(
+            "people",
+            _cudf_opt.Series(demands),
+            _cudf_opt.Series(capacities),
+        )
+
+        # Vehicle start/end at depot (location 0)
+        data_model.set_vehicle_locations(
+            _cudf_opt.Series([0] * n_sites),  # start at depot
+            _cudf_opt.Series([0] * n_sites),  # return to depot
+        )
+
+        # Order locations: order i is at location i+1
+        data_model.set_order_locations(
+            _cudf_opt.Series(list(range(1, n)))
+        )
 
         solver = cuopt_routing.SolverSettings()
         solver.set_time_limit(2.0)
         result = cuopt_routing.Solve(data_model, solver)
 
-        if result.get_status() == 0:
-            routes = result.get_routes()
+        status = result.get_status()
+        if status == 0:
             allocation = []
             for i, (_, row) in enumerate(sites_df.iterrows()):
                 allocation.append({
@@ -235,7 +250,8 @@ def _cuopt_allocate(sites_df, people, centroid_lat, centroid_lon):
                 })
             return allocation
     except Exception as e:
-        pass  # Fall through to greedy
+        import traceback
+        traceback.print_exc()
     return None
 
 

@@ -30,6 +30,7 @@ def test_cuopt_simple_vrp():
         import cudf
         import numpy as np
 
+        print("   Setting up 5 shelter locations + depot...")
         # 5 shelter locations + 1 depot (crisis epicenter)
         # Depot at Flatbush, shelters spread across Brooklyn
         locations = [
@@ -61,13 +62,26 @@ def test_cuopt_simple_vrp():
         data_model = routing.DataModel(n, n_vehicles)
         data_model.add_cost_matrix(cost_df)
 
-        # Demands: depot=0, shelters get people
-        demands = [0, 40, 40, 40, 40, 40]  # 200 total
-        data_model.set_order_demands(demands)
-
-        # Vehicle capacities
+        # Demands per order and capacities per vehicle
+        demands = [0, 40, 40, 40, 40, 40]  # depot=0, 200 total across shelters
         capacities = [50, 50, 50, 50, 50]
-        data_model.set_vehicle_capacities(capacities)
+
+        data_model.add_capacity_dimension(
+            "people",
+            cudf.Series(demands),
+            cudf.Series(capacities),
+        )
+
+        # Vehicles start and end at depot (location 0)
+        data_model.set_vehicle_locations(
+            cudf.Series([0] * n_vehicles),
+            cudf.Series([0] * n_vehicles),
+        )
+
+        # Orders at locations 1-5
+        data_model.set_order_locations(
+            cudf.Series(list(range(1, n)))
+        )
 
         # Solve
         solver = routing.SolverSettings()
@@ -80,11 +94,9 @@ def test_cuopt_simple_vrp():
         status = result.get_status()
         if status == 0:
             print(f"✅ cuOpt VRP solved in {solve_time:.3f}s")
-            routes = result.get_routes()
-            print(f"   Routes: {routes}")
             return True
         else:
-            print(f"⚠️ cuOpt returned status {status} (non-zero = suboptimal/infeasible)")
+            print(f"⚠️ cuOpt returned status {status}")
             return False
 
     except Exception as e:
