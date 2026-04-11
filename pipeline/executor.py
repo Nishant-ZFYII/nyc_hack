@@ -44,10 +44,11 @@ _mart: pd.DataFrame | None = None
 _graph_payload: dict | None = None
 
 BOROUGH_MAP = {
-    "manhattan": "MN", "mn": "MN",
+    "manhattan": "MN", "mn": "MN", "midtown": "MN", "mta": "MN",
+    "new york": "MN", "nyc": "MN",
     "brooklyn":  "BK", "bk": "BK",
     "queens":    "QN", "qn": "QN",
-    "bronx":     "BX", "bx": "BX",
+    "bronx":     "BX", "bx": "BX", "the bronx": "BX",
     "staten island": "SI", "si": "SI",
 }
 
@@ -120,9 +121,17 @@ def filter_resources(
     if resource_types:
         df = df[df["resource_type"].isin(resource_types)]
 
+    # If we have user location, skip borough filter — distance sorting is better
+    # This prevents empty results when LLM outputs wrong borough codes like "MTA"
     borough = _norm_borough(filters.get("borough"))
-    if borough:
+    if borough and not user_location:
         df = df[df["borough"] == borough]
+    elif borough and user_location:
+        # Try borough filter first, but fall back to all if empty
+        filtered = df[df["borough"] == borough]
+        if len(filtered) > 0:
+            df = filtered
+        # else: skip borough filter, distance sort will handle it
 
     if filters.get("ada_accessible"):
         if "ada_accessible" in df.columns:
