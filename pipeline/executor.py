@@ -10,9 +10,25 @@ import pickle
 from pathlib import Path
 from typing import Any
 
-import networkx as nx
 import numpy as np
-import pandas as pd
+
+# GPU / CPU backend selection
+try:
+    import cudf
+    import cupy as cp
+    import pandas as pd  # still needed for .to_dict() and interop
+    USE_GPU = True
+except ImportError:
+    import pandas as pd
+    USE_GPU = False
+
+try:
+    import cugraph
+    import networkx as nx
+    USE_CUGRAPH = True
+except ImportError:
+    import networkx as nx
+    USE_CUGRAPH = False
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 
@@ -32,7 +48,10 @@ BOROUGH_MAP = {
 def load_state():
     global _mart, _graph_payload
     if _mart is None:
-        _mart = pd.read_parquet(DATA / "resource_mart.parquet")
+        if USE_GPU:
+            _mart = cudf.read_parquet(DATA / "resource_mart.parquet")
+        else:
+            _mart = pd.read_parquet(DATA / "resource_mart.parquet")
     if _graph_payload is None:
         with open(DATA / "graph.pkl", "rb") as f:
             _graph_payload = pickle.load(f)
@@ -84,7 +103,11 @@ def filter_resources(
     if sort_cols:
         df = df.sort_values(sort_cols, ascending=False)
 
-    return df.head(limit).reset_index(drop=True)
+    result = df.head(limit).reset_index(drop=True)
+    # Convert cuDF → pandas for downstream compatibility (synth, verify, UI)
+    if USE_GPU and hasattr(result, 'to_pandas'):
+        result = result.to_pandas()
+    return result
 
 
 # ── Graph-based nearest resource ──────────────────────────────────────────────
@@ -92,8 +115,8 @@ def graph_nearest(resource_types: list[str], from_lat: float, from_lon: float,
                   limit: int = 5) -> pd.DataFrame:
     """Find nearest resources of given types using graph proximity."""
     mart, payload = load_state()
-    G: nx.DiGraph = payload["graph"]
-    resources: pd.DataFrame = payload["resources"]
+    G = payload["graph"]
+    resources = _to_pd(payload["resources"])
 
     # Filter to target types
     targets = resources[resources["resource_type"].isin(resource_types)].copy()
@@ -111,8 +134,16 @@ def graph_nearest(resource_types: list[str], from_lat: float, from_lon: float,
 
 
 # ── Simulate stubs ────────────────────────────────────────────────────────────
+def _to_pd(df):
+    """Convert cuDF DataFrame to pandas if needed."""
+    if hasattr(df, 'to_pandas'):
+        return df.to_pandas()
+    return df
+
+
 def simulate_cold_emergency(params: dict) -> dict:
     mart, payload = load_state()
+    mart = _to_pd(mart)
     pluto = pd.read_parquet(DATA / "pluto_layer.parquet")
 
     borough = _norm_borough(params.get("borough", "BK"))
@@ -169,6 +200,7 @@ def simulate_cold_emergency(params: dict) -> dict:
 def simulate_capacity_change(params: dict) -> dict:
     """What happens if we add N beds in a borough?"""
     mart, _ = load_state()
+    mart = _to_pd(mart)
     borough   = _norm_borough(params.get("borough", "BK"))
     new_beds  = params.get("new_beds", 500)
     rtype     = params.get("resource_type", "shelter")
@@ -218,6 +250,7 @@ def simulate_capacity_change(params: dict) -> dict:
 def simulate_migrant_allocation(params: dict) -> dict:
     """Allocate newly arrived migrants to shelter+food+school clusters."""
     mart, _ = load_state()
+    mart = _to_pd(mart)
     people    = params.get("people", 80)
     languages = params.get("languages", [])
     needs     = params.get("needs", ["shelter", "food_bank", "school"])
@@ -276,6 +309,7 @@ def simulate_migrant_allocation(params: dict) -> dict:
 
 def simulate_resource_gap(params: dict) -> dict:
     mart, _ = load_state()
+    mart = _to_pd(mart)
     resources = mart[mart["resource_type"].isin(["shelter", "food_bank", "hospital"])].copy()
     # Group by borough
     by_borough = resources.groupby("borough").size().reset_index(name="resource_count")
