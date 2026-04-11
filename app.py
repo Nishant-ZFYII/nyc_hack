@@ -158,9 +158,15 @@ with st.sidebar:
     # Data status
     try:
         mart, payload = load_state()
-        st.success(f"Mart: {len(mart):,} resources")
-        st.success(f"Graph: {payload['graph'].number_of_nodes():,} nodes · "
-                   f"{payload['graph'].number_of_edges():,} edges")
+        if hasattr(mart, '__len__'):
+            st.success(f"Mart: {len(mart):,} resources")
+        edges = payload.get("edges")
+        G = payload.get("graph")
+        if G is not None and hasattr(G, 'number_of_nodes'):
+            st.success(f"Graph: {G.number_of_nodes():,} nodes · "
+                       f"{G.number_of_edges():,} edges")
+        elif edges is not None:
+            st.success(f"Graph: {len(edges):,} edges (from pickle)")
         st.info(f"Backend: {payload.get('backend', 'networkx')}")
     except Exception as e:
         st.error(f"Data: {e}")
