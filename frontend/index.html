@@ -11,9 +11,9 @@
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --bg:#06060b;--bg2:#0c0c14;--bg3:#10101a;--bg4:#161622;
-  --border:#1a1a2e;--border2:#2a2a44;
-  --t1:#e8e8f0;--t2:#8888a0;--t3:#55556a;
+  --bg:#0e0e16;--bg2:#14141e;--bg3:#1a1a26;--bg4:#222230;
+  --border:#2a2a3e;--border2:#3a3a50;
+  --t1:#f0f0f5;--t2:#9898b0;--t3:#686880;
   --green:#76b900;--green-d:#76b90033;
   --orange:#ffb74d;--red:#ef5350;--blue:#42a5f5;--purple:#ab47bc;--coral:#ff7043;--teal:#4db6ac;
   --ui:'DM Sans',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;--display:'Fraunces',Georgia,serif;
@@ -195,7 +195,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
       </div>
       <div class="choice-card fade-in-d3" onclick="goTo('page-explore')">
         <div class="choice-icon">&#128506;</div>
-        <div><div class="choice-title">Just exploring</div><div class="choice-desc">Browse resources on the map by borough</div></div>
+        <div><div class="choice-title">Find Aid</div><div class="choice-desc">Browse resources on the map by borough</div></div>
       </div>
 
       <div id="newUserForm" style="display:none;margin-top:16px" class="fade-in">
@@ -237,24 +237,41 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   <div class="page-scroll">
     <div class="centered">
       <div style="font-family:var(--display);font-size:24px;font-weight:300;margin-bottom:6px;margin-top:16px" class="fade-in">What's going on?</div>
-      <div style="color:var(--t2);font-size:13px;margin-bottom:24px" class="fade-in-d1">Describe your situation in your own words, or tap a quick option below.</div>
+      <div style="color:var(--t2);font-size:13px;margin-bottom:20px" class="fade-in-d1">Tell us your situation and where you are &mdash; we'll find the closest help.</div>
 
-      <textarea id="queryInput" class="big-input fade-in-d1" rows="4" placeholder="e.g. I have 4 kids, income $28K, losing housing in Flatbush next week..."></textarea>
+      <!-- Location first -->
+      <div class="fade-in-d1" style="margin-bottom:16px">
+        <div class="section-label">Your location</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="locationInput" class="big-input" placeholder="Address, intersection, or neighborhood..." style="font-size:13px;padding:10px 14px" onkeydown="if(event.key==='Enter')setManualLocation()">
+          <button class="btn-secondary" style="padding:10px 14px;white-space:nowrap" onclick="setManualLocation()">Set</button>
+          <button class="btn-secondary" style="padding:10px 14px;white-space:nowrap" id="gpsBtn" onclick="getUserLocation()">&#128205; GPS</button>
+        </div>
+        <div id="locStatus" style="font-size:11px;color:var(--t3);margin-top:4px;font-family:var(--mono)"></div>
+      </div>
+
+      <!-- Query -->
+      <div class="section-label fade-in-d1">What do you need?</div>
+      <textarea id="queryInput" class="big-input fade-in-d2" rows="4" placeholder="e.g. I have 4 kids, income $28K, losing housing in Flatbush next week..."></textarea>
       <button class="btn-primary fade-in-d2" style="margin-top:12px" id="sendBtn" onclick="sendQuery()">Find Help</button>
 
       <hr class="divider">
-      <div class="section-label">Or tap what you need</div>
-
-      <div class="mood-card" onclick="quickAsk('I need a shelter tonight. I have nowhere to sleep.')"><div class="mood-icon">&#127769;</div><div><div class="mood-label">I have nowhere to sleep</div><div class="mood-hint">Emergency shelters, transitional housing</div></div></div>
-      <div class="mood-card" onclick="quickAsk('Where can I get free food near me?')"><div class="mood-icon">&#127858;</div><div><div class="mood-label">I need food</div><div class="mood-hint">Food pantries, soup kitchens</div></div></div>
-      <div class="mood-card" onclick="quickAsk('I don\'t feel safe at home. I have a child.')"><div class="mood-icon">&#128737;&#65039;</div><div><div class="mood-label">I don't feel safe</div><div class="mood-hint">Domestic violence, crime victim help</div></div></div>
-      <div class="mood-card" onclick="quickAsk('I need to see a doctor. I have no insurance.')"><div class="mood-icon">&#127973;</div><div><div class="mood-label">I need a doctor</div><div class="mood-hint">Hospitals, clinics, Medicaid</div></div></div>
-      <div class="mood-card" onclick="quickAsk('I have a family and need help with housing, food, healthcare, and benefits.')"><div class="mood-icon">&#128106;</div><div><div class="mood-label">Help for my family</div><div class="mood-hint">Full needs assessment</div></div></div>
+      <div class="section-label">Quick options</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button class="btn-secondary" onclick="quickAsk('I need a shelter tonight')">&#127769; Shelter tonight</button>
+        <button class="btn-secondary" onclick="quickAsk('Where can I get free food near me?')">&#127858; Free food</button>
+        <button class="btn-secondary" onclick="quickAsk('I need to see a doctor, no insurance')">&#127973; Doctor</button>
+        <button class="btn-secondary" onclick="quickAsk('I don\'t feel safe at home')">&#128737;&#65039; Safety</button>
+        <button class="btn-secondary" onclick="quickAsk('Help with SNAP and Medicaid')">&#128203; Benefits</button>
+        <button class="btn-secondary" onclick="quickAsk('I have a family and need full help')">&#128106; Family help</button>
+      </div>
 
       <hr class="divider">
-      <div class="section-label">For city coordinators</div>
-      <div class="mood-card" onclick="quickAsk('A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full')"><div class="mood-icon">&#127777;&#65039;</div><div><div class="mood-label">Cold emergency</div><div class="mood-hint">Shelter overflow, resource allocation</div></div></div>
-      <div class="mood-card" onclick="quickAsk('80 people just arrived speaking Spanish and Mandarin, need shelter food and schools')"><div class="mood-icon">&#128652;</div><div><div class="mood-label">Migrant bus arrival</div><div class="mood-hint">Multi-need allocation</div></div></div>
+      <div class="section-label">City coordinators</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button class="btn-secondary" onclick="quickAsk('Cold emergency — 200 people outside, 15 degrees, shelters full')">&#127777;&#65039; Cold emergency</button>
+        <button class="btn-secondary" onclick="quickAsk('80 people arrived speaking Spanish and Mandarin, need shelter food schools')">&#128652; Migrant bus</button>
+      </div>
     </div>
   </div>
 </div>
@@ -272,13 +289,6 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
       <div class="page-scroll">
         <div class="centered-wide" id="resultsContent"></div>
         <div class="timing-bar" id="timingBar"></div>
-      </div>
-      <!-- Location bar at bottom -->
-      <div style="padding:10px 20px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center;flex-shrink:0">
-        <span style="font-size:10px;color:var(--t3);font-family:var(--mono)">&#128205;</span>
-        <input type="text" id="locationInput" class="big-input" placeholder="Your address..." style="font-size:12px;padding:8px 12px" onkeydown="if(event.key==='Enter')setManualLocation()">
-        <button class="btn-secondary" style="padding:6px 10px;font-size:10px" onclick="setManualLocation()">Set</button>
-        <button class="btn-secondary" style="padding:6px 10px;font-size:10px" id="gpsBtn" onclick="getUserLocation()">GPS</button>
       </div>
     </div>
     <!-- Map panel (hidden by default, slides in from right) -->
@@ -554,15 +564,17 @@ function flyToResult(lat,lon){
 // ── Location ───────────────────────────────────────────────
 function getUserLocation(){
   if(!navigator.geolocation)return;
+  const ls=document.getElementById('locStatus');if(ls)ls.textContent='Getting GPS...';
   navigator.geolocation.getCurrentPosition(pos=>{
     userLocation={lat:pos.coords.latitude,lon:pos.coords.longitude};
-    document.getElementById('gpsBtn').style.borderColor='var(--green)';document.getElementById('gpsBtn').style.color='var(--green)';
+    const gb=document.getElementById('gpsBtn');if(gb){gb.style.borderColor='var(--green)';gb.style.color='var(--green)'}
+    if(ls)ls.textContent='Location set via GPS';ls.style.color='var(--green)';
     if(mapOpen&&resultMap){
       if(userMarker)userMarker.remove();
       const el=document.createElement('div');el.style.cssText='width:14px;height:14px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 10px #4fc3f788';
       userMarker=new maplibregl.Marker({element:el}).setLngLat([userLocation.lon,userLocation.lat]).addTo(resultMap);
     }
-  },()=>{},{enableHighAccuracy:true,timeout:10000});
+  },()=>{const ls=document.getElementById('locStatus');if(ls){ls.textContent='GPS unavailable — type your address instead';ls.style.color='var(--orange)'}},{enableHighAccuracy:true,timeout:10000});
 }
 
 async function setManualLocation(){
@@ -574,6 +586,8 @@ async function setManualLocation(){
     if(results&&results.length>0){
       userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
       input.style.borderColor='var(--green)';
+      const ls=document.getElementById('locStatus');
+      if(ls){ls.textContent='Location set: '+results[0].display_name.split(',').slice(0,2).join(',');ls.style.color='var(--green)'}
       if(mapOpen&&resultMap){
         if(userMarker)userMarker.remove();
         const el=document.createElement('div');el.style.cssText='width:14px;height:14px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 10px #4fc3f788';
