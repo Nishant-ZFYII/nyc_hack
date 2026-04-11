@@ -649,11 +649,18 @@ async function fetchDirections(budget){
   if(!_pendingDir||!userLocation)return;
   const{toLat,toLon,name}=_pendingDir;_pendingDir=null;
   const bp=document.getElementById('budgetPicker');if(bp)bp.remove();
+  // Remove previous direction results and route lines
+  document.querySelectorAll('.directions-result').forEach(el=>el.remove());
+  if(resultMap){
+    try{if(resultMap.getSource('route'))resultMap.getSource('route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}
+    try{if(resultMap.getSource('transit-route'))resultMap.getSource('transit-route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}
+  }
+
   document.getElementById('loadingOverlay').classList.add('active');
   try{
     const resp=await fetch('/api/directions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from_lat:userLocation.lat,from_lon:userLocation.lon,to_lat:toLat,to_lon:toLon,budget:budget})});
     const data=await resp.json();
-    let html=`<div class="answer-box fade-in"><div style="font-weight:600;margin-bottom:6px">Directions to ${name}</div>`;
+    let html=`<div class="answer-box fade-in directions-result"><div style="font-weight:600;margin-bottom:6px">Directions to ${name}</div>`;
     if(data.recommendation)html+=`<div style="color:var(--green);margin-bottom:10px;font-size:13px">${data.recommendation}</div>`;
     if(data.free_metrocard_location){
       const h=data.free_metrocard_location;
