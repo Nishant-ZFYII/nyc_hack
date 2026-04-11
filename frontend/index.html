@@ -333,6 +333,10 @@ body {
 .legend-dot{width:8px;height:8px;border-radius:50%}
 .timing-bar{bottom:16px;left:16px;padding:6px 12px;font-size:10px;font-family:var(--font-mono);color:var(--text-muted);display:none}
 
+.filter-btn{background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--text-muted);font-size:11px;cursor:pointer;transition:all 0.2s;font-family:var(--font-ui)}
+.filter-btn:hover{border-color:var(--green);color:var(--text-secondary)}
+.filter-btn.active{border-color:var(--green);color:var(--green);background:rgba(118,185,0,0.08)}
+
 .loading{display:none;padding:20px;text-align:center}
 .loading.active{display:flex;align-items:center;justify-content:center;gap:10px}
 .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin 0.7s linear infinite}
@@ -370,7 +374,7 @@ body {
     <!-- PHASE 0: Login / Case ID -->
     <div id="phase-login" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:30px 24px;">
       <div style="font-family:var(--font-display);font-size:24px;font-weight:300;color:var(--text-primary);text-align:center;margin-bottom:6px;animation:onbFadeIn 0.6s ease both">Welcome</div>
-      <div style="font-size:12px;color:var(--text-secondary);text-align:center;margin-bottom:24px;animation:onbFadeIn 0.6s ease 0.1s both">Enter your name or case ID to continue where you left off</div>
+      <div style="font-size:12px;color:var(--text-secondary);text-align:center;margin-bottom:24px;animation:onbFadeIn 0.6s ease 0.1s both">Enter your name to get started, or your case ID to pick up where you left off</div>
       <div style="animation:onbFadeIn 0.6s ease 0.2s both">
         <input type="text" id="loginInput" placeholder="Your name or case ID..." style="width:100%;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-family:var(--font-ui);outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')doLogin()">
         <button class="send-btn" style="width:100%;padding:12px;font-size:13px" onclick="doLogin()">Continue</button>
@@ -501,6 +505,15 @@ body {
     </div>
     <div class="map-overlay timing-bar" id="timing"></div>
     <div class="map-overlay" id="backBtn" style="top:16px;left:60px;padding:7px 14px;font-size:11px;font-family:var(--font-mono);cursor:pointer;display:none;transition:all 0.2s" onclick="showBoroughView()">&#8592; All Boroughs</div>
+    <div class="map-overlay" id="filterBar" style="top:56px;left:16px;padding:8px 10px;display:none;flex-wrap:wrap;gap:4px;max-width:320px">
+      <button class="filter-btn active" data-type="all" onclick="toggleFilter('all')">All</button>
+      <button class="filter-btn active" data-type="shelter" onclick="toggleFilter('shelter')">&#127968; Shelter</button>
+      <button class="filter-btn active" data-type="food_bank" onclick="toggleFilter('food_bank')">&#127822; Food</button>
+      <button class="filter-btn active" data-type="hospital" onclick="toggleFilter('hospital')">&#127973; Hospital</button>
+      <button class="filter-btn active" data-type="benefits_center" onclick="toggleFilter('benefits_center')">&#128203; Benefits</button>
+      <button class="filter-btn active" data-type="domestic_violence" onclick="toggleFilter('domestic_violence')">&#128737;&#65039; Safety</button>
+      <button class="filter-btn active" data-type="school" onclick="toggleFilter('school')">&#128218; School</button>
+    </div>
   </div>
 </div>
 
@@ -575,7 +588,7 @@ function selectBorough(name, abbr){
   if(boro) zoomToBorough(boro);
   enterChat();
   if(window._welcomeMsg){addMsg(window._welcomeMsg,'system');window._welcomeMsg=null;}
-  addMsg(`Browsing <b>${name}</b>. What do you need help with?`,'system');
+  addMsg(`Browsing <b>${name}</b> — ${(boroughCounts[abbr]||0).toLocaleString()} resources. Use the filters on the map to explore, or ask me anything below.`,'system');
 }
 
 function enterChat(){
@@ -669,6 +682,7 @@ function showBoroughView(){
   // Show borough labels + dim background dots
   zoomedBorough=null;
   document.getElementById('backBtn').style.display='none';
+  document.getElementById('filterBar').style.display='none';
   const bgData=(allResources||[]).filter(r=>r.latitude&&r.longitude);
   const boroughData=BOROUGHS.map(b=>({...b,count:boroughCounts[b.abbr]||0}));
 
@@ -682,22 +696,44 @@ function showBoroughView(){
   map.flyTo({center:NYC,zoom:10.3,pitch:30,bearing:-10,duration:1200});
 }
 
-function zoomToBorough(borough){
-  zoomedBorough=borough.abbr||borough.name;
-  const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===zoomedBorough);
+let activeFilters=new Set(['shelter','food_bank','hospital','benefits_center','domestic_violence','school','community_center','dropin_center','senior_services','childcare','mental_health','transit_station']);
 
-  // Show emoji icons instead of dots when zoomed in
+function toggleFilter(type){
+  if(type==='all'){
+    // Toggle all on/off
+    const allBtn=document.querySelector('.filter-btn[data-type="all"]');
+    const allActive=allBtn.classList.contains('active');
+    document.querySelectorAll('.filter-btn').forEach(b=>{
+      if(allActive)b.classList.remove('active'); else b.classList.add('active');
+    });
+    if(allActive)activeFilters.clear();
+    else activeFilters=new Set(['shelter','food_bank','hospital','benefits_center','domestic_violence','school','community_center','dropin_center','senior_services','childcare','mental_health','transit_station']);
+  } else {
+    const btn=document.querySelector(`.filter-btn[data-type="${type}"]`);
+    if(activeFilters.has(type)){activeFilters.delete(type);btn.classList.remove('active');}
+    else{activeFilters.add(type);btn.classList.add('active');}
+    // Update "All" button state
+    const allBtn=document.querySelector('.filter-btn[data-type="all"]');
+    if(activeFilters.size>=6)allBtn.classList.add('active');else allBtn.classList.remove('active');
+  }
+  if(zoomedBorough)refreshBoroughIcons();
+}
+
+function refreshBoroughIcons(){
+  const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===zoomedBorough&&activeFilters.has(r.resource_type));
   const layers=[
-    // Zoomed borough resources as emoji icons
     new deck.TextLayer({id:'icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],getText:d=>TYPE_EMOJI[d.resource_type]||'📍',getSize:20,sizeMinPixels:14,sizeMaxPixels:28,pickable:true,onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
-    // Other boroughs as dim dots
     new deck.ScatterplotLayer({id:'bg-other',data:allResources.filter(r=>r.latitude&&r.longitude&&r.borough!==zoomedBorough),getPosition:d=>[d.longitude,d.latitude],getRadius:20,getFillColor:[80,80,80,15],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
   ];
   if(deckOverlay)deckOverlay.setProps({layers});
-  map.flyTo({center:borough.center,zoom:borough.zoom||13,pitch:45,duration:1500});
+}
 
+function zoomToBorough(borough){
+  zoomedBorough=borough.abbr||borough.name;
   document.getElementById('backBtn').style.display='block';
-  addMsg(`Browsing ${borough.name} — ${filtered.length.toLocaleString()} resources. Set your location below for distance-sorted results.`,'system');
+  document.getElementById('filterBar').style.display='flex';
+  refreshBoroughIcons();
+  map.flyTo({center:borough.center,zoom:borough.zoom||13,pitch:45,duration:1500});
 }
 
 function updateMap(bg,results=[],showArcs=false){
