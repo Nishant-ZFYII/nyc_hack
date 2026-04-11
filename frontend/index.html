@@ -113,6 +113,12 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 .feedback-input::placeholder{color:var(--t3)}
 .feedback-send{background:var(--coral);border:none;color:#fff;border-radius:4px;padding:6px 10px;font-size:9px;font-weight:700;font-family:var(--mono);cursor:pointer;text-transform:uppercase}
 
+/* Results layout */
+.results-layout{flex:1;display:flex;overflow:hidden}
+.results-main{flex:1;display:flex;flex-direction:column;overflow:hidden;transition:all 0.3s ease}
+.results-map{width:0;overflow:hidden;position:relative;transition:all 0.3s ease;border-left:0px solid var(--border)}
+.results-map.open{width:38%;border-left-width:1px}
+
 /* Map page */
 #mapEl{width:100%;height:100%}
 .map-wrap{flex:1;position:relative}
@@ -258,28 +264,34 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   <div class="topbar">
     <button class="topbar-back" onclick="goTo('page-ask')">&#8592; Ask another</button>
     <span class="topbar-title">Results</span>
-    <button class="topbar-back" onclick="showResultsMap()" style="margin-left:auto">&#128506; Show on map</button>
+    <button class="topbar-back" onclick="toggleMap()" style="margin-left:auto" id="mapToggleBtn">&#128506; Map</button>
   </div>
-  <div class="page-scroll">
-    <div class="centered-wide" id="resultsContent"></div>
-    <div class="timing-bar" id="timingBar"></div>
-  </div>
-</div>
-
-<!-- ═══════════ PAGE 4: MAP (for results) ═══════════ -->
-<div class="page" id="page-map">
-  <div class="topbar">
-    <button class="topbar-back" onclick="goTo('page-results')">&#8592; Back to results</button>
-    <span class="topbar-title">Map</span>
-  </div>
-  <div class="map-wrap">
-    <div id="mapEl"></div>
-    <div class="map-overlay map-legend">
-      <div class="map-legend-title">Resources</div>
-      <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--green)"></span> Shelters</div>
-      <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--orange)"></span> Food</div>
-      <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--red)"></span> Hospitals</div>
-      <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--blue)"></span> Schools</div>
+  <div class="results-layout">
+    <!-- Chat/Results panel (always visible, centered when map hidden) -->
+    <div class="results-main" id="resultsMain">
+      <div class="page-scroll">
+        <div class="centered-wide" id="resultsContent"></div>
+        <div class="timing-bar" id="timingBar"></div>
+      </div>
+      <!-- Location bar at bottom -->
+      <div style="padding:10px 20px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center;flex-shrink:0">
+        <span style="font-size:10px;color:var(--t3);font-family:var(--mono)">&#128205;</span>
+        <input type="text" id="locationInput" class="big-input" placeholder="Your address..." style="font-size:12px;padding:8px 12px" onkeydown="if(event.key==='Enter')setManualLocation()">
+        <button class="btn-secondary" style="padding:6px 10px;font-size:10px" onclick="setManualLocation()">Set</button>
+        <button class="btn-secondary" style="padding:6px 10px;font-size:10px" id="gpsBtn" onclick="getUserLocation()">GPS</button>
+      </div>
+    </div>
+    <!-- Map panel (hidden by default, slides in from right) -->
+    <div class="results-map" id="resultsMapPanel">
+      <div id="mapEl" style="width:100%;height:100%"></div>
+      <div class="map-overlay map-legend">
+        <div class="map-legend-title">Resources</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--green)"></span> Shelters</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--orange)"></span> Food</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--red)"></span> Hospitals</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--blue)"></span> Schools</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:#81c784"></span> Childcare</div>
+      </div>
     </div>
   </div>
 </div>
@@ -429,15 +441,15 @@ function renderResults(data){
       const mr=getMatchReason(r);
       const dist=r.distance_miles?`<div class="rc-distance"><span>${r.distance_miles} mi</span>${r.walk_min?` &middot; ~${r.walk_min} min walk`:''}</div>`:'';
       const addr=r.address||'Address not listed';
-      const dirUrl=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr+', New York, NY')}`;
+      const eName=(r.name||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
       html+=`<div class="resource-card type-${r.type||'shelter'} fade-in">
         <div class="rc-name">${r.name||'Unknown'}</div>
         <div class="rc-addr">${addr}</div>${dist}
         ${mr?`<div class="rc-match"><div class="rc-match-label">Why this matches</div><div class="rc-match-text">${mr}</div></div>`:''}
         <div class="rc-tags"><span class="rc-tag type">${(r.type||'').replace(/_/g,' ')}</span>${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}</div>
         <div class="rc-actions">
-          <a class="rc-action primary" href="${dirUrl}" target="_blank" rel="noopener">Get Directions</a>
-          <span class="rc-action" onclick="showResourceOnMap(${r.lat},${r.lon})">Show on map</span>
+          <span class="rc-action primary" onclick="event.stopPropagation();getDirections(${r.lat},${r.lon},'${eName}')">Directions</span>
+          <span class="rc-action" onclick="event.stopPropagation();flyToResult(${r.lat},${r.lon})">Show on map</span>
         </div>
       </div>`;
     }
@@ -461,6 +473,9 @@ function renderResults(data){
     el.textContent=`${t.total}s total | Plan ${t.plan}s | Exec ${t.execute}s | Synth ${t.synth}s${t.verify?` | Verify ${t.verify}s`:''} | ${data.llm||''}`;
     el.classList.add('visible');
   }
+
+  // Update map if open
+  if(mapOpen)setTimeout(()=>updateResultMapLayers(),200);
 }
 
 function makeVerifyHtml(v){
@@ -493,28 +508,150 @@ async function sendFeedback(input){
   }
 }
 
-// ── Result Map ─────────────────────────────────────────────
+// ── Result Map (toggle panel) ──────────────────────────────
+let mapOpen=false, userLocation=null, userMarker=null;
+
+function toggleMap(){
+  const panel=document.getElementById('resultsMapPanel');
+  mapOpen=!mapOpen;
+  if(mapOpen){
+    panel.classList.add('open');
+    document.getElementById('mapToggleBtn').innerHTML='&#10005; Close map';
+    if(!resultMap)initResultMap();
+    setTimeout(()=>{resultMap.resize();updateResultMapLayers()},350);
+  }else{
+    panel.classList.remove('open');
+    document.getElementById('mapToggleBtn').innerHTML='&#128506; Map';
+  }
+}
+
 function initResultMap(){
   resultMap=new maplibregl.Map({container:'mapEl',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:11,pitch:45});
   resultMap.addControl(new maplibregl.NavigationControl(),'top-left');
+  resultMap.on('load',()=>{resultMap.resize()});
 }
 
-function showResultsMap(){
-  goTo('page-map');
-  setTimeout(()=>{
-    if(resultMap)resultMap.resize();
-    const fg=lastResources.filter(r=>r.lat&&r.lon);
-    if(!fg.length)return;
-    const layers=[new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2,onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''}})];
-    if(resultDeck)resultDeck.setProps({layers});else{resultDeck=new deck.MapboxOverlay({layers});resultMap.addControl(resultDeck)}
+function updateResultMapLayers(){
+  if(!resultMap)return;
+  const bg=allResources.filter(r=>r.latitude&&r.longitude);
+  const fg=lastResources.filter(r=>r.lat&&r.lon);
+  const layers=[
+    new deck.ScatterplotLayer({id:'bg',data:bg,getPosition:d=>[d.longitude,d.latitude],getRadius:25,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),30],radiusMinPixels:1.5,radiusMaxPixels:4,pickable:false}),
+    new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2,onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''}}),
+  ];
+  if(resultDeck)resultDeck.setProps({layers});else{resultDeck=new deck.MapboxOverlay({layers});resultMap.addControl(resultDeck)}
+  if(fg.length){
     const aLat=fg.reduce((s,d)=>s+d.lat,0)/fg.length,aLon=fg.reduce((s,d)=>s+d.lon,0)/fg.length;
     resultMap.flyTo({center:[aLon,aLat],zoom:13,pitch:45,duration:1000});
-  },200);
+  }
 }
 
-function showResourceOnMap(lat,lon){
-  goTo('page-map');
-  setTimeout(()=>{if(resultMap){resultMap.resize();resultMap.flyTo({center:[lon,lat],zoom:16,pitch:50,duration:1000})}},200);
+function flyToResult(lat,lon){
+  if(!mapOpen)toggleMap();
+  setTimeout(()=>{if(resultMap){resultMap.resize();resultMap.flyTo({center:[lon,lat],zoom:16,pitch:50,duration:1000})}},400);
+}
+
+// ── Location ───────────────────────────────────────────────
+function getUserLocation(){
+  if(!navigator.geolocation)return;
+  navigator.geolocation.getCurrentPosition(pos=>{
+    userLocation={lat:pos.coords.latitude,lon:pos.coords.longitude};
+    document.getElementById('gpsBtn').style.borderColor='var(--green)';document.getElementById('gpsBtn').style.color='var(--green)';
+    if(mapOpen&&resultMap){
+      if(userMarker)userMarker.remove();
+      const el=document.createElement('div');el.style.cssText='width:14px;height:14px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 10px #4fc3f788';
+      userMarker=new maplibregl.Marker({element:el}).setLngLat([userLocation.lon,userLocation.lat]).addTo(resultMap);
+    }
+  },()=>{},{enableHighAccuracy:true,timeout:10000});
+}
+
+async function setManualLocation(){
+  const input=document.getElementById('locationInput');
+  const addr=input.value.trim();if(!addr)return;
+  try{
+    const resp=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr+', NYC')}&format=json&limit=1&countrycodes=us`);
+    const results=await resp.json();
+    if(results&&results.length>0){
+      userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
+      input.style.borderColor='var(--green)';
+      if(mapOpen&&resultMap){
+        if(userMarker)userMarker.remove();
+        const el=document.createElement('div');el.style.cssText='width:14px;height:14px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 10px #4fc3f788';
+        userMarker=new maplibregl.Marker({element:el}).setLngLat([userLocation.lon,userLocation.lat]).addTo(resultMap);
+        resultMap.flyTo({center:[userLocation.lon,userLocation.lat],zoom:14,duration:1000});
+      }
+    }
+  }catch(e){}
+}
+
+// ── Directions ─────────────────────────────────────────────
+let _pendingDir=null;
+
+function getDirections(toLat,toLon,name){
+  if(!userLocation){
+    // Show location prompt inline
+    const c=document.getElementById('resultsContent');
+    c.insertAdjacentHTML('beforeend',`<div class="clarify-box fade-in"><div class="clarify-label">Set your location first</div><div class="clarify-q">Enter your address below so we can calculate directions to ${name}.</div></div>`);
+    document.getElementById('locationInput').focus();
+    _pendingDir={toLat,toLon,name};
+    return;
+  }
+  _pendingDir={toLat,toLon,name};
+  // Show budget picker inline
+  const c=document.getElementById('resultsContent');
+  c.insertAdjacentHTML('beforeend',`
+  <div class="clarify-box fade-in" id="budgetPicker">
+    <div class="clarify-label">Directions to ${name}</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:10px">How much can you spend on travel?</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn-secondary" onclick="fetchDirections(0)" style="flex:1;text-align:center"><div style="font-size:16px">&#128694;</div>$0 / Walk</button>
+      <button class="btn-secondary" onclick="fetchDirections(2.9)" style="flex:1;text-align:center"><div style="font-size:16px">&#128647;</div>$2.90 / Subway</button>
+      <button class="btn-secondary" onclick="fetchDirections(null)" style="flex:1;text-align:center"><div style="font-size:16px">&#128269;</div>Show all</button>
+    </div>
+  </div>`);
+  c.parentElement.scrollTop=c.parentElement.scrollHeight;
+}
+
+async function fetchDirections(budget){
+  if(!_pendingDir||!userLocation)return;
+  const{toLat,toLon,name}=_pendingDir;_pendingDir=null;
+  const bp=document.getElementById('budgetPicker');if(bp)bp.remove();
+  document.getElementById('loadingOverlay').classList.add('active');
+  try{
+    const resp=await fetch('/api/directions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from_lat:userLocation.lat,from_lon:userLocation.lon,to_lat:toLat,to_lon:toLon,budget:budget})});
+    const data=await resp.json();
+    let html=`<div class="answer-box fade-in"><div style="font-weight:600;margin-bottom:6px">Directions to ${name}</div>`;
+    if(data.recommendation)html+=`<div style="color:var(--green);margin-bottom:10px;font-size:13px">${data.recommendation}</div>`;
+    if(data.free_metrocard_location){
+      const h=data.free_metrocard_location;
+      html+=`<div style="background:rgba(255,152,0,0.06);border:1px solid rgba(255,152,0,0.15);border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px"><b style="color:var(--orange)">Free MetroCard:</b> ${h.name} at ${h.address} (${h.distance_miles} mi)</div>`;
+    }
+    for(const opt of(data.options||[])){
+      const icon=opt.mode==='walk'?'&#128694;':'&#128647;';
+      const cost=opt.cost>0?`$${opt.cost.toFixed(2)}`:'Free';
+      html+=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;margin:8px 0">`;
+      html+=`<div style="font-weight:600;font-size:13px">${icon} ${opt.mode==='walk'?'Walk':'Subway'} &mdash; ${opt.duration_min} min &mdash; ${cost}</div>`;
+      if(opt.steps){html+=`<div style="margin-top:8px;font-size:12px;color:var(--t2)">`;for(const s of opt.steps){const si=(s.mode||opt.mode)==='transit'?'&#128647;':'&#128694;';html+=`<div style="margin:4px 0">${si} ${s.instruction} (${s.duration_min} min)</div>`}html+=`</div>`}
+      html+=`</div>`;
+    }
+    html+=`</div>`;
+    document.getElementById('resultsContent').insertAdjacentHTML('beforeend',html);
+    // Open map and show route
+    if(!mapOpen)toggleMap();
+    setTimeout(()=>{
+      if(resultMap){
+        resultMap.resize();
+        const walkOpt=data.options?.find(o=>o.mode==='walk'&&o.geometry);
+        if(walkOpt&&walkOpt.geometry){
+          if(resultMap.getSource('route'))resultMap.getSource('route').setData(walkOpt.geometry);
+          else{resultMap.addSource('route',{type:'geojson',data:walkOpt.geometry});resultMap.addLayer({id:'route',type:'line',source:'route',paint:{'line-color':'#76b900','line-width':4,'line-opacity':0.8}})}
+        }
+        const bounds=[[Math.min(userLocation.lon,toLon)-0.01,Math.min(userLocation.lat,toLat)-0.01],[Math.max(userLocation.lon,toLon)+0.01,Math.max(userLocation.lat,toLat)+0.01]];
+        resultMap.fitBounds(bounds,{padding:60,duration:1500});
+      }
+    },400);
+  }catch(err){document.getElementById('resultsContent').insertAdjacentHTML('beforeend',`<div style="color:var(--red);padding:12px">Directions error: ${err.message}</div>`)}
+  document.getElementById('loadingOverlay').classList.remove('active');
 }
 
 // ── Explore Map ────────────────────────────────────────────
