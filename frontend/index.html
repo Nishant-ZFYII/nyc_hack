@@ -554,7 +554,7 @@ function updateResultMapLayers(){
   const bg=allResources.filter(r=>r.latitude&&r.longitude);
   const fg=lastResources.filter(r=>r.lat&&r.lon);
   const layers=[
-    new deck.ScatterplotLayer({id:'bg',data:bg,getPosition:d=>[d.longitude,d.latitude],getRadius:25,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),30],radiusMinPixels:1.5,radiusMaxPixels:4,pickable:false}),
+    new deck.ScatterplotLayer({id:'bg',data:bg,getPosition:d=>[d.longitude,d.latitude],getRadius:20,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[150,150,150]),15],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
     new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2,onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''}}),
   ];
   if(resultDeck)resultDeck.setProps({layers});else{resultDeck=new deck.MapboxOverlay({layers});resultMap.addControl(resultDeck)}
@@ -778,7 +778,7 @@ function refreshExploreIcons(){
   const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===exploreBoro&&exploreFilters.has(r.resource_type));
   const layers=[
     new deck.ScatterplotLayer({id:'explore-icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],getRadius:60,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[118,185,0]),200],radiusMinPixels:5,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,120],lineWidthMinPixels:1,onHover:({object})=>{document.getElementById('exploreMapEl').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
-    new deck.ScatterplotLayer({id:'explore-bg',data:allResources.filter(r=>r.latitude&&r.longitude&&r.borough!==exploreBoro),getPosition:d=>[d.longitude,d.latitude],getRadius:20,getFillColor:[80,80,80,15],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
+    new deck.ScatterplotLayer({id:'explore-bg',data:allResources.filter(r=>r.latitude&&r.longitude&&r.borough!==exploreBoro),getPosition:d=>[d.longitude,d.latitude],getRadius:15,getFillColor:[150,150,150,10],radiusMinPixels:1,radiusMaxPixels:2,pickable:false}),
   ];
   if(exploreDeck)exploreDeck.setProps({layers});else{exploreDeck=new deck.MapboxOverlay({layers});exploreMap.addControl(exploreDeck)}
 }
