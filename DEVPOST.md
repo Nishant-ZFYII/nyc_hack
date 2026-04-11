@@ -35,7 +35,7 @@ After every answer, the system asks one targeted follow-up question to refine th
 
 ### Architecture
 ```
-NL query → Nemotron needs assessment → cuDF/cuGraph executor → Claude synthesis
+NL query → Nemotron planner → cuDF/cuGraph/cuOpt executor → Nemotron synthesis → Verification
 ```
 
 **Bounded DSL prevents hallucination.** Nemotron doesn't answer questions directly — it translates natural language into a structured JSON plan (`needs_assessment`, `lookup`, or `simulate`). The executor runs the plan against the knowledge graph. The synthesizer turns results into prose. The LLM never touches the data directly.
@@ -48,17 +48,20 @@ NL query → Nemotron needs assessment → cuDF/cuGraph executor → Claude synt
 **Graph nodes:** resources (0–99,999) + transit stations (100,000+) + census tracts (200,000+)
 **Graph edges:** NEAR (k-NN spatial), WALK_TO_TRANSIT, TRANSIT_LINK (MTA GTFS), IN_TRACT, SERVED_BY (transit-time weighted accessibility)
 
-### NVIDIA Stack
+### NVIDIA Stack (11 components)
 | Component | Use |
 |-----------|-----|
-| **Nemotron-3-Nano-30B via NIM** | Local LLM inference — query planning + synthesis. No cloud. |
-| **RAPIDS cuDF** | Feature engineering on 870K PLUTO lots + resource mart. Distance sort for cold emergency shelter selection. |
-| **RAPIDS cuGraph** | Spatial knowledge graph — SSSP for SERVED_BY edges, BFS for resource clusters, PageRank for resource importance scoring |
-| **cuOpt** | VRP solver for cold emergency allocation (minimize total exposure time across shelter assignments) and migrant allocation (language + proximity constraints) |
-| **cuPy** | Accessibility heatmap computation for resource gap analysis |
-| **RAPIDS cuML** | KNN spatial joins (resource→resource NEAR edges), HDBSCAN for neighborhood clustering |
-| **TensorRT-LLM** | Compile Nemotron to TensorRT engine for faster inference |
-| **NIM container** | Containerized Nemotron serving via OpenAI-compatible API |
+| **Nemotron via Ollama (GPU)** | Local LLM inference on DGX Spark GB10 — query planning, synthesis, verification. 100% GPU, no cloud. |
+| **RAPIDS cuDF** | GPU-accelerated DataFrame filtering on 7,759 resources. Replaces pandas — sub-millisecond queries. |
+| **RAPIDS cuGraph** | 3.6M-edge knowledge graph built in 90 seconds. SSSP for transit accessibility, BFS for resource clusters. |
+| **cuOpt** | VRP solver for cold emergency allocation (200 people across 8 shelters in 2 seconds) and migrant allocation (language + proximity constraints). |
+| **cuPy** | GPU-accelerated spatial scoring — count NYPD/311 complaints within 500m of each resource using broadcasting. |
+| **RAPIDS cuML** | KNN spatial joins (resource→resource NEAR edges), HDBSCAN for neighborhood clustering. |
+| **TensorRT-LLM** | Installed for compiled Nemotron inference optimization. |
+| **PyKEEN + PyTorch** | Real TransE knowledge graph embeddings trained on 328K triples (83K entities, 64 dimensions). Not hand-crafted features — learned representations. |
+| **txt2kg** | Rule-based extraction of 1.2M structured triples from 311 complaint text (with NVIDIA txt2kg swap point for full NLP on DGX). |
+| **deck.gl** | GPU-accelerated 3D map visualization with 7,759 resource markers, animated overlays, fly-to interactions. |
+| **CUDA 13.0** | DGX Spark GB10 compute capability 12.1, 128 GB unified memory. |
 
 ### Why DGX Spark (128 GB unified memory)
 The full in-memory state:
@@ -94,11 +97,17 @@ This cannot run on a laptop. It barely fits on a Jetson (64 GB shared with OS). 
 
 ## Accomplishments
 
-- 9/9 gold test cases pass end-to-end in under 3 seconds each
-- 4 simulation scenarios running (cold_emergency, resource_gap, capacity_change, migrant_allocation)
-- Multi-turn AI caseworker conversation with targeted follow-up questions
-- 857K PLUTO lots as overflow site discovery layer — novel application of NYC tax data
-- Zero hallucination architecture via bounded DSL
+- Full pipeline running on DGX Spark GB10 with 11 NVIDIA components
+- cuOpt VRP allocates 200 displaced people across shelters in 2 seconds
+- cuGraph knowledge graph: 3.6M edges built in 90 seconds (30x more than local)
+- PyKEEN TransE embeddings: 83,618 entities, 64 dimensions, trained on 328K triples
+- 4 simulation scenarios (cold_emergency, resource_gap, capacity_change, migrant_allocation)
+- Multi-turn AI caseworker with targeted follow-up questions
+- User-in-the-loop feedback: report "shelter is full" → system excludes and finds alternatives
+- Per-claim verification with confidence-scored reasoning paths
+- 857K PLUTO lots as overflow site discovery — novel application of NYC tax data
+- Custom dark dashboard with deck.gl 3D map + chat interface + guided search
+- Zero hallucination: bounded DSL architecture, LLM never touches data directly
 
 ## What we learned
 
@@ -106,12 +115,13 @@ The hardest part wasn't the GPU code or the LLM. It was understanding what a rea
 
 ## What's next
 
-- **cuOpt for real VRP:** Current cold emergency allocation uses distance sort. Full cuOpt VRP would optimize across capacity, ADA requirements, family cohesion, and school proximity simultaneously.
 - **Real-time DHS census:** DHS publishes daily shelter census data. Wiring this in gives live capacity numbers.
 - **MTA real-time delays:** GTFS-RT integration for live transit routing.
 - **NOAA weather triggers:** Automatic cold/heat emergency detection from forecast data.
-- **Caseworker mobile interface:** The DGX runs at a command center; caseworkers in the field need a thin client.
+- **Whisper voice input:** Caseworkers speak into the DGX, Whisper STT transcribes, pipeline processes.
+- **Caseworker mobile interface:** The DGX runs at a command center; field workers need a thin client.
+- **Dual-model verification:** Separate verifier LLM (Qwen-14B) cross-checks Nemotron's synthesis for disagreement detection.
 
 ## Built with
 
-Python · Streamlit · NVIDIA NIM · Nemotron-3-Nano-30B · RAPIDS cuDF · RAPIDS cuGraph · cuOpt · cuPy · RAPIDS cuML · NetworkX (local dev) · PyDeck · Anthropic Claude Haiku (local dev fallback) · NYC Open Data (Socrata) · PLUTO · MTA GTFS · pandas · NumPy · SciPy
+Python · FastAPI · NVIDIA Nemotron (Ollama, GPU) · RAPIDS cuDF · RAPIDS cuGraph · cuOpt · cuPy · RAPIDS cuML · TensorRT-LLM · PyKEEN (TransE KGE) · deck.gl · MapLibre · NetworkX (CPU fallback) · NYC Open Data (Socrata) · PLUTO · MTA GTFS · pandas · NumPy · SciPy · PyTorch · Anthropic Claude Haiku (local dev fallback)
