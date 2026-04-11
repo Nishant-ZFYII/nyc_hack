@@ -336,7 +336,21 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   </div>
   <div id="explore-map" style="display:none;flex:1;position:relative">
     <div id="exploreMapEl" style="width:100%;height:100%"></div>
+    <!-- Resource info popup -->
+    <div class="map-overlay" id="explorePopup" style="bottom:16px;left:16px;right:16px;max-width:400px;padding:16px;display:none">
+    </div>
     <div class="map-overlay filter-bar" id="exploreFilters">
+      <!-- Location input -->
+      <div style="margin-bottom:4px">
+        <div style="font-size:9px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Your location</div>
+        <div style="display:flex;gap:4px">
+          <input type="text" id="exploreLocInput" style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:11px;color:var(--t1);font-family:var(--ui);outline:none;min-width:0" placeholder="Address..." onkeydown="if(event.key==='Enter')setExploreLocation()">
+          <button class="filter-btn" onclick="setExploreLocation()" style="padding:7px 8px;font-size:10px">Set</button>
+          <button class="filter-btn" onclick="gpsExplore()" style="padding:7px 8px;font-size:10px" id="exploreGpsBtn">&#128205;</button>
+        </div>
+        <div id="exploreLocStatus" style="font-size:9px;color:var(--t3);margin-top:3px;font-family:var(--mono)"></div>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
       <button class="filter-btn" data-type="all" onclick="toggleExploreFilter('all')">&#128204; All Resources</button>
       <button class="filter-btn" data-type="shelter" onclick="toggleExploreFilter('shelter')">&#127968; Shelter</button>
       <button class="filter-btn" data-type="food_bank" onclick="toggleExploreFilter('food_bank')">&#127822; Food Bank</button>
@@ -788,13 +802,131 @@ function backToBoroughs(){
   if(exploreMap){exploreMap.flyTo({center:NYC,zoom:10.5,pitch:30,duration:1000})}
 }
 
+let exploreUserLoc=null, exploreUserMarker=null;
+
 function refreshExploreIcons(){
   if(!exploreMap||!exploreBoro)return;
   const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===exploreBoro&&exploreFilters.has(r.resource_type));
   const layers=[
-    new deck.ScatterplotLayer({id:'explore-icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],getRadius:60,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[118,185,0]),200],radiusMinPixels:5,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,120],lineWidthMinPixels:1,onHover:({object})=>{document.getElementById('exploreMapEl').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
+    new deck.ScatterplotLayer({id:'explore-icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],getRadius:60,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[118,185,0]),200],radiusMinPixels:5,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,120],lineWidthMinPixels:1,
+      onClick:({object})=>{if(object)showExplorePopup(object)},
+      onHover:({object})=>{document.getElementById('exploreMapEl').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
   ];
   if(exploreDeck)exploreDeck.setProps({layers});else{exploreDeck=new deck.MapboxOverlay({layers});exploreMap.addControl(exploreDeck)}
+}
+
+function showExplorePopup(resource){
+  const popup=document.getElementById('explorePopup');
+  const rtype=(resource.resource_type||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  const eName=(resource.name||'').replace(/'/g,'&#39;');
+  let html=`<div style="font-weight:600;font-size:15px;margin-bottom:4px">${resource.name||'Unknown'}</div>`;
+  html+=`<div style="font-size:12px;color:var(--t3);font-family:var(--mono)">${resource.address||''}</div>`;
+  html+=`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">`;
+  html+=`<span class="rc-tag type">${rtype}</span>`;
+  if(resource.borough)html+=`<span class="rc-tag borough">${resource.borough}</span>`;
+  html+=`</div>`;
+  html+=`<div style="display:flex;gap:8px;margin-top:10px">`;
+  html+=`<button class="btn-primary" style="padding:8px 16px;font-size:11px;width:auto;flex:1" onclick="getExploreDirections(${resource.latitude},${resource.longitude},'${eName}')">Directions</button>`;
+  html+=`<button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="document.getElementById('explorePopup').style.display='none'">Close</button>`;
+  html+=`</div>`;
+  popup.innerHTML=html;
+  popup.style.display='block';
+  exploreMap.flyTo({center:[resource.longitude,resource.latitude],zoom:15,duration:800});
+}
+
+async function setExploreLocation(){
+  const input=document.getElementById('exploreLocInput');
+  const addr=input.value.trim();if(!addr)return;
+  const ls=document.getElementById('exploreLocStatus');
+  if(ls)ls.textContent='Looking up...';
+  try{
+    const resp=await fetch(`/api/geocode?q=${encodeURIComponent(addr)}`);
+    const results=await resp.json();
+    if(results&&results.length>0){
+      exploreUserLoc={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
+      userLocation=exploreUserLoc; // sync with main location
+      input.style.borderColor='var(--green)';
+      if(ls){ls.textContent='Location set';ls.style.color='var(--green)'}
+      // Show marker
+      if(exploreUserMarker)exploreUserMarker.remove();
+      const el=document.createElement('div');el.className='user-loc-marker';
+      el.style.cssText='width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788';
+      exploreUserMarker=new maplibregl.Marker({element:el}).setLngLat([exploreUserLoc.lon,exploreUserLoc.lat]).addTo(exploreMap);
+      exploreMap.flyTo({center:[exploreUserLoc.lon,exploreUserLoc.lat],zoom:14,duration:1000});
+    } else {if(ls){ls.textContent='Not found';ls.style.color='var(--orange)'}}
+  }catch(e){if(ls){ls.textContent='Error';ls.style.color='var(--red)'}}
+}
+
+function gpsExplore(){
+  if(!navigator.geolocation)return;
+  const ls=document.getElementById('exploreLocStatus');
+  if(ls)ls.textContent='Getting GPS...';
+  navigator.geolocation.getCurrentPosition(pos=>{
+    exploreUserLoc={lat:pos.coords.latitude,lon:pos.coords.longitude};
+    userLocation=exploreUserLoc;
+    if(ls){ls.textContent='GPS location set';ls.style.color='var(--green)'}
+    document.getElementById('exploreGpsBtn').style.color='var(--green)';
+    if(exploreUserMarker)exploreUserMarker.remove();
+    const el=document.createElement('div');el.className='user-loc-marker';
+    el.style.cssText='width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788';
+    exploreUserMarker=new maplibregl.Marker({element:el}).setLngLat([exploreUserLoc.lon,exploreUserLoc.lat]).addTo(exploreMap);
+    exploreMap.flyTo({center:[exploreUserLoc.lon,exploreUserLoc.lat],zoom:14,duration:1000});
+  },()=>{if(ls){ls.textContent='GPS unavailable';ls.style.color='var(--orange)'}},{enableHighAccuracy:true,timeout:10000});
+}
+
+function getExploreDirections(toLat,toLon,name){
+  if(!exploreUserLoc){
+    const ls=document.getElementById('exploreLocStatus');
+    if(ls){ls.textContent='Set your location first!';ls.style.color='var(--orange)'}
+    document.getElementById('exploreLocInput').focus();
+    return;
+  }
+  // Show budget picker in the popup
+  const popup=document.getElementById('explorePopup');
+  popup.innerHTML=`<div style="font-weight:600;margin-bottom:8px">Directions to ${name}</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:10px">How much can you spend?</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn-secondary" style="flex:1;text-align:center;padding:10px" onclick="fetchExploreDirections(0,${toLat},${toLon},'${name}')"><div>&#128694;</div>Walk</button>
+      <button class="btn-secondary" style="flex:1;text-align:center;padding:10px" onclick="fetchExploreDirections(2.9,${toLat},${toLon},'${name}')"><div>&#128647;</div>Subway</button>
+      <button class="btn-secondary" style="flex:1;text-align:center;padding:10px" onclick="fetchExploreDirections(null,${toLat},${toLon},'${name}')"><div>&#128269;</div>All</button>
+    </div>`;
+}
+
+async function fetchExploreDirections(budget,toLat,toLon,name){
+  const popup=document.getElementById('explorePopup');
+  popup.innerHTML='<div style="text-align:center;padding:12px"><div class="spinner" style="margin:0 auto"></div><div style="margin-top:8px;font-size:12px;color:var(--t3)">Getting directions...</div></div>';
+  try{
+    const resp=await fetch('/api/directions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from_lat:exploreUserLoc.lat,from_lon:exploreUserLoc.lon,to_lat:toLat,to_lon:toLon,budget:budget})});
+    const data=await resp.json();
+    let options=data.options||[];
+    if(budget===0)options=options.filter(o=>o.mode==='walk');
+    else if(budget===2.9)options=options.filter(o=>o.mode==='transit');
+
+    let html=`<div style="font-weight:600;margin-bottom:6px">Directions to ${name}</div>`;
+    if(data.recommendation)html+=`<div style="color:var(--green);font-size:12px;margin-bottom:8px">${data.recommendation}</div>`;
+    for(const opt of options){
+      const icon=opt.mode==='walk'?'&#128694;':'&#128647;';
+      const cost=opt.cost>0?`$${opt.cost.toFixed(2)}`:'Free';
+      html+=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;margin:6px 0">`;
+      html+=`<div style="font-weight:600;font-size:13px">${icon} ${opt.mode==='walk'?'Walk':'Subway'} &mdash; ${opt.duration_min} min &mdash; ${cost}</div>`;
+      if(opt.steps){html+=`<div style="margin-top:6px;font-size:11px;color:var(--t2)">`;for(const s of opt.steps){const si=(s.mode||opt.mode)==='transit'?'&#128647;':'&#128694;';html+=`<div style="margin:3px 0">${si} ${s.instruction} (${s.duration_min} min)</div>`}html+=`</div>`}
+      html+=`</div>`;
+    }
+    html+=`<button class="btn-secondary" style="width:100%;margin-top:8px" onclick="document.getElementById('explorePopup').style.display='none'">Close</button>`;
+    popup.innerHTML=html;
+
+    // Draw walk route on explore map
+    if(budget!==2.9){
+      const walkOpt=data.options?.find(o=>o.mode==='walk'&&o.geometry);
+      if(walkOpt&&walkOpt.geometry&&exploreMap){
+        if(exploreMap.getSource('explore-route'))exploreMap.getSource('explore-route').setData(walkOpt.geometry);
+        else{exploreMap.addSource('explore-route',{type:'geojson',data:walkOpt.geometry});exploreMap.addLayer({id:'explore-route',type:'line',source:'explore-route',paint:{'line-color':'#3a7d0a','line-width':4,'line-opacity':0.8}})}
+      }
+    }
+    // Fit bounds
+    const bounds=[[Math.min(exploreUserLoc.lon,toLon)-0.01,Math.min(exploreUserLoc.lat,toLat)-0.01],[Math.max(exploreUserLoc.lon,toLon)+0.01,Math.max(exploreUserLoc.lat,toLat)+0.01]];
+    exploreMap.fitBounds(bounds,{padding:80,duration:1000});
+  }catch(err){popup.innerHTML=`<div style="color:var(--red);padding:12px">Error: ${err.message}</div>`}
 }
 
 function toggleExploreFilter(type){
