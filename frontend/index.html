@@ -666,7 +666,12 @@ async function fetchDirections(budget){
       const h=data.free_metrocard_location;
       html+=`<div style="background:rgba(255,152,0,0.06);border:1px solid rgba(255,152,0,0.15);border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px"><b style="color:var(--orange)">Free MetroCard:</b> ${h.name} at ${h.address} (${h.distance_miles} mi)</div>`;
     }
-    for(const opt of(data.options||[])){
+    // Filter options based on what user selected
+    let options=data.options||[];
+    if(budget===0)options=options.filter(o=>o.mode==='walk');
+    else if(budget===2.9)options=options.filter(o=>o.mode==='transit');
+    // budget===null means show all
+    for(const opt of options){
       const icon=opt.mode==='walk'?'&#128694;':'&#128647;';
       const cost=opt.cost>0?`$${opt.cost.toFixed(2)}`:'Free';
       html+=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;margin:8px 0">`;
