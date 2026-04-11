@@ -12,6 +12,7 @@ Uses:
 Usage:
     from pipeline.routing import get_directions
 """
+from __future__ import annotations
 import math
 import requests
 

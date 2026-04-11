@@ -353,10 +353,7 @@ with st.sidebar:
             _dest_wh = st.text_input("Destination webhook URL", type="password",
                                      key="_dest_webhook_input",
                                      placeholder="Webhook for the service provider")
-            _ec_wh = st.text_input("Emergency contact webhook URL", type="password",
-                                   key="_ec_webhook_input",
-                                   placeholder="Override EC webhook (optional)")
-            _bot_tok = st.text_input("Bot token (for thread creation)", type="password",
+            _bot_tok = st.text_input("Bot token", type="password",
                                      key="_bot_token_input",
                                      placeholder="Discord bot token")
             _coord_ch = st.text_input("Coordination channel ID", key="_coord_channel_input",
@@ -365,8 +362,6 @@ with st.sidebar:
                                    max_value=120, value=15, key="_sla_min_input")
             if _dest_wh:
                 st.session_state["_dest_webhook"] = _dest_wh
-            if _ec_wh:
-                st.session_state["_ec_webhook"] = _ec_wh
             if _bot_tok:
                 st.session_state["_bot_token"] = _bot_tok
             if _coord_ch:
@@ -394,8 +389,6 @@ if "_discord_secrets_loaded" not in st.session_state:
     try:
         if "DISCORD_DEST_WEBHOOK" in st.secrets and not st.session_state.get("_dest_webhook"):
             st.session_state["_dest_webhook"] = st.secrets["DISCORD_DEST_WEBHOOK"]
-        if "DISCORD_EC_WEBHOOK" in st.secrets and not st.session_state.get("_ec_webhook"):
-            st.session_state["_ec_webhook"] = st.secrets["DISCORD_EC_WEBHOOK"]
         if "DISCORD_BOT_TOKEN" in st.secrets and not st.session_state.get("_bot_token"):
             st.session_state["_bot_token"] = st.secrets["DISCORD_BOT_TOKEN"]
         if "DISCORD_COORD_CHANNEL_ID" in st.secrets and not st.session_state.get("_coord_channel"):
@@ -427,9 +420,9 @@ if not st.session_state.get("onboarding_done"):
                                  placeholder="e.g. Maria")
         new_ec_name = st.text_input("Emergency contact name (optional)", key="_ob_ec_name",
                                     placeholder="e.g. Ana (sister)")
-        new_ec_discord = st.text_input("Their Discord webhook URL (optional)",
-                                       key="_ob_ec_discord", type="password",
-                                       placeholder="https://discord.com/api/webhooks/…")
+        new_ec_discord = st.text_input("Their Discord username (optional)",
+                                       key="_ob_ec_discord",
+                                       placeholder="e.g. ana_nyc  (no @ needed)")
         if st.button("Get Started", type="primary", use_container_width=True, key="_ob_create"):
             if not new_name.strip():
                 st.error("Please enter your first name.")
@@ -440,7 +433,7 @@ if not st.session_state.get("onboarding_done"):
                 if new_ec_name.strip() or new_ec_discord.strip():
                     case["emergency_contact"] = {
                         "name": new_ec_name.strip(),
-                        "discord_webhook": new_ec_discord.strip(),
+                        "discord_username": new_ec_discord.strip().lstrip("@"),
                     }
                     from pipeline.cases import _save_case
                     _save_case(case)
@@ -869,11 +862,11 @@ if (run or _clarify_rerun) and query.strip():
                 st.session_state["case"] = _case2
                 # Build Discord config
                 _ec2 = _case2.get("emergency_contact", {})
-                _ec_hook = (_ec2.get("discord_webhook", "")
-                            if isinstance(_ec2, dict) else "")
+                _ec_username = (_ec2.get("discord_username", "")
+                                if isinstance(_ec2, dict) else "")
                 _discord_cfg = {
                     "dest_webhook": st.session_state.get("_dest_webhook", ""),
-                    "ec_webhook": st.session_state.get("_ec_webhook", _ec_hook),
+                    "ec_discord_username": _ec_username,
                     "bot_token": st.session_state.get("_bot_token", DISCORD_BOT_TOKEN),
                     "coord_channel_id": st.session_state.get("_coord_channel",
                                                                DISCORD_COORD_CHANNEL_ID),

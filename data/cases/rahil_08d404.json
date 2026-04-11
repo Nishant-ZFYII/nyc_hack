@@ -1,0 +1,93 @@
+{
+  "case_id": "rahil_08d404",
+  "name": "rahil",
+  "created_at": "2026-04-11T19:03:48.762822",
+  "last_visit": "2026-04-11T19:04:46.980912",
+  "current_location": null,
+  "visits": [
+    {
+      "timestamp": "2026-04-11T19:04:11.104081",
+      "query": "What shelters in Brooklyn have available beds right now?",
+      "answer_summary": "Error: LLM unavailable after all retries.",
+      "resources_shown": [
+        {
+          "name": "ORCHARD BEACH",
+          "type": "",
+          "address": "",
+          "borough": ""
+        },
+        {
+          "name": "ROCKAWAY BEACH",
+          "type": "",
+          "address": "",
+          "borough": ""
+        },
+        {
+          "name": "FRANK D O'CONNOR PLAYGROUND",
+          "type": "",
+          "address": "",
+          "borough": ""
+        },
+        {
+          "name": "RICHMOND MEDICAL CENTER",
+          "type": "",
+          "address": "",
+          "borough": ""
+        },
+        {
+          "name": "FATHER DRUMGOOLE CYO CAMP",
+          "type": "",
+          "address": "",
+          "borough": ""
+        }
+      ],
+      "location": null
+    },
+    {
+      "timestamp": "2026-04-11T19:04:46.980786",
+      "query": "What shelters in Brooklyn have available beds right now?",
+      "answer_summary": "Error: LLM unavailable after all retries.",
+      "resources_shown": [
+        {
+          "name": "ORCHARD BEACH",
+          "type": "",
+          "address": "",
+          "borough": ""
+        },
+        {
+          "name": "ROCKAWAY BEACH",
+          "type": "",
+          "address": "",
+          "borough": ""
+        },
+        {
+          "name": "FRANK D O'CONNOR PLAYGROUND",
+          "type": "",
+          "address": "",
+          "borough": ""
+        },
+        {
+          "name": "RICHMOND MEDICAL CENTER",
+          "type": "",
+          "address": "",
+          "borough": ""
+        },
+        {
+          "name": "FATHER DRUMGOOLE CYO CAMP",
+          "type": "",
+          "address": "",
+          "borough": ""
+        }
+      ],
+      "location": null
+    }
+  ],
+  "needs": [],
+  "resources_visited": [],
+  "feedback": [],
+  "notes": "",
+  "emergency_contact": {
+    "name": "danny",
+    "discord_username": "zweic"
+  }
+}

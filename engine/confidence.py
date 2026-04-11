@@ -4,6 +4,7 @@ engine/confidence.py — Confidence-scored multi-hop graph traversal.
 Given a question like "Why is the Bronx underserved?", traverses the triple store
 and returns the reasoning path with cumulative confidence at each hop.
 """
+from __future__ import annotations
 import pandas as pd
 from pathlib import Path
 

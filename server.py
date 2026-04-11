@@ -5,6 +5,7 @@ Serves the custom HTML frontend + REST API for the pipeline.
 
 Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
+from __future__ import annotations
 import sys
 import time
 import json

@@ -9,6 +9,7 @@ Two modes:
 Usage:
     from engine.embeddings import build_embeddings, find_similar, get_embedding
 """
+from __future__ import annotations
 import pickle
 import time
 from pathlib import Path
