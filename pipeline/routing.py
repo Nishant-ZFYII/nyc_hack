@@ -175,6 +175,37 @@ def _fallback_transit_estimate(from_lat, from_lon, to_lat, to_lon):
     }
 
 
+def _find_nearest_hra(lat, lon) -> dict | None:
+    """Find nearest HRA Benefits Center for free MetroCard / travel vouchers."""
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from pipeline.executor import load_state
+        import pandas as pd
+
+        mart, _ = load_state()
+        if hasattr(mart, 'to_pandas'):
+            mart = mart.to_pandas()
+        hra = mart[mart["resource_type"] == "benefits_center"].copy()
+        if hra.empty:
+            return None
+        hra["_dist"] = hra.apply(
+            lambda r: haversine_miles(lat, lon, float(r["latitude"]), float(r["longitude"]))
+            if pd.notna(r.get("latitude")) else 999, axis=1)
+        nearest = hra.nsmallest(1, "_dist").iloc[0]
+        return {
+            "name": str(nearest.get("name", "")),
+            "address": str(nearest.get("address", "")),
+            "borough": str(nearest.get("borough", "")),
+            "distance_miles": round(float(nearest["_dist"]), 2),
+            "lat": float(nearest["latitude"]),
+            "lon": float(nearest["longitude"]),
+        }
+    except Exception:
+        return None
+
+
 def get_directions(from_lat, from_lon, to_lat, to_lon, budget: float = None) -> dict:
     """
     Get multi-modal directions from origin to destination.
@@ -214,6 +245,9 @@ def get_directions(from_lat, from_lon, to_lat, to_lon, budget: float = None) -> 
         transit = get_transit_estimate(from_lat, from_lon, to_lat, to_lon)
         result["options"].append(transit)
 
+    # Find nearest HRA benefits center (for free MetroCard / travel assistance)
+    nearest_hra = _find_nearest_hra(from_lat, from_lon)
+
     # Recommendation based on budget and distance
     if budget is not None and budget < MTA_FARE:
         result["recommendation"] = (
@@ -221,9 +255,16 @@ def get_directions(from_lat, from_lon, to_lat, to_lon, budget: float = None) -> 
             f"({result['options'][0]['duration_min']} min, {round(dist, 1)} miles). "
             f"MTA fare is ${MTA_FARE:.2f}."
         )
-        if dist > 2:
+        if dist > 1.5 and nearest_hra:
             result["recommendation"] += (
-                f" That's a long walk. For a free MetroCard, visit an HRA Benefits Center."
+                f" That's a long walk. For a free MetroCard or travel voucher, "
+                f"visit {nearest_hra['name']} at {nearest_hra['address']} "
+                f"({nearest_hra['distance_miles']:.1f} mi from you)."
+            )
+            result["free_metrocard_location"] = nearest_hra
+        elif dist > 1.5:
+            result["recommendation"] += (
+                f" That's a long walk. Visit an HRA Benefits Center for a free MetroCard."
             )
     elif dist < 0.5:
         result["recommendation"] = f"It's a short {round(dist * 20)} minute walk ({round(dist, 2)} miles)."

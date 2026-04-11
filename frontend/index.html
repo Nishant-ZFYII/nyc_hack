@@ -580,7 +580,7 @@ function makeCards(resources,emergency){
       <div class="rc-addr">${addr}</div>${dist}
       ${mr?`<div class="rc-match"><div class="rc-match-label">Why this matches</div><div class="rc-match-text">${mr}</div></div>`:''}
       <div class="rc-tags"><span class="rc-tag type">${(r.type||'').replace(/_/g,' ')}</span>${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}${sp!==null?`<span class="rc-tag safety ${sc}">Safety ${sp}%</span>`:''}</div>
-      <div class="rc-actions"><a class="rc-action directions" href="${dirUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Get Directions</a><span class="rc-action" onclick="event.stopPropagation();flyTo(${r.lat},${r.lon})">Map</span><span class="rc-action" onclick="event.stopPropagation();reportIssue('${en}')">Report Issue</span></div>
+      <div class="rc-actions"><span class="rc-action directions" onclick="event.stopPropagation();getDirections(${r.lat},${r.lon},'${en}')">Directions</span><span class="rc-action" onclick="event.stopPropagation();flyTo(${r.lat},${r.lon})">Map</span><span class="rc-action" onclick="event.stopPropagation();reportIssue('${en}')">Report Issue</span></div>
     </div>`;
   }
   return html+'</div>';
@@ -654,6 +654,92 @@ async function sendQuery(){
 
 document.getElementById('queryInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendQuery();}});
 document.querySelectorAll('.cat-btn,.quick-btn').forEach(b=>b.addEventListener('click',()=>{document.getElementById('queryInput').value=b.dataset.q;sendQuery();}));
+
+// ── Geolocation + Directions ────────────────────────────────────────────────
+let userLocation = null;
+let userMarker = null;
+
+function getUserLocation() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
+      if (userMarker) userMarker.remove();
+      const el = document.createElement('div');
+      el.style.cssText = 'width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;';
+      userMarker = new maplibregl.Marker({element: el}).setLngLat([userLocation.lon, userLocation.lat]).addTo(map);
+      map.flyTo({center: [userLocation.lon, userLocation.lat], zoom: 14, duration: 1000});
+      addMsg('Located you. Results sorted by distance.', 'system');
+    },
+    () => { addMsg('Could not get GPS. Type your address in the location bar.', 'system'); },
+    {enableHighAccuracy: true, timeout: 10000}
+  );
+}
+getUserLocation();
+
+async function setManualLocation() {
+  const input = document.getElementById('locationInput');
+  if (!input) return;
+  const addr = input.value.trim();
+  if (!addr) return;
+  try {
+    const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr+', NYC')}&format=json&limit=1&countrycodes=us`);
+    const results = await resp.json();
+    if (results && results.length > 0) {
+      userLocation = {lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon)};
+      if (userMarker) userMarker.remove();
+      const el = document.createElement('div');
+      el.style.cssText = 'width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;';
+      userMarker = new maplibregl.Marker({element: el}).setLngLat([userLocation.lon, userLocation.lat]).addTo(map);
+      map.flyTo({center: [userLocation.lon, userLocation.lat], zoom: 14, duration: 1000});
+      addMsg(`Location: ${results[0].display_name.split(',').slice(0,2).join(',')}`, 'system');
+    } else { addMsg('Address not found.', 'system'); }
+  } catch(e) { addMsg('Could not look up address.', 'system'); }
+}
+
+async function getDirections(toLat, toLon, name) {
+  if (!userLocation) { addMsg('Set your location first (type address above).', 'system'); return; }
+  addMsg(`Getting directions to <b>${name}</b>...`, 'system');
+  try {
+    const budget = prompt('How much money do you have for travel? (Enter 0 for none, or leave blank for any)');
+    const b = budget === null || budget === '' ? null : parseFloat(budget);
+    const resp = await fetch('/api/directions', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({from_lat: userLocation.lat, from_lon: userLocation.lon, to_lat: toLat, to_lon: toLon, budget: b}),
+    });
+    const data = await resp.json();
+    let html = `<div style="margin-bottom:8px;font-weight:600;">Directions to ${name}</div>`;
+    html += `<div style="color:#76b900;margin-bottom:10px;">${data.recommendation || ''}</div>`;
+    if (data.free_metrocard_location) {
+      const hra = data.free_metrocard_location;
+      html += `<div style="background:#ff980020;border:1px solid #ff980044;border-radius:8px;padding:8px;margin-bottom:8px;font-size:12px;">`;
+      html += `<b>Free MetroCard:</b> ${hra.name} at ${hra.address} (${hra.distance_miles} mi from you)`;
+      html += `</div>`;
+    }
+    for (const opt of (data.options || [])) {
+      const icon = opt.mode === 'walk' ? '&#128694;' : '&#128647;';
+      const cost = opt.cost > 0 ? `$${opt.cost.toFixed(2)}` : 'Free';
+      html += `<div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:10px;margin:6px 0;">`;
+      html += `<div style="font-weight:600;">${icon} ${opt.mode==='walk'?'Walk':'Subway'} — ${opt.duration_min} min — ${cost}</div>`;
+      if (opt.steps) {
+        html += '<div style="margin-top:6px;font-size:12px;color:#aaa;">';
+        for (const s of opt.steps) {
+          const si = (s.mode||opt.mode) === 'transit' ? '&#128647;' : '&#128694;';
+          html += `<div style="margin:3px 0;">${si} ${s.instruction} (${s.duration_min} min)</div>`;
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    addMsg(html, 'assistant', true);
+    // Draw route on map
+    const walkOpt = data.options?.find(o => o.mode === 'walk' && o.geometry);
+    if (walkOpt && walkOpt.geometry) {
+      if (map.getSource('route')) map.getSource('route').setData(walkOpt.geometry);
+      else { map.addSource('route', {type:'geojson',data:walkOpt.geometry}); map.addLayer({id:'route',type:'line',source:'route',paint:{'line-color':'#76b900','line-width':4,'line-opacity':0.8}}); }
+    }
+  } catch(err) { addMsg(`Directions error: ${err.message}`, 'system'); }
+}
 </script>
 </body>
 </html>
