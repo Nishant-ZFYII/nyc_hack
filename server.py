@@ -26,6 +26,8 @@ from pipeline.synth import answer
 from pipeline.verify import verify_answer, build_reasoning_path, summarize_reasoning
 from pipeline.clarify import get_clarifying_question, merge_query
 from pipeline.feedback import parse_feedback
+from pipeline.cases import (load_case, create_case, add_visit, mark_resource_visited,
+                             resolve_need, get_case_summary, list_cases)
 from llm.client import get_active_provider
 import pandas as pd
 
@@ -43,6 +45,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 class QueryRequest(BaseModel):
     query: str
     demo_mode: bool = False
+    case_id: str | None = None  # optional: link query to a case
 
 
 class FeedbackRequest(BaseModel):
@@ -200,6 +203,14 @@ async def query(req: QueryRequest):
     _last_answer = response
     _last_query = req.query
 
+    # Auto-save to case if case_id provided
+    if req.case_id:
+        try:
+            add_visit(req.case_id, req.query, response, resources,
+                      location=None, plan=plan)
+        except Exception:
+            pass
+
     total = time.time() - t0
     return {
         "answer": response,
@@ -269,6 +280,72 @@ async def directions(req: DirectionsRequest):
         return result
     except Exception as e:
         return {"error": str(e), "options": []}
+
+
+# ── Case Management ──────────────────────────────────────────────────────────
+
+class CaseLoginRequest(BaseModel):
+    case_id: str
+    name: str = ""
+
+
+class CaseVisitedRequest(BaseModel):
+    case_id: str
+    resource_name: str
+    feedback: str | None = None
+
+
+class CaseResolveRequest(BaseModel):
+    case_id: str
+    category: str
+
+
+@app.post("/api/case/login")
+async def case_login(req: CaseLoginRequest):
+    """Login or create a case. Returns summary if returning user."""
+    case = load_case(req.case_id)
+    if case:
+        summary = get_case_summary(req.case_id)
+        return {
+            "case": case,
+            "summary": summary,
+            "returning": True,
+        }
+    else:
+        case = create_case(req.case_id, name=req.name)
+        return {
+            "case": case,
+            "summary": f"Welcome, {req.name or req.case_id}. Tell me what's going on and I'll find help for you.",
+            "returning": False,
+        }
+
+
+@app.post("/api/case/save")
+async def case_save(case_id: str, query: str, answer_text: str,
+                    resources: list = [], location: dict = None, plan: dict = None):
+    """Save current interaction to a case."""
+    case = add_visit(case_id, query, answer_text, resources, location, plan)
+    return {"case_id": case["case_id"], "visits": len(case["visits"])}
+
+
+@app.post("/api/case/visited")
+async def case_visited(req: CaseVisitedRequest):
+    """Mark that user visited a resource (with optional feedback)."""
+    case = mark_resource_visited(req.case_id, req.resource_name, req.feedback)
+    return case
+
+
+@app.post("/api/case/resolve")
+async def case_resolve(req: CaseResolveRequest):
+    """Mark a need as resolved."""
+    case = resolve_need(req.case_id, req.category)
+    return case
+
+
+@app.get("/api/cases")
+async def cases_list():
+    """List all cases (admin view)."""
+    return list_cases()
 
 
 @app.get("/api/resources")

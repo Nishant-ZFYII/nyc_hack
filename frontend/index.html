@@ -356,8 +356,6 @@ body {
 <body>
 <div class="app">
   <div class="sidebar">
-    <!-- Mood cards moved into chat area as initial view -->
-
     <div class="sidebar-header">
       <h1>NYC Services Engine</h1>
       <p class="subtitle">Social Services Intelligence &mdash; City-Scale Ops</p>
@@ -368,45 +366,72 @@ body {
       </div>
     </div>
 
-    <div class="tabs">
-      <div class="tab active" onclick="switchTab('chat')">Chat</div>
-      <div class="tab" onclick="switchTab('guided')">Guided Search</div>
+    <!-- PHASE 1: Borough Selection (visible on landing) -->
+    <div id="phase-borough" style="flex:1;display:flex;flex-direction:column;overflow-y:auto;padding:20px;">
+      <div style="font-family:var(--font-display);font-size:22px;font-weight:300;color:var(--text-primary);text-align:center;margin-bottom:4px;animation:onbFadeIn 0.6s ease both">Where in NYC?</div>
+      <div style="font-size:12px;color:var(--text-secondary);text-align:center;margin-bottom:20px;animation:onbFadeIn 0.6s ease 0.1s both">Select your borough to browse resources</div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="mood-card" onclick="selectBorough('Manhattan','MN')" style="animation-delay:0.15s">
+          <div class="mood-icon">&#127961;&#65039;</div>
+          <div class="mood-text"><div class="mood-label">Manhattan</div><div class="mood-hint" id="count-MN">Loading...</div></div>
+        </div>
+        <div class="mood-card" onclick="selectBorough('Brooklyn','BK')" style="animation-delay:0.25s">
+          <div class="mood-icon">&#127753;</div>
+          <div class="mood-text"><div class="mood-label">Brooklyn</div><div class="mood-hint" id="count-BK">Loading...</div></div>
+        </div>
+        <div class="mood-card" onclick="selectBorough('Queens','QN')" style="animation-delay:0.35s">
+          <div class="mood-icon">&#9992;&#65039;</div>
+          <div class="mood-text"><div class="mood-label">Queens</div><div class="mood-hint" id="count-QN">Loading...</div></div>
+        </div>
+        <div class="mood-card" onclick="selectBorough('Bronx','BX')" style="animation-delay:0.45s">
+          <div class="mood-icon">&#127934;</div>
+          <div class="mood-text"><div class="mood-label">Bronx</div><div class="mood-hint" id="count-BX">Loading...</div></div>
+        </div>
+        <div class="mood-card" onclick="selectBorough('Staten Island','SI')" style="animation-delay:0.55s">
+          <div class="mood-icon">&#9972;&#65039;</div>
+          <div class="mood-text"><div class="mood-label">Staten Island</div><div class="mood-hint" id="count-SI">Loading...</div></div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:16px;animation:onbFadeIn 0.6s ease 0.65s both">
+        <a href="#" onclick="enterChat();return false;" style="color:var(--text-muted);font-size:11px;text-decoration:none;font-family:var(--font-mono);letter-spacing:0.5px">Skip &mdash; go to chat &rarr;</a>
+      </div>
     </div>
 
-    <div class="tab-content active" id="tab-chat">
-      <div class="categories">
-        <button class="cat-btn" data-q="I need a shelter tonight in Brooklyn"><span class="cat-icon">&#127968;</span> Shelter</button>
-        <button class="cat-btn" data-q="Where can I get free food near me?"><span class="cat-icon">&#127822;</span> Food</button>
-        <button class="cat-btn" data-q="I need to see a doctor, no insurance"><span class="cat-icon">&#127973;</span> Healthcare</button>
-        <button class="cat-btn" data-q="How do I apply for SNAP and Medicaid?"><span class="cat-icon">&#128203;</span> Benefits</button>
-        <button class="cat-btn" data-q="I don't feel safe at home, I have a child"><span class="cat-icon">&#128737;&#65039;</span> Safety</button>
-        <button class="cat-btn" data-q="I just arrived in NYC and need help"><span class="cat-icon">&#127758;</span> New to NYC</button>
+    <!-- PHASE 2: Chat Interface (hidden until borough selected or skip) -->
+    <div id="phase-chat" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+      <div class="tabs">
+        <div class="tab" onclick="backToBoroughs()" style="flex:0;padding:10px 14px;font-size:14px;cursor:pointer" title="Back to boroughs">&#8592;</div>
+        <div class="tab active" onclick="switchTab('chat')">Chat</div>
+        <div class="tab" onclick="switchTab('guided')">Guided Search</div>
       </div>
-      <div class="chat-area" id="chat">
-        <div class="msg system">Click a borough on the map to browse, or tell me what you need:</div>
-        <div style="display:flex;flex-direction:column;gap:6px;margin:4px 0;">
-          <div class="mood-card" onclick="moodSelect('I need a shelter tonight. I have nowhere to sleep.')"><div class="mood-icon">&#127769;</div><div class="mood-text"><div class="mood-label">I have nowhere to sleep</div><div class="mood-hint">Shelters, transitional housing</div></div></div>
-          <div class="mood-card" onclick="moodSelect('Where can I get free food near me?')"><div class="mood-icon">&#127858;</div><div class="mood-text"><div class="mood-label">I need food</div><div class="mood-hint">Food pantries, soup kitchens</div></div></div>
-          <div class="mood-card" onclick="moodSelect('I don\'t feel safe at home. I have a child.')"><div class="mood-icon">&#128737;&#65039;</div><div class="mood-text"><div class="mood-label">I don't feel safe</div><div class="mood-hint">DV services, crime victim help</div></div></div>
-          <div class="mood-card" onclick="moodSelect('I have a family and need help with housing, food, healthcare, and benefits.')"><div class="mood-icon">&#128106;</div><div class="mood-text"><div class="mood-label">Help for my family</div><div class="mood-hint">Full needs assessment</div></div></div>
-          <div class="mood-card" onclick="moodSelectOps()"><div class="mood-icon">&#128225;</div><div class="mood-text"><div class="mood-label">City coordinator</div><div class="mood-hint">Simulations, gap analysis</div></div></div>
+
+      <div class="tab-content active" id="tab-chat">
+        <div class="categories">
+          <button class="cat-btn" data-q="I need a shelter tonight"><span class="cat-icon">&#127968;</span> Shelter</button>
+          <button class="cat-btn" data-q="Where can I get free food near me?"><span class="cat-icon">&#127822;</span> Food</button>
+          <button class="cat-btn" data-q="I need to see a doctor, no insurance"><span class="cat-icon">&#127973;</span> Healthcare</button>
+          <button class="cat-btn" data-q="How do I apply for SNAP and Medicaid?"><span class="cat-icon">&#128203;</span> Benefits</button>
+          <button class="cat-btn" data-q="I don't feel safe at home, I have a child"><span class="cat-icon">&#128737;&#65039;</span> Safety</button>
+          <button class="cat-btn" data-q="I just arrived in NYC and need help"><span class="cat-icon">&#127758;</span> New to NYC</button>
+        </div>
+        <div class="chat-area" id="chat"></div>
+        <div class="loading" id="loading"><div class="spinner"></div><span class="loading-text">Analyzing your situation...</span></div>
+        <div class="quick-actions" id="quickActions">
+          <button class="quick-btn" data-q="I'm Tina, 4 kids, income $28K, losing housing in Flatbush next week">Family losing housing</button>
+          <button class="quick-btn" data-q="Someone broke into my apartment. I have a 6 year old. I don't feel safe.">Crime victim</button>
+          <button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button>
+          <button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>
+        </div>
+        <div class="input-area">
+          <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px">Ask anything about NYC services</div>
+          <div class="input-row">
+            <textarea id="queryInput" rows="3" placeholder="Describe your situation..."></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendQuery()" style="padding:12px 24px;font-size:13px">Send</button>
+          </div>
         </div>
       </div>
-      <div class="loading" id="loading"><div class="spinner"></div><span class="loading-text">Analyzing your situation...</span></div>
-      <div class="quick-actions" id="quickActions">
-        <button class="quick-btn" data-q="I'm Tina, 4 kids, income $28K, losing housing in Flatbush next week">Family losing housing</button>
-        <button class="quick-btn" data-q="Someone broke into my apartment. I have a 6 year old. I don't feel safe.">Crime victim</button>
-        <button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button>
-        <button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>
-      </div>
-      <div class="input-area">
-        <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px">Ask anything about NYC services</div>
-        <div class="input-row">
-          <textarea id="queryInput" rows="3" placeholder="Describe your situation... e.g. 'I have 4 kids and we're losing our apartment next week'"></textarea>
-          <button class="send-btn" id="sendBtn" onclick="sendQuery()" style="padding:12px 24px;font-size:13px">Send</button>
-        </div>
-      </div>
-    </div>
 
     <div class="tab-content" id="tab-guided">
       <div style="padding:16px;flex:1;overflow-y:auto;">
@@ -490,9 +515,35 @@ function animateCounter(el,target,dur=1500){
   requestAnimationFrame(tick);
 }
 
-function moodSelect(query){document.getElementById('queryInput').value=query;sendQuery();}
+let selectedBoroughName='';
+
+function selectBorough(name, abbr){
+  selectedBoroughName=name;
+  // Zoom map to borough
+  const boro=BOROUGHS.find(b=>b.abbr===abbr);
+  if(boro) zoomToBorough(boro);
+  // Transition to chat phase
+  enterChat();
+  addMsg(`Browsing <b>${name}</b>. What do you need help with?`,'system');
+}
+
+function enterChat(){
+  document.getElementById('phase-borough').style.display='none';
+  const chat=document.getElementById('phase-chat');
+  chat.style.display='flex';
+}
+
+function backToBoroughs(){
+  document.getElementById('phase-chat').style.display='none';
+  document.getElementById('phase-borough').style.display='flex';
+  showBoroughView();
+  // Clear chat
+  document.getElementById('chat').innerHTML='';
+}
+
+function moodSelect(query){enterChat();document.getElementById('queryInput').value=query;sendQuery();}
 function moodSelectOps(){
-  opsMode=true;
+  opsMode=true;enterChat();
   const qa=document.getElementById('quickActions');
   qa.innerHTML='<button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button><button class="quick-btn" data-q="Which neighborhoods are more than 30 minutes from the nearest shelter?">Resource gaps</button><button class="quick-btn" data-q="What if we add 500 shelter beds in the Bronx?">Capacity sim</button><button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>';
   qa.querySelectorAll('.quick-btn').forEach(b=>b.addEventListener('click',()=>{document.getElementById('queryInput').value=b.dataset.q;sendQuery();}));
@@ -500,10 +551,11 @@ function moodSelectOps(){
 
 // Tabs
 function switchTab(tab){
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#phase-chat .tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelector(`.tab-content#tab-${tab}`).classList.add('active');
-  document.querySelectorAll('.tab')[tab==='chat'?0:1].classList.add('active');
+  // tabs: [back, chat, guided] → index 1=chat, 2=guided
+  document.querySelectorAll('#phase-chat .tab')[tab==='chat'?1:2].classList.add('active');
 }
 
 // Guided
@@ -540,10 +592,14 @@ let boroughCounts={};
 
 fetch('/api/resources').then(r=>r.json()).then(d=>{
   allResources=d;
-  // Count resources per borough
   for(const r of d){
     const b=r.borough||'';
     boroughCounts[b]=(boroughCounts[b]||0)+1;
+  }
+  // Update borough count labels
+  for(const b of BOROUGHS){
+    const el=document.getElementById('count-'+b.abbr);
+    if(el) el.textContent=`${(boroughCounts[b.abbr]||0).toLocaleString()} resources`;
   }
   showBoroughView();
 }).catch(()=>{});
