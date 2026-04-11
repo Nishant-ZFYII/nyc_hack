@@ -134,43 +134,163 @@ st.set_page_config(
     layout="wide",
 )
 
+# ── Dark NVIDIA Theme ────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+/* NVIDIA Dark Theme */
+[data-testid="stAppViewContainer"] {
+    background-color: #0a0a0f;
+    color: #e0e0e0;
+}
+[data-testid="stSidebar"] {
+    background-color: #111118;
+    border-right: 1px solid #1e1e2a;
+}
+[data-testid="stHeader"] {
+    background-color: #0a0a0f;
+}
+
+/* NVIDIA Green accent */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #76b900, #5a8f00);
+    color: white;
+    border: none;
+    font-weight: bold;
+    box-shadow: 0 2px 8px rgba(118, 185, 0, 0.3);
+}
+.stButton > button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #8cd600, #76b900);
+    box-shadow: 0 4px 12px rgba(118, 185, 0, 0.5);
+}
+
+/* Sidebar buttons */
+[data-testid="stSidebar"] .stButton > button {
+    background-color: #1a1a24;
+    color: #e0e0e0;
+    border: 1px solid #2a2a3a;
+    transition: all 0.2s;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    border-color: #76b900;
+    color: #76b900;
+    transform: translateX(2px);
+}
+
+/* Title styling */
+h1 {
+    color: #76b900 !important;
+    text-shadow: 0 0 20px rgba(118, 185, 0, 0.3);
+}
+
+/* Chat messages */
+[data-testid="stChatMessage"] {
+    background-color: #12121a;
+    border: 1px solid #1e1e2a;
+    border-radius: 12px;
+}
+
+/* Expanders */
+[data-testid="stExpander"] {
+    background-color: #12121a;
+    border: 1px solid #1e1e2a;
+    border-radius: 8px;
+}
+
+/* Text inputs */
+textarea, input[type="text"] {
+    background-color: #12121a !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #2a2a3a !important;
+}
+textarea:focus, input[type="text"]:focus {
+    border-color: #76b900 !important;
+    box-shadow: 0 0 8px rgba(118, 185, 0, 0.2) !important;
+}
+
+/* Success/info/warning boxes */
+[data-testid="stAlert"] {
+    background-color: #12121a;
+    border: 1px solid #2a2a3a;
+}
+
+/* Metrics / stats */
+[data-testid="stMetric"] {
+    background-color: #12121a;
+    border: 1px solid #1e1e2a;
+    border-radius: 8px;
+    padding: 12px;
+}
+[data-testid="stMetricValue"] {
+    color: #76b900 !important;
+}
+
+/* Dividers */
+hr {
+    border-color: #1e1e2a !important;
+}
+
+/* Caption text */
+.stCaption, small {
+    color: #888 !important;
+}
+
+/* Toggle */
+[data-testid="stToggle"] label span {
+    color: #e0e0e0;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🗽 NYC Social Services Intelligence Engine")
-st.caption("Powered by NVIDIA Nemotron · cuGraph · RAPIDS — DGX Spark")
+st.caption("Powered by NVIDIA Nemotron · cuGraph · RAPIDS · cuOpt — DGX Spark")
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("System Status")
+    st.markdown('<h2 style="color:#76b900;">System Status</h2>', unsafe_allow_html=True)
+
+    # Stats bar
+    _mart_count = 0
+    _edge_count = 0
+    _triple_count = 0
+    try:
+        mart, payload = load_state()
+        _mart_count = len(mart) if hasattr(mart, '__len__') else 0
+        edges = payload.get("edges")
+        G = payload.get("graph")
+        if G is not None and hasattr(G, 'number_of_edges'):
+            _edge_count = G.number_of_edges()
+        elif edges is not None:
+            _edge_count = len(edges)
+    except Exception:
+        pass
+    try:
+        triples_df = pd.read_parquet(str(ROOT / "data" / "triples.parquet"))
+        _triple_count = len(triples_df)
+    except Exception:
+        pass
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Resources", f"{_mart_count:,}")
+    c2.metric("Graph Edges", f"{_edge_count:,}" if _edge_count < 100000 else f"{_edge_count/1e6:.1f}M")
+    c3.metric("Triples", f"{_triple_count:,}" if _triple_count < 100000 else f"{_triple_count/1e3:.0f}K")
 
     # LLM provider
     try:
         provider = get_active_provider()
-        st.success(f"LLM: {provider}")
+        st.markdown(f'<div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:8px 12px;margin:4px 0;">'
+                    f'<span style="color:#76b900;">LLM</span> {provider}</div>',
+                    unsafe_allow_html=True)
     except Exception as e:
         st.error(f"LLM: {e}")
 
-    # Data status
+    # Backend
     try:
-        mart, payload = load_state()
-        if hasattr(mart, '__len__'):
-            st.success(f"Mart: {len(mart):,} resources")
-        edges = payload.get("edges")
-        G = payload.get("graph")
-        if G is not None and hasattr(G, 'number_of_nodes'):
-            st.success(f"Graph: {G.number_of_nodes():,} nodes · "
-                       f"{G.number_of_edges():,} edges")
-        elif edges is not None:
-            st.success(f"Graph: {len(edges):,} edges (from pickle)")
-        st.info(f"Backend: {payload.get('backend', 'networkx')}")
-    except Exception as e:
-        st.error(f"Data: {e}")
-
-    # Triples + KGE status
-    try:
-        triples_df = pd.read_parquet(str(ROOT / "data" / "triples.parquet"))
-        st.success(f"Triples: {len(triples_df):,} SPO facts")
-        st.info(f"Predicates: {triples_df['predicate'].nunique()} · Sources: {triples_df['source'].nunique()}")
+        backend = payload.get('backend', 'networkx')
+        st.markdown(f'<div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:8px 12px;margin:4px 0;">'
+                    f'<span style="color:#76b900;">Backend</span> {backend} · cuDF · cuOpt</div>',
+                    unsafe_allow_html=True)
     except Exception:
-        st.warning("Triples: not built yet (run build_triples.py)")
+        pass
 
     st.divider()
     st.subheader("Try these queries")
