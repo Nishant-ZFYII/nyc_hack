@@ -529,9 +529,10 @@ body {
       <button class="filter-btn active" data-type="shelter" onclick="toggleFilter('shelter')">&#127968; Shelter</button>
       <button class="filter-btn active" data-type="food_bank" onclick="toggleFilter('food_bank')">&#127822; Food</button>
       <button class="filter-btn active" data-type="hospital" onclick="toggleFilter('hospital')">&#127973; Hospital</button>
-      <button class="filter-btn active" data-type="benefits_center" onclick="toggleFilter('benefits_center')">&#128203; Benefits</button>
-      <button class="filter-btn active" data-type="domestic_violence" onclick="toggleFilter('domestic_violence')">&#128737;&#65039; Safety</button>
+      <button class="filter-btn active" data-type="clinic" onclick="toggleFilter('clinic')">&#129658; Clinic</button>
       <button class="filter-btn active" data-type="school" onclick="toggleFilter('school')">&#128218; School</button>
+      <button class="filter-btn active" data-type="childcare" onclick="toggleFilter('childcare')">&#128118; Childcare</button>
+      <button class="filter-btn active" data-type="youth_services" onclick="toggleFilter('youth_services')">&#127934; Youth</button>
     </div>
   </div>
 </div>
@@ -675,7 +676,7 @@ let deckOverlay=null,allResources=[];
 let zoomedBorough=null; // track which borough is zoomed
 
 // Emoji icons per resource type
-const TYPE_EMOJI={shelter:'🏠',food_bank:'🍎',hospital:'🏥',school:'📚',benefits_center:'📋',domestic_violence:'🛡',transit_station:'🚇',community_center:'🏛',senior_services:'👴',childcare:'👶',mental_health:'💜',dropin_center:'☕',police_precinct:'👮'};
+const TYPE_EMOJI={shelter:'🏠',food_bank:'🍎',hospital:'🏥',clinic:'🩺',school:'📚',community_center:'🏛',childcare:'👶',youth_services:'🎾',senior_services:'👴',library:'📖',emergency_services:'🚨',education:'🎓',legal_aid:'⚖️',benefits_center:'📋',domestic_violence:'🛡',transit_station:'🚇',mental_health:'💜',dropin_center:'☕',police_precinct:'👮'};
 
 // Borough data for landing labels
 const BOROUGHS=[
@@ -729,7 +730,8 @@ function showBoroughView(){
   map.flyTo({center:NYC,zoom:10.3,pitch:30,bearing:-10,duration:1200});
 }
 
-let activeFilters=new Set(['shelter','food_bank','hospital','benefits_center','domestic_violence','school','community_center','dropin_center','senior_services','childcare','mental_health','transit_station']);
+// All actual resource types from the data
+let activeFilters=new Set(['shelter','food_bank','hospital','clinic','school','community_center','childcare','youth_services','senior_services','library','emergency_services','education','legal_aid']);
 
 function toggleFilter(type){
   if(type==='all'){
@@ -740,7 +742,7 @@ function toggleFilter(type){
       if(allActive)b.classList.remove('active'); else b.classList.add('active');
     });
     if(allActive)activeFilters.clear();
-    else activeFilters=new Set(['shelter','food_bank','hospital','benefits_center','domestic_violence','school','community_center','dropin_center','senior_services','childcare','mental_health','transit_station']);
+    else activeFilters=new Set(['shelter','food_bank','hospital','clinic','school','community_center','childcare','youth_services','senior_services','library','emergency_services','education','legal_aid']);
   } else {
     const btn=document.querySelector(`.filter-btn[data-type="${type}"]`);
     if(activeFilters.has(type)){activeFilters.delete(type);btn.classList.remove('active');}
