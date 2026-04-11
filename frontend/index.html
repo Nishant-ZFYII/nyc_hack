@@ -268,6 +268,16 @@ body {
 .quick-btn:hover{border-color:var(--green);color:var(--green)}
 
 /* Footer */
+/* Location Bar */
+.location-bar{padding:8px 16px;border-top:1px solid var(--border);background:var(--bg-deep);display:flex;gap:6px;align-items:center;flex-shrink:0}
+.location-bar input{flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:5px 10px;color:var(--text-primary);font-size:11px;font-family:var(--font-ui);outline:none}
+.location-bar input:focus{border-color:var(--blue)}
+.location-bar input::placeholder{color:var(--text-muted)}
+.loc-btn{background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:5px 8px;color:var(--text-muted);font-size:10px;cursor:pointer;transition:all 0.2s;font-family:var(--font-mono);white-space:nowrap}
+.loc-btn:hover{border-color:var(--blue);color:var(--blue)}
+.loc-btn.active{border-color:#4fc3f7;color:#4fc3f7;background:rgba(79,195,247,0.08)}
+.loc-label{font-size:8px;font-weight:600;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase}
+
 .powered-footer{padding:8px 16px;border-top:1px solid var(--border);background:var(--bg-deep);display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap}
 .powered-label{font-size:8px;font-weight:600;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:1px;text-transform:uppercase;margin-right:2px}
 .powered-badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:600;font-family:var(--font-mono);background:rgba(118,185,0,0.06);color:rgba(118,185,0,0.6);border:1px solid rgba(118,185,0,0.1);transition:all 0.3s}
@@ -398,6 +408,12 @@ body {
       </div>
     </div>
 
+    <div class="location-bar">
+      <span class="loc-label">&#128205;</span>
+      <input type="text" id="locationInput" placeholder="Enter your address..." onkeydown="if(event.key==='Enter')setManualLocation()">
+      <button class="loc-btn" onclick="setManualLocation()">Set</button>
+      <button class="loc-btn" id="gpsBtn" onclick="getUserLocation()">&#128225; GPS</button>
+    </div>
     <div class="powered-footer">
       <span class="powered-label">Powered by</span>
       <span class="powered-badge">Nemotron</span>
@@ -669,9 +685,10 @@ function getUserLocation() {
       el.style.cssText = 'width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;';
       userMarker = new maplibregl.Marker({element: el}).setLngLat([userLocation.lon, userLocation.lat]).addTo(map);
       map.flyTo({center: [userLocation.lon, userLocation.lat], zoom: 14, duration: 1000});
-      addMsg('Located you. Results sorted by distance.', 'system');
+      document.getElementById('gpsBtn').classList.add('active');
+      addMsg('Located you. Results will be sorted by distance.', 'system');
     },
-    () => { addMsg('Could not get GPS. Type your address in the location bar.', 'system'); },
+    () => { addMsg('Could not get GPS. Type your address in the location bar below.', 'system'); },
     {enableHighAccuracy: true, timeout: 10000}
   );
 }
@@ -692,8 +709,10 @@ async function setManualLocation() {
       el.style.cssText = 'width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;';
       userMarker = new maplibregl.Marker({element: el}).setLngLat([userLocation.lon, userLocation.lat]).addTo(map);
       map.flyTo({center: [userLocation.lon, userLocation.lat], zoom: 14, duration: 1000});
-      addMsg(`Location: ${results[0].display_name.split(',').slice(0,2).join(',')}`, 'system');
-    } else { addMsg('Address not found.', 'system'); }
+      document.getElementById('gpsBtn').classList.remove('active');
+      input.value = results[0].display_name.split(',').slice(0,2).join(',');
+      addMsg(`Location set: ${results[0].display_name.split(',').slice(0,2).join(',')}`, 'system');
+    } else { addMsg('Address not found. Try a more specific NYC address.', 'system'); }
   } catch(e) { addMsg('Could not look up address.', 'system'); }
 }
 
