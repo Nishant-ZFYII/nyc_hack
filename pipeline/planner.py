@@ -227,6 +227,7 @@ def generate_plan(nl_query: str) -> dict:
     try:
         plan = _extract_json(raw)
         if plan.get("intent") in ("lookup", "needs_assessment", "simulate", "explain"):
+            plan["_original_query"] = nl_query  # preserve for geocoding
             return plan
         raise ValueError("Invalid intent")
     except (ValueError, Exception):
@@ -235,5 +236,6 @@ def generate_plan(nl_query: str) -> dict:
             "resource_types": ["shelter", "food_bank", "hospital"],
             "filters": {},
             "limit": 5,
+            "_original_query": nl_query,
             "_parse_error": raw[:200],
         }

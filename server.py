@@ -23,8 +23,18 @@ sys.path.insert(0, str(ROOT))
 from pipeline.planner import generate_plan
 from pipeline.executor import execute, load_state, set_excluded_resources
 from pipeline.synth import answer
+from pipeline.verify import verify_answer, build_reasoning_path, summarize_reasoning
+from pipeline.clarify import get_clarifying_question, merge_query
+from pipeline.feedback import parse_feedback
 from llm.client import get_active_provider
 import pandas as pd
+
+# KGE embeddings (optional)
+try:
+    from engine.embeddings import find_similar, find_similar_to_query
+    _HAS_KGE = True
+except Exception:
+    _HAS_KGE = False
 
 app = FastAPI(title="NYC Social Services Intelligence Engine")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -41,8 +51,23 @@ class FeedbackRequest(BaseModel):
     detail: str
 
 
+class ClarifyAnswerRequest(BaseModel):
+    original_query: str
+    question: str
+    answer: str
+
+
+class SimilarRequest(BaseModel):
+    resource_id: str
+    k: int = 5
+
+
 # ── State ────────────────────────────────────────────────────────────────────
 _excluded: list[str] = []
+_last_result: dict = {}  # cache last query result for verify/clarify
+_last_plan: dict = {}
+_last_answer: str = ""
+_last_query: str = ""
 
 
 @app.get("/")
@@ -100,34 +125,35 @@ async def query(req: QueryRequest):
     synth_time = time.time() - t3
 
     # Extract resources for map
+    def _row_to_resource(row, need=None):
+        r = {
+            "name": str(row.get("name", "")),
+            "address": str(row.get("address", "")),
+            "type": str(row.get("resource_type", "")),
+            "borough": str(row.get("borough", "")),
+            "lat": float(row["latitude"]) if pd.notna(row.get("latitude")) else None,
+            "lon": float(row["longitude"]) if pd.notna(row.get("longitude")) else None,
+            "safety": float(row["safety_score"]) if pd.notna(row.get("safety_score")) else None,
+        }
+        if need:
+            r["need"] = need
+        # Add distance if available (from geocode-based sorting)
+        if "distance_miles" in row.index and pd.notna(row.get("distance_miles")):
+            r["distance_miles"] = round(float(row["distance_miles"]), 2)
+            r["walk_min"] = int(row.get("walk_min_est", 0))
+        return r
+
     resources = []
     if result.get("intent") == "lookup":
         df = result.get("results")
         if isinstance(df, pd.DataFrame) and len(df):
             for _, row in df.iterrows():
-                resources.append({
-                    "name": str(row.get("name", "")),
-                    "address": str(row.get("address", "")),
-                    "type": str(row.get("resource_type", "")),
-                    "borough": str(row.get("borough", "")),
-                    "lat": float(row["latitude"]) if pd.notna(row.get("latitude")) else None,
-                    "lon": float(row["longitude"]) if pd.notna(row.get("longitude")) else None,
-                    "safety": float(row["safety_score"]) if pd.notna(row.get("safety_score")) else None,
-                })
+                resources.append(_row_to_resource(row))
     elif result.get("intent") == "needs_assessment":
         for key, df in result.get("results_by_need", {}).items():
             if isinstance(df, pd.DataFrame) and len(df):
                 for _, row in df.iterrows():
-                    resources.append({
-                        "name": str(row.get("name", "")),
-                        "address": str(row.get("address", "")),
-                        "type": str(row.get("resource_type", "")),
-                        "borough": str(row.get("borough", "")),
-                        "lat": float(row["latitude"]) if pd.notna(row.get("latitude")) else None,
-                        "lon": float(row["longitude"]) if pd.notna(row.get("longitude")) else None,
-                        "safety": float(row["safety_score"]) if pd.notna(row.get("safety_score")) else None,
-                        "need": key,
-                    })
+                    resources.append(_row_to_resource(row, need=key))
     elif result.get("intent") == "simulate":
         for s in result.get("available_shelters", []):
             if s.get("latitude") and s.get("longitude"):
@@ -140,6 +166,40 @@ async def query(req: QueryRequest):
                     "lon": float(s["longitude"]),
                 })
 
+    # Verification (skip in demo mode)
+    verification = None
+    verify_time = 0
+    clarify_question = ""
+    if not req.demo_mode:
+        t4 = time.time()
+        try:
+            verification = verify_answer(response, result)
+        except Exception:
+            verification = None
+        verify_time = time.time() - t4
+
+    # Clarification question
+    try:
+        clarify_question = get_clarifying_question(req.query, response, 0)
+    except Exception:
+        clarify_question = ""
+
+    # Reasoning path
+    reasoning = []
+    reasoning_summary = ""
+    try:
+        reasoning = build_reasoning_path(plan, result)
+        reasoning_summary = summarize_reasoning(reasoning, plan, result)
+    except Exception:
+        pass
+
+    # Cache for follow-up endpoints
+    global _last_result, _last_plan, _last_answer, _last_query
+    _last_result = result
+    _last_plan = plan
+    _last_answer = response
+    _last_query = req.query
+
     total = time.time() - t0
     return {
         "answer": response,
@@ -150,8 +210,13 @@ async def query(req: QueryRequest):
             "plan": round(plan_time, 1),
             "execute": round(exec_time, 2),
             "synth": round(synth_time, 1),
+            "verify": round(verify_time, 1),
         },
         "llm": get_active_provider(),
+        "verification": verification,
+        "clarify_question": clarify_question,
+        "reasoning": reasoning,
+        "reasoning_summary": reasoning_summary,
     }
 
 
@@ -160,6 +225,31 @@ async def feedback(req: FeedbackRequest):
     if req.resource_name and req.resource_name != "unknown":
         _excluded.append(req.resource_name)
     return {"excluded": _excluded, "count": len(_excluded)}
+
+
+@app.post("/api/clarify")
+async def clarify(req: ClarifyAnswerRequest):
+    """User answered a clarifying question — merge and re-run pipeline."""
+    enriched = merge_query(req.original_query, req.question, req.answer)
+    # Re-run with enriched query
+    new_req = QueryRequest(query=enriched, demo_mode=False)
+    return await query(new_req)
+
+
+@app.post("/api/similar")
+async def similar(req: SimilarRequest):
+    """Get KGE-similar resources."""
+    if not _HAS_KGE:
+        return {"similar": [], "error": "KGE embeddings not loaded"}
+    try:
+        df = find_similar(req.resource_id, k=req.k)
+        if isinstance(df, pd.DataFrame) and len(df):
+            cols = [c for c in ["name", "resource_type", "borough", "address", "similarity"]
+                    if c in df.columns]
+            return {"similar": df[cols].to_dict("records")}
+        return {"similar": []}
+    except Exception as e:
+        return {"similar": [], "error": str(e)}
 
 
 @app.get("/api/resources")
