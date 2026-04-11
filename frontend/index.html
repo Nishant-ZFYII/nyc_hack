@@ -416,7 +416,7 @@ async function sendQuery(){
   document.getElementById('loadingOverlay').classList.add('active');
   document.getElementById('sendBtn').disabled=true;
   try{
-    const resp=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,demo_mode:false,case_id:currentCaseId})});
+    const resp=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,demo_mode:false,case_id:currentCaseId,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null})});
     const data=await resp.json();
     renderResults(data);
     goTo('page-results');
