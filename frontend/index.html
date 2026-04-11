@@ -124,7 +124,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 #mapEl{width:100%;height:100%}
 .map-wrap{flex:1;position:relative}
 .map-overlay{position:absolute;z-index:10;background:rgba(255,255,255,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow)}
-.filter-bar{top:56px;left:16px;padding:10px;display:flex;flex-direction:column;gap:6px;width:170px;max-height:calc(100vh - 120px);overflow-y:auto}
+.filter-bar{top:56px;left:16px;padding:10px;display:flex;flex-direction:column;gap:6px;width:200px;max-height:calc(100vh - 120px);overflow-y:auto}
 .filter-btn{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--t2);font-size:13px;cursor:pointer;transition:all 0.2s;font-family:var(--ui);text-align:left;box-shadow:var(--shadow);font-weight:500}
 .filter-btn:hover{border-color:var(--green);color:var(--t1);box-shadow:var(--shadow-hover)}
 .filter-btn.active{border-color:var(--green);color:var(--green);background:rgba(58,125,10,0.06);font-weight:600}
@@ -337,10 +337,6 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   <div id="explore-map" style="display:none;flex:1;position:relative">
     <div id="exploreMapEl" style="width:100%;height:100%"></div>
     <!-- Resource info popup -->
-    <!-- Resource detail sidebar -->
-    <div id="explorePanel" style="position:absolute;top:0;right:0;bottom:0;width:0;background:var(--bg2);border-left:0px solid var(--border);overflow-y:auto;transition:all 0.3s ease;z-index:15;box-shadow:-4px 0 20px rgba(0,0,0,0.08)">
-      <div id="explorePanelContent" style="padding:24px;min-width:340px"></div>
-    </div>
     <div class="map-overlay filter-bar" id="exploreFilters">
       <!-- Location input -->
       <div style="margin-bottom:4px">
@@ -369,6 +365,11 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
         <button class="filter-more-btn" data-type="emergency_services" onclick="toggleExploreFilter('emergency_services')">&#128680; Emergency</button>
         <button class="filter-more-btn" data-type="education" onclick="toggleExploreFilter('education')">&#127891; Education</button>
         <button class="filter-more-btn" data-type="legal_aid" onclick="toggleExploreFilter('legal_aid')">&#9878;&#65039; Legal Aid</button>
+      </div>
+      <!-- Resource info + directions (appears when dot clicked) -->
+      <div id="exploreResourceInfo" style="display:none">
+        <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+        <div id="explorePanelContent"></div>
       </div>
     </div>
     <div class="map-overlay" style="top:16px;left:16px;padding:8px 14px;font-size:12px;cursor:pointer;z-index:20" onclick="backToBoroughs()">&#8592; All boroughs</div>
@@ -822,34 +823,31 @@ function refreshExploreIcons(){
   if(exploreDeck)exploreDeck.setProps({layers});else{exploreDeck=new deck.MapboxOverlay({layers});exploreMap.addControl(exploreDeck)}
 }
 
-function openExplorePanel(){
-  const panel=document.getElementById('explorePanel');
-  panel.style.width='360px';
-  panel.style.borderLeftWidth='1px';
-}
-function closeExplorePanel(){
-  const panel=document.getElementById('explorePanel');
-  panel.style.width='0';
-  panel.style.borderLeftWidth='0';
+function closeExploreInfo(){
+  document.getElementById('exploreResourceInfo').style.display='none';
   if(exploreMap){try{if(exploreMap.getSource('explore-route'))exploreMap.getSource('explore-route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
 }
 
 function showExplorePopup(resource){
   if(exploreMap){try{if(exploreMap.getSource('explore-route'))exploreMap.getSource('explore-route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
+  const info=document.getElementById('exploreResourceInfo');
   const c=document.getElementById('explorePanelContent');
   const rtype=(resource.resource_type||'').replace(/_/g,' ').replace(/\b\w/g,ch=>ch.toUpperCase());
   const eName=(resource.name||'').replace(/'/g,'&#39;');
-  let html=`<button onclick="closeExplorePanel()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--t3);float:right;padding:0">&times;</button>`;
-  html+=`<div style="font-weight:700;font-size:20px;margin-bottom:6px;line-height:1.3;padding-right:30px">${resource.name||'Unknown'}</div>`;
-  html+=`<div style="font-size:14px;color:var(--t2);font-family:var(--mono);margin-bottom:12px">${resource.address||'Address not listed'}</div>`;
-  html+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">`;
-  html+=`<span class="rc-tag type" style="font-size:12px;padding:4px 10px">${rtype}</span>`;
-  if(resource.borough)html+=`<span class="rc-tag borough" style="font-size:12px;padding:4px 10px">${resource.borough}</span>`;
+  let html=`<div style="font-weight:700;font-size:14px;margin-bottom:4px;line-height:1.3">${resource.name||'Unknown'}</div>`;
+  html+=`<div style="font-size:11px;color:var(--t2);font-family:var(--mono);margin-bottom:8px">${resource.address||'Address not listed'}</div>`;
+  html+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">`;
+  html+=`<span class="rc-tag type">${rtype}</span>`;
+  if(resource.borough)html+=`<span class="rc-tag borough">${resource.borough}</span>`;
   html+=`</div>`;
-  html+=`<button class="btn-primary" style="padding:14px 24px;font-size:14px;margin-bottom:12px" onclick="getExploreDirections(${resource.latitude},${resource.longitude},'${eName}')">&#128204; Get Directions</button>`;
+  html+=`<button class="btn-primary" style="padding:10px 16px;font-size:12px;margin-bottom:8px" onclick="getExploreDirections(${resource.latitude},${resource.longitude},'${eName}')">&#128204; Get Directions</button>`;
+  html+=`<button class="btn-secondary" style="padding:6px 10px;font-size:10px;margin-left:4px" onclick="closeExploreInfo()">Close</button>`;
   html+=`<div id="exploreDirResult"></div>`;
   c.innerHTML=html;
-  openExplorePanel();
+  info.style.display='block';
+  // Scroll filter panel to bottom to show the resource info
+  const filterBar=document.getElementById('exploreFilters');
+  filterBar.scrollTop=filterBar.scrollHeight;
   exploreMap.flyTo({center:[resource.longitude,resource.latitude],zoom:15,duration:800});
 }
 
@@ -964,7 +962,7 @@ async function fetchExploreDirections(budget,toLat,toLon,name){
       }
     }
     const bounds=[[Math.min(exploreUserLoc.lon,toLon)-0.01,Math.min(exploreUserLoc.lat,toLat)-0.01],[Math.max(exploreUserLoc.lon,toLon)+0.01,Math.max(exploreUserLoc.lat,toLat)+0.01]];
-    exploreMap.fitBounds(bounds,{padding:{top:80,bottom:80,left:200,right:380},duration:1000});
+    exploreMap.fitBounds(bounds,{padding:{top:80,bottom:80,left:220,right:60},duration:1000});
   }catch(err){target.innerHTML=`<div style="color:var(--red);padding:12px;font-size:14px">Error: ${err.message}</div>`}
 }
 
