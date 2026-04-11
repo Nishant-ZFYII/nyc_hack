@@ -551,10 +551,8 @@ function initResultMap(){
 
 function updateResultMapLayers(){
   if(!resultMap)return;
-  const bg=allResources.filter(r=>r.latitude&&r.longitude);
   const fg=lastResources.filter(r=>r.lat&&r.lon);
   const layers=[
-    new deck.ScatterplotLayer({id:'bg',data:bg,getPosition:d=>[d.longitude,d.latitude],getRadius:20,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[150,150,150]),15],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
     new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2,onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''}}),
   ];
   if(resultDeck)resultDeck.setProps({layers});else{resultDeck=new deck.MapboxOverlay({layers});resultMap.addControl(resultDeck)}
