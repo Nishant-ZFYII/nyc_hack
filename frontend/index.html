@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NYC Social Services Intelligence Engine</title>
+<script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500;600&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg-deep: #06060b;
+  --bg-panel: #0c0c14;
+  --bg-card: #10101a;
+  --bg-elevated: #161622;
+  --border: #1a1a2e;
+  --border-hover: #2a2a44;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888a0;
+  --text-muted: #55556a;
+  --green: #76b900;
+  --green-dim: #76b90033;
+  --green-glow: #76b90066;
+  --orange: #ffb74d;
+  --red: #ef5350;
+  --blue: #42a5f5;
+  --purple: #ab47bc;
+  --coral: #ff7043;
+  --teal: #4db6ac;
+  --font-ui: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --font-display: 'Fraunces', Georgia, serif;
+}
+body {
+  font-family: var(--font-ui);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { display: grid; grid-template-columns: 440px 1fr; height: 100vh; }
+
+.sidebar {
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden; position: relative;
+  grid-column: 1; grid-row: 1;
+}
+.sidebar-header {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #0e0e18, var(--bg-panel));
+  position: relative; flex-shrink: 0;
+}
+.sidebar-header::after {
+  content:''; position:absolute; bottom:-1px; left:20px; right:20px; height:1px;
+  background: linear-gradient(90deg, transparent, var(--green-dim), transparent);
+}
+.sidebar-header h1 {
+  font-family: var(--font-mono); font-size: 17px; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  background: linear-gradient(135deg, var(--green), #a0e030);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.sidebar-header .subtitle { color: var(--text-secondary); font-size: 11.5px; margin-top: 3px; }
+.header-stats { display: flex; gap: 12px; margin-top: 8px; }
+.header-stat {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.header-stat span { color: var(--green); font-weight: 600; }
+
+/* Onboarding */
+.onboarding {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg-panel);
+  z-index: 50; display: flex; flex-direction: column;
+  justify-content: center; padding: 30px 24px;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.onboarding.hidden { opacity: 0; transform: translateY(-20px); pointer-events: none; }
+.onboarding-title {
+  font-family: var(--font-display); font-size: 26px; font-weight: 300;
+  color: var(--text-primary); text-align: center; line-height: 1.3;
+  margin-bottom: 6px; animation: onbFadeIn 0.8s ease both;
+}
+.onboarding-sub {
+  font-size: 13px; color: var(--text-secondary); text-align: center;
+  margin-bottom: 24px; animation: onbFadeIn 0.8s ease 0.15s both;
+}
+.mood-cards { display: flex; flex-direction: column; gap: 8px; }
+.mood-card {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px 18px;
+  cursor: pointer; transition: all 0.3s cubic-bezier(0.22,1,0.36,1);
+  opacity: 0; animation: onbCardIn 0.5s ease both;
+}
+.mood-card:nth-child(1){animation-delay:0.2s}
+.mood-card:nth-child(2){animation-delay:0.3s}
+.mood-card:nth-child(3){animation-delay:0.4s}
+.mood-card:nth-child(4){animation-delay:0.5s}
+.mood-card:nth-child(5){animation-delay:0.6s}
+.mood-card:hover {
+  border-color: var(--green); transform: translateX(4px);
+  box-shadow: 0 4px 24px rgba(118,185,0,0.08);
+}
+.mood-card:active { transform: translateX(2px) scale(0.99); }
+.mood-icon { font-size: 28px; width: 44px; text-align: center; flex-shrink: 0; }
+.mood-label { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.mood-hint { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+.onboarding-skip { text-align: center; margin-top: 20px; animation: onbFadeIn 0.8s ease 0.7s both; }
+.onboarding-skip a {
+  color: var(--text-muted); font-size: 11px; text-decoration: none;
+  font-family: var(--font-mono); letter-spacing: 0.5px; transition: color 0.2s;
+}
+.onboarding-skip a:hover { color: var(--green); }
+@keyframes onbFadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes onbCardIn { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
+
+/* Tabs */
+.tabs { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; }
+.tab {
+  flex:1; padding:10px; text-align:center; font-size:12px; font-weight:500;
+  color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent;
+  transition:all 0.2s; letter-spacing:0.5px; text-transform:uppercase;
+}
+.tab:hover{color:var(--text-secondary)} .tab.active{color:var(--green);border-bottom-color:var(--green)}
+.tab-content{display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0}
+.tab-content.active{display:flex}
+
+/* Categories */
+.categories{padding:10px 16px;display:flex;flex-wrap:wrap;gap:5px;border-bottom:1px solid var(--border);flex-shrink:0}
+.cat-btn{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px 11px;color:var(--text-secondary);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:5px;font-family:var(--font-ui)}
+.cat-btn:hover,.cat-btn.active{border-color:var(--green);color:var(--green);background:rgba(118,185,0,0.06)}
+.cat-icon{font-size:16px}
+
+/* Chat */
+.chat-area{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.msg{max-width:95%;padding:12px 16px;border-radius:12px;font-size:13.5px;line-height:1.7}
+.msg.user{background:linear-gradient(135deg,#1a3200,#243d00);border:1px solid var(--green-dim);align-self:flex-end;border-radius:12px 12px 3px 12px;animation:msgIn 0.35s cubic-bezier(0.22,1,0.36,1)}
+.msg.assistant{background:var(--bg-card);border:1px solid var(--border);align-self:flex-start;border-radius:12px 12px 12px 3px}
+.msg.system{background:transparent;border:none;color:var(--text-muted);font-size:12.5px;text-align:center;align-self:center;padding:8px;animation:msgIn 0.35s cubic-bezier(0.22,1,0.36,1)}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* Typing Indicator */
+.typing-indicator{display:flex;align-items:center;gap:4px;padding:14px 18px;align-self:flex-start;background:var(--bg-card);border:1px solid var(--border);border-radius:12px 12px 12px 3px;animation:msgIn 0.3s ease}
+.typing-dot{width:7px;height:7px;border-radius:50%;background:var(--text-muted);animation:typingBounce 1.4s ease-in-out infinite}
+.typing-dot:nth-child(2){animation-delay:0.2s}.typing-dot:nth-child(3){animation-delay:0.4s}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:0.4}30%{transform:translateY(-6px);opacity:1}}
+
+/* Staged Reveal */
+.msg.assistant.staged{animation:none}
+.staged .answer-text{animation:stageIn 0.4s ease both}
+.staged .verify-banner{animation:stageIn 0.4s ease 0.15s both}
+.staged .reasoning-toggle{animation:stageIn 0.3s ease 0.25s both}
+.staged .results-grid .resource-card{animation:stageSlide 0.35s ease both}
+.staged .results-grid .resource-card:nth-child(1){animation-delay:0.3s}
+.staged .results-grid .resource-card:nth-child(2){animation-delay:0.4s}
+.staged .results-grid .resource-card:nth-child(3){animation-delay:0.5s}
+.staged .results-grid .resource-card:nth-child(4){animation-delay:0.6s}
+.staged .results-grid .resource-card:nth-child(5){animation-delay:0.7s}
+.staged .results-grid .resource-card:nth-child(n+6){animation-delay:0.8s}
+.staged .clarify-box,.staged .followup-prompt,.staged .feedback-bar{animation:stageIn 0.4s ease 0.9s both}
+@keyframes stageIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes stageSlide{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+
+/* Verification */
+.verify-banner{padding:8px 14px;border-radius:6px;font-size:11px;font-weight:600;font-family:var(--font-mono);letter-spacing:0.3px;text-align:center;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px}
+.verify-banner.high{background:rgba(0,200,83,0.08);border:1px solid rgba(0,200,83,0.2);color:#4caf50}
+.verify-banner.medium{background:rgba(33,150,243,0.08);border:1px solid rgba(33,150,243,0.2);color:var(--blue)}
+.verify-banner.low{background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.2);color:var(--orange)}
+.verify-banner.skipped{background:rgba(171,71,188,0.08);border:1px solid rgba(171,71,188,0.2);color:var(--purple)}
+.claims-toggle{font-size:11px;color:var(--text-muted);cursor:pointer;margin-top:6px;font-family:var(--font-mono);transition:color 0.2s}
+.claims-toggle:hover{color:var(--green)}
+.claims-list{display:none;margin-top:6px;padding:8px;background:var(--bg-deep);border-radius:6px;border:1px solid var(--border)}
+.claims-list.open{display:block}
+.claim-item{font-size:11px;padding:4px 8px;margin:3px 0;border-radius:4px;line-height:1.5}
+.claim-item.verified{background:rgba(0,200,83,0.06);color:#81c784}
+.claim-item.unverified{background:rgba(255,152,0,0.06);color:var(--orange)}
+
+/* Reasoning */
+.reasoning-toggle{font-size:11px;color:var(--text-muted);cursor:pointer;margin-top:4px;font-family:var(--font-mono);transition:color 0.2s}
+.reasoning-toggle:hover{color:var(--green)}
+.reasoning-panel{display:none;margin-top:6px;padding:10px;background:var(--bg-deep);border-radius:6px;border:1px solid var(--border)}
+.reasoning-panel.open{display:block}
+.reasoning-summary{font-size:12px;color:var(--text-secondary);line-height:1.6;margin-bottom:8px}
+.reasoning-hop{font-size:11px;font-family:var(--font-mono);padding:3px 0;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.03)}
+
+/* Resource Cards */
+.results-grid{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.resource-card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;transition:all 0.25s cubic-bezier(0.22,1,0.36,1);cursor:pointer;position:relative;overflow:hidden}
+.resource-card:hover{border-color:var(--border-hover);transform:translateX(2px);box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+.resource-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px 0 0 3px}
+.resource-card.type-shelter::before{background:var(--green)}
+.resource-card.type-food_bank::before{background:var(--orange)}
+.resource-card.type-hospital::before{background:var(--red)}
+.resource-card.type-school::before{background:var(--blue)}
+.resource-card.type-benefits_center::before{background:var(--purple)}
+.resource-card.type-domestic_violence::before{background:var(--coral)}
+.resource-card.type-dropin_center::before{background:var(--teal)}
+.rc-name{color:var(--text-primary);font-weight:600;font-size:13.5px;line-height:1.3}
+.rc-addr{color:var(--text-muted);font-size:11px;margin-top:3px;font-family:var(--font-mono);letter-spacing:0.2px}
+.rc-distance{color:var(--text-secondary);font-size:11px;margin-top:2px;font-family:var(--font-mono)}
+.rc-distance span{color:var(--green);font-weight:600}
+.rc-match{margin-top:6px;padding:5px 8px;background:rgba(118,185,0,0.05);border-radius:4px;border-left:2px solid var(--green-dim)}
+.rc-match-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--green);font-family:var(--font-mono)}
+.rc-match-text{font-size:11.5px;color:var(--text-secondary);margin-top:1px}
+.rc-tags{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.rc-tag{padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;font-family:var(--font-mono);letter-spacing:0.3px;text-transform:uppercase}
+.rc-tag.type{background:rgba(118,185,0,0.1);color:var(--green);border:1px solid var(--green-dim)}
+.rc-tag.borough{background:rgba(66,165,245,0.08);color:var(--blue);border:1px solid rgba(66,165,245,0.2)}
+.rc-tag.safety{border:1px solid var(--border)}
+.rc-tag.safety.high{color:var(--green);border-color:var(--green-dim)}
+.rc-tag.safety.med{color:var(--orange);border-color:rgba(255,183,77,0.2)}
+.rc-tag.safety.low{color:var(--red);border-color:rgba(239,83,80,0.2)}
+.rc-urgency{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;font-family:var(--font-mono);letter-spacing:0.8px;text-transform:uppercase;background:rgba(239,83,80,0.12);color:var(--red);border:1px solid rgba(239,83,80,0.25)}
+.rc-urgency::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--red);animation:urgencyDot 1.5s ease-in-out infinite}
+@keyframes urgencyDot{0%,100%{opacity:1}50%{opacity:0.3}}
+.rc-actions{display:flex;gap:5px;margin-top:8px}
+.rc-action{background:var(--bg-elevated);border:1px solid var(--border);border-radius:4px;padding:3px 8px;font-size:10px;font-weight:500;color:var(--text-muted);cursor:pointer;transition:all 0.2s;font-family:var(--font-ui);text-decoration:none}
+.rc-action:hover{border-color:var(--green);color:var(--green)}
+.rc-action.directions{background:rgba(118,185,0,0.08);border-color:var(--green-dim);color:var(--green);font-weight:600}
+.rc-action.directions:hover{background:rgba(118,185,0,0.15)}
+
+/* Emergency */
+.urgency-banner{background:linear-gradient(135deg,#2a0a0a,#1a0505);border:1px solid rgba(239,83,80,0.3);color:var(--red);padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;text-align:center;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:8px;animation:criticalFlash 3s ease-in-out infinite;font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase}
+.urgency-banner::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--red);animation:urgencyDot 1s ease-in-out infinite;flex-shrink:0}
+@keyframes criticalFlash{0%,100%{box-shadow:0 0 15px rgba(239,83,80,0.1)}50%{box-shadow:0 0 30px rgba(239,83,80,0.25)}}
+.resource-card.emergency{border-color:rgba(239,83,80,0.2)}
+
+/* Clarify / Follow-up / Feedback */
+.clarify-box{margin-top:10px;padding:12px;background:rgba(66,165,245,0.04);border:1px solid rgba(66,165,245,0.15);border-radius:8px}
+.clarify-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--blue);font-family:var(--font-mono);margin-bottom:6px}
+.clarify-question{font-size:13px;color:var(--text-primary);margin-bottom:8px;line-height:1.5}
+.clarify-row{display:flex;gap:6px}
+.clarify-input{flex:1;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text-primary);font-size:12.5px;font-family:var(--font-ui);outline:none}
+.clarify-input:focus{border-color:var(--blue)}.clarify-input::placeholder{color:var(--text-muted)}
+.clarify-send{background:var(--blue);border:none;color:#fff;border-radius:4px;padding:6px 12px;font-size:10px;font-weight:700;font-family:var(--font-mono);cursor:pointer;letter-spacing:0.5px;text-transform:uppercase}
+.clarify-send:hover{background:#64b5f6}
+.followup-prompt{margin-top:10px;padding:10px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;display:flex;gap:8px;align-items:center}
+.followup-prompt input{flex:1;background:transparent;border:none;color:var(--text-primary);font-size:12.5px;font-family:var(--font-ui);outline:none}
+.followup-prompt input::placeholder{color:var(--text-muted)}
+.followup-send{background:var(--green);border:none;color:#000;border-radius:4px;padding:5px 10px;font-size:10px;font-weight:700;font-family:var(--font-mono);cursor:pointer;letter-spacing:0.5px;text-transform:uppercase}
+.followup-send:hover{background:#8cd600}
+.feedback-bar{margin-top:8px;padding:8px 10px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;display:flex;gap:6px;align-items:center}
+.feedback-bar input{flex:1;background:transparent;border:none;color:var(--text-primary);font-size:11.5px;font-family:var(--font-ui);outline:none}
+.feedback-bar input::placeholder{color:var(--text-muted)}
+.feedback-send{background:var(--coral);border:none;color:#fff;border-radius:4px;padding:4px 8px;font-size:9px;font-weight:700;font-family:var(--font-mono);cursor:pointer;letter-spacing:0.5px;text-transform:uppercase}
+
+/* Input */
+.input-area{padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-panel);flex-shrink:0}
+.input-row{display:flex;gap:8px}
+.input-area textarea{flex:1;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text-primary);font-size:13px;font-family:var(--font-ui);resize:none;outline:none;transition:all 0.2s}
+.input-area textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(118,185,0,0.08)}
+.input-area textarea::placeholder{color:var(--text-muted)}
+.send-btn{background:var(--green);color:#000;border:none;border-radius:8px;padding:10px 20px;font-weight:700;font-size:12px;font-family:var(--font-mono);cursor:pointer;transition:all 0.2s;white-space:nowrap;letter-spacing:0.5px;text-transform:uppercase}
+.send-btn:hover{background:#8cd600;box-shadow:0 4px 20px rgba(118,185,0,0.3);transform:translateY(-1px)}
+.send-btn:disabled{opacity:0.3;cursor:not-allowed;transform:none}
+
+/* Quick Actions */
+.quick-actions{padding:8px 16px;display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0;border-top:1px solid var(--border)}
+.quick-btn{background:none;border:1px solid var(--border);border-radius:4px;padding:4px 9px;color:var(--text-muted);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.2s;font-family:var(--font-ui)}
+.quick-btn:hover{border-color:var(--green);color:var(--green)}
+
+/* Footer */
+/* Location Bar */
+.location-bar{padding:8px 16px;border-top:1px solid var(--border);background:var(--bg-deep);display:flex;gap:6px;align-items:center;flex-shrink:0}
+.location-bar input{flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:5px 10px;color:var(--text-primary);font-size:11px;font-family:var(--font-ui);outline:none}
+.location-bar input:focus{border-color:var(--blue)}
+.location-bar input::placeholder{color:var(--text-muted)}
+.loc-btn{background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:5px 8px;color:var(--text-muted);font-size:10px;cursor:pointer;transition:all 0.2s;font-family:var(--font-mono);white-space:nowrap}
+.loc-btn:hover{border-color:var(--blue);color:var(--blue)}
+.loc-btn.active{border-color:#4fc3f7;color:#4fc3f7;background:rgba(79,195,247,0.08)}
+.loc-label{font-size:8px;font-weight:600;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase}
+
+/* Budget Picker */
+.budget-picker{margin-top:8px;padding:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;animation:stageIn 0.3s ease both}
+.budget-picker-label{font-size:10px;font-weight:600;font-family:var(--font-mono);color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
+.budget-options{display:flex;gap:6px;flex-wrap:wrap}
+.budget-btn{background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:8px 14px;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:var(--font-ui);flex:1;text-align:center;min-width:70px}
+.budget-btn:hover{border-color:var(--green);color:var(--green);background:rgba(118,185,0,0.06)}
+.budget-btn .budget-icon{font-size:16px;display:block;margin-bottom:2px}
+.budget-btn .budget-text{font-size:10px;color:var(--text-muted)}
+
+/* Directions Panel */
+.directions-panel{margin-top:10px;animation:stageIn 0.4s ease both}
+.dir-header{font-weight:600;font-size:14px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.dir-recommendation{color:var(--green);font-size:12px;line-height:1.5;margin-bottom:10px;padding:8px 10px;background:rgba(118,185,0,0.04);border-radius:6px;border-left:2px solid var(--green-dim)}
+.dir-metrocard{background:rgba(255,152,0,0.06);border:1px solid rgba(255,152,0,0.15);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px;cursor:pointer;transition:all 0.2s}
+.dir-metrocard:hover{border-color:var(--orange);transform:translateX(2px)}
+.dir-metrocard-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--orange);font-family:var(--font-mono);margin-bottom:4px}
+.dir-option{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px;margin:6px 0;cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden}
+.dir-option:hover{border-color:var(--green);transform:translateX(2px)}
+.dir-option.recommended{border-color:var(--green-dim)}
+.dir-option.recommended::after{content:'BEST';position:absolute;top:8px;right:8px;font-size:8px;font-weight:700;font-family:var(--font-mono);color:var(--green);background:rgba(118,185,0,0.1);padding:2px 6px;border-radius:3px;letter-spacing:0.5px}
+.dir-option-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.dir-mode-icon{font-size:20px}
+.dir-mode-label{font-weight:600;font-size:13px}
+.dir-stats{display:flex;gap:10px;font-size:11px;font-family:var(--font-mono);color:var(--text-secondary)}
+.dir-stat{display:flex;align-items:center;gap:3px}
+.dir-stat.time{color:var(--text-primary);font-weight:600}
+.dir-stat.cost-free{color:var(--green)}
+.dir-stat.cost-paid{color:var(--orange)}
+.dir-steps{margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.dir-step{display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-size:11.5px;color:var(--text-secondary)}
+.dir-step-icon{font-size:13px;width:20px;text-align:center;flex-shrink:0;margin-top:1px}
+.dir-step-text{flex:1;line-height:1.4}
+.dir-step-time{font-family:var(--font-mono);font-size:10px;color:var(--text-muted);flex-shrink:0}
+.dir-step.transit{color:var(--text-primary);font-weight:500}
+.dir-station-badge{display:inline-block;background:rgba(66,165,245,0.1);color:var(--blue);border:1px solid rgba(66,165,245,0.2);border-radius:3px;padding:1px 5px;font-size:9px;font-family:var(--font-mono);font-weight:600;margin-left:4px}
+
+.powered-footer{padding:8px 16px;border-top:1px solid var(--border);background:var(--bg-deep);display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap}
+.powered-label{font-size:8px;font-weight:600;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:1px;text-transform:uppercase;margin-right:2px}
+.powered-badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:600;font-family:var(--font-mono);background:rgba(118,185,0,0.06);color:rgba(118,185,0,0.6);border:1px solid rgba(118,185,0,0.1);transition:all 0.3s}
+.powered-badge:hover{color:var(--green);border-color:var(--green-dim);background:rgba(118,185,0,0.1)}
+
+/* Map */
+.map-container{position:relative;overflow:hidden;grid-column:2;grid-row:1}
+#map{width:100%;height:100vh}
+.map-overlay{position:absolute;z-index:10;background:rgba(12,12,20,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:8px}
+.status-pill{top:16px;right:16px;padding:7px 12px;font-size:11px;font-family:var(--font-mono);display:flex;align-items:center;gap:6px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green-glow);animation:dotPulse 2s infinite}
+@keyframes dotPulse{0%,100%{box-shadow:0 0 4px var(--green-glow)}50%{box-shadow:0 0 10px var(--green-glow)}}
+.legend{bottom:16px;right:16px;padding:10px 14px}
+.legend-title{font-size:9px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px}
+.legend-item{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-secondary);margin:3px 0}
+.legend-dot{width:8px;height:8px;border-radius:50%}
+.timing-bar{bottom:16px;left:16px;padding:6px 12px;font-size:10px;font-family:var(--font-mono);color:var(--text-muted);display:none}
+
+.filter-btn{background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--text-muted);font-size:11px;cursor:pointer;transition:all 0.2s;font-family:var(--font-ui)}
+.filter-btn:hover{border-color:var(--green);color:var(--text-secondary)}
+.filter-btn.active{border-color:var(--green);color:var(--green);background:rgba(118,185,0,0.08)}
+
+.loading{display:none;padding:20px;text-align:center}
+.loading.active{display:flex;align-items:center;justify-content:center;gap:10px}
+.spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:var(--text-muted);font-size:12px;font-family:var(--font-mono)}
+
+/* Guided */
+.guided-card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:6px;cursor:pointer;transition:all 0.25s cubic-bezier(0.22,1,0.36,1)}
+.guided-card:hover{border-color:var(--border-hover);transform:translateX(2px)}
+.guided-card.selected{border-color:var(--green);background:rgba(118,185,0,0.04)}
+.gc-icon{font-size:22px;margin-bottom:4px}.gc-title{font-weight:600;font-size:14px}.gc-desc{color:var(--text-muted);font-size:11.5px;margin-top:2px}
+.guided-label{color:var(--text-muted);font-size:10px;font-weight:600;font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase;display:block;margin-bottom:4px}
+.guided-select,.guided-input{width:100%;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text-primary);font-size:13px;font-family:var(--font-ui);outline:none}
+.guided-select:focus,.guided-input:focus{border-color:var(--green)}
+.guided-checkbox-group{display:flex;flex-wrap:wrap;gap:8px}
+.guided-checkbox-label{color:var(--text-secondary);font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer}
+
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+@media(max-width:480px){.app{grid-template-columns:1fr;grid-template-rows:1fr 40vh}.sidebar{border-right:none;border-bottom:1px solid var(--border)}}
+</style>
+</head>
+<body>
+<div class="app" style="display:grid;grid-template-columns:440px 1fr;height:100vh">
+  <div class="sidebar" style="grid-column:1;grid-row:1">
+    <div class="sidebar-header">
+      <h1>NYC Services Engine</h1>
+      <p class="subtitle">Social Services Intelligence &mdash; City-Scale Ops</p>
+      <div class="header-stats">
+        <div class="header-stat"><span id="statResources">--</span> resources</div>
+        <div class="header-stat"><span id="statEdges">--</span> graph edges</div>
+        <div class="header-stat"><span id="statLLM">...</span></div>
+      </div>
+    </div>
+
+    <!-- PHASE 0: Login / Case ID -->
+    <div id="phase-login" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:30px 24px;">
+      <div style="font-family:var(--font-display);font-size:24px;font-weight:300;color:var(--text-primary);text-align:center;margin-bottom:20px;animation:onbFadeIn 0.6s ease both">Welcome</div>
+
+      <div style="display:flex;flex-direction:column;gap:10px;animation:onbFadeIn 0.6s ease 0.15s both">
+        <div class="mood-card" onclick="document.getElementById('newUserForm').style.display='block';document.getElementById('returningForm').style.display='none'">
+          <div class="mood-icon" style="font-size:24px">&#128075;</div>
+          <div class="mood-text"><div class="mood-label">I'm new here</div><div class="mood-hint">Create a new profile to get started</div></div>
+        </div>
+        <div class="mood-card" onclick="document.getElementById('returningForm').style.display='block';document.getElementById('newUserForm').style.display='none'">
+          <div class="mood-icon" style="font-size:24px">&#128260;</div>
+          <div class="mood-text"><div class="mood-label">I've been here before</div><div class="mood-hint">Enter your case ID to continue</div></div>
+        </div>
+      </div>
+
+      <div id="newUserForm" style="display:none;margin-top:16px;animation:onbFadeIn 0.3s ease both">
+        <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Your name</div>
+        <input type="text" id="newNameInput" placeholder="e.g. Tina" style="width:100%;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-family:var(--font-ui);outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')doNewUser()">
+        <button class="send-btn" style="width:100%;padding:12px;font-size:13px" onclick="doNewUser()">Get Started</button>
+      </div>
+
+      <div id="returningForm" style="display:none;margin-top:16px;animation:onbFadeIn 0.3s ease both">
+        <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Your case ID</div>
+        <input type="text" id="loginInput" placeholder="e.g. tina-2024" style="width:100%;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;padding:12px 16px;color:var(--text-primary);font-size:14px;font-family:var(--font-ui);outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')doLogin()">
+        <button class="send-btn" style="width:100%;padding:12px;font-size:13px" onclick="doLogin()">Continue</button>
+      </div>
+
+      <div style="text-align:center;margin-top:16px;animation:onbFadeIn 0.6s ease 0.3s both">
+        <a href="#" onclick="skipLogin();return false;" style="color:var(--text-muted);font-size:11px;text-decoration:none;font-family:var(--font-mono);letter-spacing:0.5px">Use anonymously &rarr;</a>
+      </div>
+    </div>
+
+    <!-- PHASE 1: Borough Selection (hidden until login) -->
+    <div id="phase-borough" style="flex:1;display:none;flex-direction:column;overflow-y:auto;padding:20px;">
+      <div style="font-family:var(--font-display);font-size:22px;font-weight:300;color:var(--text-primary);text-align:center;margin-bottom:4px;animation:onbFadeIn 0.6s ease both">Where in NYC?</div>
+      <div style="font-size:12px;color:var(--text-secondary);text-align:center;margin-bottom:20px;animation:onbFadeIn 0.6s ease 0.1s both">Select your borough to browse resources</div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="mood-card" onclick="selectBorough('Manhattan','MN')" style="animation-delay:0.15s">
+          <div class="mood-icon">&#127961;&#65039;</div>
+          <div class="mood-text"><div class="mood-label">Manhattan</div><div class="mood-hint" id="count-MN">Loading...</div></div>
+        </div>
+        <div class="mood-card" onclick="selectBorough('Brooklyn','BK')" style="animation-delay:0.25s">
+          <div class="mood-icon">&#127753;</div>
+          <div class="mood-text"><div class="mood-label">Brooklyn</div><div class="mood-hint" id="count-BK">Loading...</div></div>
+        </div>
+        <div class="mood-card" onclick="selectBorough('Queens','QN')" style="animation-delay:0.35s">
+          <div class="mood-icon">&#9992;&#65039;</div>
+          <div class="mood-text"><div class="mood-label">Queens</div><div class="mood-hint" id="count-QN">Loading...</div></div>
+        </div>
+        <div class="mood-card" onclick="selectBorough('Bronx','BX')" style="animation-delay:0.45s">
+          <div class="mood-icon">&#127934;</div>
+          <div class="mood-text"><div class="mood-label">Bronx</div><div class="mood-hint" id="count-BX">Loading...</div></div>
+        </div>
+        <div class="mood-card" onclick="selectBorough('Staten Island','SI')" style="animation-delay:0.55s">
+          <div class="mood-icon">&#9972;&#65039;</div>
+          <div class="mood-text"><div class="mood-label">Staten Island</div><div class="mood-hint" id="count-SI">Loading...</div></div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:16px;animation:onbFadeIn 0.6s ease 0.65s both">
+        <a href="#" onclick="enterChat();return false;" style="color:var(--text-muted);font-size:11px;text-decoration:none;font-family:var(--font-mono);letter-spacing:0.5px">Skip &mdash; go to chat &rarr;</a>
+      </div>
+    </div>
+
+    <!-- PHASE 2: Chat Interface (hidden until borough selected or skip) -->
+    <div id="phase-chat" style="display:none;flex:1;flex-direction:column;overflow:hidden;">
+      <div class="tabs">
+        <div class="tab" onclick="backToBoroughs()" style="flex:0;padding:10px 14px;font-size:14px;cursor:pointer" title="Back to boroughs">&#8592;</div>
+        <div class="tab active" onclick="switchTab('chat')">Chat</div>
+        <div class="tab" onclick="switchTab('guided')">Guided Search</div>
+      </div>
+
+      <div class="tab-content active" id="tab-chat">
+        <div class="categories">
+          <button class="cat-btn" data-q="I need a shelter tonight"><span class="cat-icon">&#127968;</span> Shelter</button>
+          <button class="cat-btn" data-q="Where can I get free food near me?"><span class="cat-icon">&#127822;</span> Food</button>
+          <button class="cat-btn" data-q="I need to see a doctor, no insurance"><span class="cat-icon">&#127973;</span> Healthcare</button>
+          <button class="cat-btn" data-q="How do I apply for SNAP and Medicaid?"><span class="cat-icon">&#128203;</span> Benefits</button>
+          <button class="cat-btn" data-q="I don't feel safe at home, I have a child"><span class="cat-icon">&#128737;&#65039;</span> Safety</button>
+          <button class="cat-btn" data-q="I just arrived in NYC and need help"><span class="cat-icon">&#127758;</span> New to NYC</button>
+        </div>
+        <div class="chat-area" id="chat"></div>
+        <div class="loading" id="loading"><div class="spinner"></div><span class="loading-text">Analyzing your situation...</span></div>
+        <div class="quick-actions" id="quickActions">
+          <button class="quick-btn" data-q="I'm Tina, 4 kids, income $28K, losing housing in Flatbush next week">Family losing housing</button>
+          <button class="quick-btn" data-q="Someone broke into my apartment. I have a 6 year old. I don't feel safe.">Crime victim</button>
+          <button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button>
+          <button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>
+        </div>
+        <div class="input-area">
+          <div style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px">Ask anything about NYC services</div>
+          <div class="input-row">
+            <textarea id="queryInput" rows="3" placeholder="Describe your situation..."></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendQuery()" style="padding:12px 24px;font-size:13px">Send</button>
+          </div>
+        </div>
+      </div>
+
+    <div class="tab-content" id="tab-guided">
+      <div style="padding:16px;flex:1;overflow-y:auto;">
+        <div style="font-family:var(--font-mono);color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Select a need</div>
+        <div id="guidedOptions">
+          <div class="guided-card" onclick="guidedSelect('housing')"><div class="gc-icon">&#127968;</div><div class="gc-title">Housing & Shelter</div><div class="gc-desc">Emergency shelter, transitional housing, NYCHA</div></div>
+          <div class="guided-card" onclick="guidedSelect('food')"><div class="gc-icon">&#127822;</div><div class="gc-title">Food & Meals</div><div class="gc-desc">Food pantries, soup kitchens, SNAP</div></div>
+          <div class="guided-card" onclick="guidedSelect('health')"><div class="gc-icon">&#127973;</div><div class="gc-title">Healthcare</div><div class="gc-desc">Hospitals, clinics, mental health, Medicaid</div></div>
+          <div class="guided-card" onclick="guidedSelect('safety')"><div class="gc-icon">&#128737;&#65039;</div><div class="gc-title">Safety & DV</div><div class="gc-desc">Domestic violence, crime victim services</div></div>
+          <div class="guided-card" onclick="guidedSelect('benefits')"><div class="gc-icon">&#128203;</div><div class="gc-title">Benefits & Aid</div><div class="gc-desc">SNAP, Medicaid, cash assistance, WIC</div></div>
+          <div class="guided-card" onclick="guidedSelect('children')"><div class="gc-icon">&#128118;</div><div class="gc-title">Children & Schools</div><div class="gc-desc">Childcare, schools, after-school programs</div></div>
+        </div>
+        <div id="guidedForm" style="display:none;margin-top:14px;">
+          <div style="font-family:var(--font-mono);color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Tell us more</div>
+          <div style="margin-bottom:10px;"><label class="guided-label">Borough</label><select id="guidedBorough" class="guided-select"><option value="">Any borough</option><option value="Brooklyn">Brooklyn</option><option value="Manhattan">Manhattan</option><option value="Queens">Queens</option><option value="Bronx">Bronx</option><option value="Staten Island">Staten Island</option></select></div>
+          <div style="margin-bottom:10px;"><label class="guided-label">Household Size</label><input id="guidedHousehold" type="number" value="1" min="1" max="20" class="guided-input"></div>
+          <div style="margin-bottom:10px;"><label class="guided-label">Special Needs</label><div class="guided-checkbox-group"><label class="guided-checkbox-label"><input type="checkbox" id="guidedADA"> Wheelchair accessible</label><label class="guided-checkbox-label"><input type="checkbox" id="guidedChildren"> Have children</label><label class="guided-checkbox-label"><input type="checkbox" id="guidedUrgent"> Urgent / tonight</label></div></div>
+          <div style="margin-bottom:10px;"><label class="guided-label">Language</label><select id="guidedLanguage" class="guided-select"><option value="">English</option><option value="Spanish">Spanish</option><option value="Mandarin">Mandarin</option><option value="Haitian Creole">Haitian Creole</option><option value="Russian">Russian</option><option value="Arabic">Arabic</option><option value="Bengali">Bengali</option></select></div>
+          <button class="send-btn" style="width:100%;margin-top:8px;" onclick="sendGuidedQuery()">Find Resources</button>
+        </div>
+      </div>
+    </div>
+    </div><!-- close phase-chat -->
+
+    <div class="location-bar">
+      <span class="loc-label">&#128205;</span>
+      <input type="text" id="locationInput" placeholder="Enter your address..." onkeydown="if(event.key==='Enter')setManualLocation()">
+      <button class="loc-btn" onclick="setManualLocation()">Set</button>
+      <button class="loc-btn" id="gpsBtn" onclick="getUserLocation()">&#128225; GPS</button>
+    </div>
+    <div class="powered-footer">
+      <span class="powered-label">Powered by</span>
+      <span class="powered-badge">Nemotron</span>
+      <span class="powered-badge">cuDF</span>
+      <span class="powered-badge">cuGraph</span>
+      <span class="powered-badge">cuOpt</span>
+      <span class="powered-badge">RAPIDS</span>
+      <span class="powered-badge">PyKEEN</span>
+    </div>
+  </div>
+
+  <div class="map-container" style="grid-column:2;grid-row:1;height:100vh">
+    <div id="map"></div>
+    <div class="map-overlay status-pill" id="status"><span class="dot"></span><span id="statusText">Connecting...</span></div>
+    <div class="map-overlay legend">
+      <div class="legend-title">Resource Types</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--green);"></span> Shelters</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--orange);"></span> Food</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--red);"></span> Hospitals</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--blue);"></span> Schools</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--purple);"></span> Benefits</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--coral);"></span> DV Services</div>
+    </div>
+    <div class="map-overlay timing-bar" id="timing"></div>
+    <div class="map-overlay" id="backBtn" style="top:16px;left:60px;padding:7px 14px;font-size:11px;font-family:var(--font-mono);cursor:pointer;display:none;transition:all 0.2s" onclick="showBoroughView()">&#8592; All Boroughs</div>
+    <div class="map-overlay" id="filterBar" style="top:56px;left:16px;padding:8px 10px;display:none;flex-wrap:wrap;gap:4px;max-width:320px">
+      <button class="filter-btn active" data-type="all" onclick="toggleFilter('all')">All</button>
+      <button class="filter-btn active" data-type="shelter" onclick="toggleFilter('shelter')">&#127968; Shelter</button>
+      <button class="filter-btn active" data-type="food_bank" onclick="toggleFilter('food_bank')">&#127822; Food</button>
+      <button class="filter-btn active" data-type="hospital" onclick="toggleFilter('hospital')">&#127973; Hospital</button>
+      <button class="filter-btn active" data-type="clinic" onclick="toggleFilter('clinic')">&#129658; Clinic</button>
+      <button class="filter-btn active" data-type="school" onclick="toggleFilter('school')">&#128218; School</button>
+      <button class="filter-btn active" data-type="childcare" onclick="toggleFilter('childcare')">&#128118; Childcare</button>
+      <button class="filter-btn active" data-type="youth_services" onclick="toggleFilter('youth_services')">&#127934; Youth</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let guidedNeed='',lastQuery='',isEmergency=false,lastResources=[],opsMode=false,pulseAnimId=null,arcAnimId=null;
+const EMERGENCY_KEYWORDS=['emergency','urgent','tonight','right now','immediately','cold emergency','hit capacity','outside','don\'t feel safe','not safe','broke in','domestic violence','dv','fleeing','danger','crisis','15 degrees','freezing','hypothermia','overdose'];
+const TYPE_COLORS={shelter:[118,185,0],food_bank:[255,183,77],hospital:[239,83,80],clinic:[239,120,120],school:[66,165,245],childcare:[129,199,132],youth_services:[255,213,79],community_center:[90,140,180],senior_services:[77,182,172],library:[180,140,200],emergency_services:[255,80,80],education:[100,180,255],legal_aid:[200,170,120],benefits_center:[171,71,188],domestic_violence:[255,112,67],transit_station:[60,60,70],mental_health:[149,117,205],dropin_center:[77,182,172]};
+const BOROUGH_CENTERS={MN:[-73.97,40.78],BK:[-73.95,40.65],QN:[-73.79,40.73],BX:[-73.87,40.85],SI:[-74.15,40.58],Manhattan:[-73.97,40.78],Brooklyn:[-73.95,40.65],Queens:[-73.79,40.73],Bronx:[-73.87,40.85],'Staten Island':[-74.15,40.58]};
+const NYC=[-73.98,40.74];
+
+function detectEmergency(q){return EMERGENCY_KEYWORDS.some(kw=>q.toLowerCase().includes(kw))}
+function getMatchReason(r){
+  const p=[];
+  if(r.need)r.need.split('+').forEach(n=>p.push(n.trim().replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())));
+  if(!p.length&&r.type)p.push(r.type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()));
+  return p.join(' + ');
+}
+
+// Counter animation
+function animateCounter(el,target,dur=1500){
+  const start=performance.now();
+  function tick(now){
+    const t=Math.min((now-start)/dur,1),ease=1-Math.pow(1-t,4);
+    el.textContent=Math.round(target*ease).toLocaleString();
+    if(t<1)requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+let selectedBoroughName='';
+let currentCaseId=null;
+let currentUserName='';
+
+async function doNewUser(){
+  const input=document.getElementById('newNameInput');
+  const val=input.value.trim();
+  if(!val)return;
+  currentCaseId=val.toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-')+'-'+Date.now().toString(36).slice(-4);
+  currentUserName=val;
+  try{
+    await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,name:val})});
+  }catch(e){}
+  document.getElementById('phase-login').style.display='none';
+  document.getElementById('phase-borough').style.display='flex';
+  window._welcomeMsg=`Welcome, ${val}! Your case ID is <b>${currentCaseId}</b> — save it to continue later.`;
+}
+
+async function doLogin(){
+  const input=document.getElementById('loginInput');
+  const val=input.value.trim();
+  if(!val)return;
+  // Generate a case_id from the name
+  currentCaseId=val.toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-');
+  currentUserName=val;
+  try{
+    const resp=await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,name:val})});
+    const data=await resp.json();
+    // Move to borough selection
+    document.getElementById('phase-login').style.display='none';
+    document.getElementById('phase-borough').style.display='flex';
+    // If returning user, store welcome message for after borough selection
+    if(data.returning && data.summary){
+      window._welcomeMsg=`Welcome back, ${val}. ${data.summary}`;
+    } else {
+      window._welcomeMsg=`Welcome, ${val}. Select your borough, then tell me what's going on.`;
+    }
+  }catch(e){
+    // If case API not available, just proceed
+    document.getElementById('phase-login').style.display='none';
+    document.getElementById('phase-borough').style.display='flex';
+    window._welcomeMsg=`Welcome, ${val}.`;
+  }
+}
+
+function skipLogin(){
+  currentCaseId=null;
+  currentUserName='';
+  document.getElementById('phase-login').style.display='none';
+  document.getElementById('phase-borough').style.display='flex';
+}
+
+function selectBorough(name, abbr){
+  selectedBoroughName=name;
+  // Zoom map to borough
+  const boro=BOROUGHS.find(b=>b.abbr===abbr);
+  if(boro) zoomToBorough(boro);
+  enterChat();
+  if(window._welcomeMsg){addMsg(window._welcomeMsg,'system');window._welcomeMsg=null;}
+  addMsg(`Browsing <b>${name}</b> — ${(boroughCounts[abbr]||0).toLocaleString()} resources. Use the filters on the map to explore, or ask me anything below.`,'system');
+}
+
+function enterChat(){
+  document.getElementById('phase-borough').style.display='none';
+  const chat=document.getElementById('phase-chat');
+  chat.style.display='flex';
+}
+
+function backToBoroughs(){
+  document.getElementById('phase-chat').style.display='none';
+  document.getElementById('phase-borough').style.display='flex';
+  showBoroughView();
+  // Clear chat
+  document.getElementById('chat').innerHTML='';
+}
+
+function moodSelect(query){enterChat();document.getElementById('queryInput').value=query;sendQuery();}
+function moodSelectOps(){
+  opsMode=true;enterChat();
+  const qa=document.getElementById('quickActions');
+  qa.innerHTML='<button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button><button class="quick-btn" data-q="Which neighborhoods are more than 30 minutes from the nearest shelter?">Resource gaps</button><button class="quick-btn" data-q="What if we add 500 shelter beds in the Bronx?">Capacity sim</button><button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>';
+  qa.querySelectorAll('.quick-btn').forEach(b=>b.addEventListener('click',()=>{document.getElementById('queryInput').value=b.dataset.q;sendQuery();}));
+}
+
+// Tabs
+function switchTab(tab){
+  document.querySelectorAll('#phase-chat .tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelector(`.tab-content#tab-${tab}`).classList.add('active');
+  // tabs: [back, chat, guided] → index 1=chat, 2=guided
+  document.querySelectorAll('#phase-chat .tab')[tab==='chat'?1:2].classList.add('active');
+}
+
+// Guided
+function guidedSelect(need){guidedNeed=need;document.querySelectorAll('.guided-card').forEach(c=>c.classList.remove('selected'));event.currentTarget.classList.add('selected');document.getElementById('guidedForm').style.display='block'}
+function sendGuidedQuery(){
+  const b=document.getElementById('guidedBorough').value,h=document.getElementById('guidedHousehold').value,ada=document.getElementById('guidedADA').checked,ch=document.getElementById('guidedChildren').checked,urg=document.getElementById('guidedUrgent').checked,lang=document.getElementById('guidedLanguage').value;
+  const nm={housing:'emergency shelter and housing assistance',food:'food — a food pantry or soup kitchen',health:'medical care at a hospital or clinic',safety:'help with a domestic violence or safety situation',benefits:'benefits enrollment — SNAP, Medicaid, and cash assistance',children:'childcare and schools for my children'};
+  const p=[];
+  if(h>1){p.push(`I have a family of ${h}${ch?' with children':''}`);p.push(`and we need ${nm[guidedNeed]||'help'}`);}else p.push(`I need ${nm[guidedNeed]||'help'}`);
+  if(b)p.push(`in ${b}`);if(ada)p.push('I need wheelchair accessible facilities');if(lang)p.push(`We speak ${lang}`);if(urg)p.push('This is urgent — we need help tonight');
+  switchTab('chat');document.getElementById('queryInput').value=p.join('. ')+'.';sendQuery();
+}
+
+// Map — start zoomed out to show all boroughs
+const map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:10.3,pitch:30,bearing:-10});
+map.addControl(new maplibregl.NavigationControl(),'top-left');
+// Force resize after load to fix blank map
+map.on('load',()=>{map.resize();});
+let deckOverlay=null,allResources=[];
+let zoomedBorough=null; // track which borough is zoomed
+
+// Emoji icons per resource type
+const TYPE_EMOJI={shelter:'🏠',food_bank:'🍎',hospital:'🏥',clinic:'🩺',school:'📚',community_center:'🏛',childcare:'👶',youth_services:'🎾',senior_services:'👴',library:'📖',emergency_services:'🚨',education:'🎓',legal_aid:'⚖️',benefits_center:'📋',domestic_violence:'🛡',transit_station:'🚇',mental_health:'💜',dropin_center:'☕',police_precinct:'👮'};
+
+// Borough data for landing labels
+const BOROUGHS=[
+  {name:'Manhattan',abbr:'MN',center:[-73.97,40.78],zoom:13},
+  {name:'Brooklyn',abbr:'BK',center:[-73.95,40.65],zoom:12.5},
+  {name:'Queens',abbr:'QN',center:[-73.79,40.73],zoom:12},
+  {name:'Bronx',abbr:'BX',center:[-73.87,40.85],zoom:12.5},
+  {name:'Staten Island',abbr:'SI',center:[-74.15,40.58],zoom:12.5},
+];
+
+// Resource counts per borough (computed after load)
+let boroughCounts={};
+
+fetch('/api/resources').then(r=>r.json()).then(d=>{
+  allResources=d;
+  for(const r of d){
+    const b=r.borough||'';
+    boroughCounts[b]=(boroughCounts[b]||0)+1;
+  }
+  // Update borough count labels
+  for(const b of BOROUGHS){
+    const el=document.getElementById('count-'+b.abbr);
+    if(el) el.textContent=`${(boroughCounts[b.abbr]||0).toLocaleString()} resources`;
+  }
+  showBoroughView();
+}).catch(()=>{});
+
+fetch('/api/status').then(r=>r.json()).then(d=>{
+  const c=d.resources||0,e=d.edges||0;
+  document.getElementById('statusText').textContent=`${c.toLocaleString()} resources | ${d.llm||'...'}`;
+  animateCounter(document.getElementById('statResources'),c);
+  animateCounter(document.getElementById('statEdges'),e);
+  document.getElementById('statLLM').textContent=d.llm||'...';
+}).catch(()=>{document.getElementById('statusText').textContent='Offline'});
+
+function showBoroughView(){
+  // Show borough labels + dim background dots
+  zoomedBorough=null;
+  document.getElementById('backBtn').style.display='none';
+  document.getElementById('filterBar').style.display='none';
+  const bgData=(allResources||[]).filter(r=>r.latitude&&r.longitude);
+  const boroughData=BOROUGHS.map(b=>({...b,count:boroughCounts[b.abbr]||0}));
+
+  const layers=[
+    // Dim background dots
+    new deck.ScatterplotLayer({id:'bg',data:bgData,getPosition:d=>[d.longitude,d.latitude],getRadius:30,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),20],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
+    // Borough labels
+    new deck.TextLayer({id:'borough-labels',data:boroughData,getPosition:d=>d.center,getText:d=>`${d.name}\n${(d.count||0).toLocaleString()} resources`,getSize:18,getColor:[230,230,240,200],getTextAnchor:'middle',getAlignmentBaseline:'center',fontFamily:'DM Sans',fontWeight:'600',pickable:true,onClick:({object})=>{if(object)zoomToBorough(object)},sizeMinPixels:14,sizeMaxPixels:22,background:true,getBackgroundColor:[6,6,11,180],backgroundPadding:[8,4]}),
+  ];
+  if(deckOverlay)deckOverlay.setProps({layers});else{deckOverlay=new deck.MapboxOverlay({layers});map.addControl(deckOverlay)}
+  map.flyTo({center:NYC,zoom:10.3,pitch:30,bearing:-10,duration:1200});
+}
+
+// All actual resource types from the data
+let activeFilters=new Set(['shelter','food_bank','hospital','clinic','school','community_center','childcare','youth_services','senior_services','library','emergency_services','education','legal_aid']);
+
+function toggleFilter(type){
+  if(type==='all'){
+    // Toggle all on/off
+    const allBtn=document.querySelector('.filter-btn[data-type="all"]');
+    const allActive=allBtn.classList.contains('active');
+    document.querySelectorAll('.filter-btn').forEach(b=>{
+      if(allActive)b.classList.remove('active'); else b.classList.add('active');
+    });
+    if(allActive)activeFilters.clear();
+    else activeFilters=new Set(['shelter','food_bank','hospital','clinic','school','community_center','childcare','youth_services','senior_services','library','emergency_services','education','legal_aid']);
+  } else {
+    const btn=document.querySelector(`.filter-btn[data-type="${type}"]`);
+    if(activeFilters.has(type)){activeFilters.delete(type);btn.classList.remove('active');}
+    else{activeFilters.add(type);btn.classList.add('active');}
+    // Update "All" button state
+    const allBtn=document.querySelector('.filter-btn[data-type="all"]');
+    if(activeFilters.size>=6)allBtn.classList.add('active');else allBtn.classList.remove('active');
+  }
+  if(zoomedBorough)refreshBoroughIcons();
+}
+
+// Pre-render emoji to canvas → data URL for IconLayer
+const _emojiIconCache={};
+function getEmojiIcon(emoji){
+  if(_emojiIconCache[emoji]) return _emojiIconCache[emoji];
+  const size=64;
+  const canvas=document.createElement('canvas');
+  canvas.width=size; canvas.height=size;
+  const ctx=canvas.getContext('2d');
+  ctx.font=`${size*0.7}px serif`;
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(emoji, size/2, size/2);
+  _emojiIconCache[emoji]=canvas.toDataURL();
+  return _emojiIconCache[emoji];
+}
+
+// Build icon mapping for IconLayer
+const ICON_MAPPING={};
+const ICON_ATLAS_ENTRIES=Object.entries(TYPE_EMOJI);
+// Pre-render all emoji icons on load
+const _iconAtlasCanvas=document.createElement('canvas');
+const _iconSize=64;
+_iconAtlasCanvas.width=_iconSize*ICON_ATLAS_ENTRIES.length;
+_iconAtlasCanvas.height=_iconSize;
+const _ictx=_iconAtlasCanvas.getContext('2d');
+_ictx.font=`${_iconSize*0.65}px serif`;
+_ictx.textAlign='center';
+_ictx.textBaseline='middle';
+ICON_ATLAS_ENTRIES.forEach(([type,emoji],i)=>{
+  _ictx.fillText(emoji, i*_iconSize+_iconSize/2, _iconSize/2);
+  ICON_MAPPING[type]={x:i*_iconSize, y:0, width:_iconSize, height:_iconSize, anchorY:_iconSize/2};
+});
+const ICON_ATLAS_URL=_iconAtlasCanvas.toDataURL();
+
+function refreshBoroughIcons(){
+  const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===zoomedBorough&&activeFilters.has(r.resource_type));
+  const layers=[
+    // Emoji icons via IconLayer
+    new deck.IconLayer({id:'icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],iconAtlas:ICON_ATLAS_URL,iconMapping:ICON_MAPPING,getIcon:d=>ICON_MAPPING[d.resource_type]?d.resource_type:'shelter',getSize:32,sizeMinPixels:18,sizeMaxPixels:40,pickable:true,onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
+    // Dim dots for other boroughs
+    new deck.ScatterplotLayer({id:'bg-other',data:allResources.filter(r=>r.latitude&&r.longitude&&r.borough!==zoomedBorough),getPosition:d=>[d.longitude,d.latitude],getRadius:20,getFillColor:[80,80,80,15],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
+  ];
+  if(deckOverlay)deckOverlay.setProps({layers});
+}
+
+function zoomToBorough(borough){
+  zoomedBorough=borough.abbr||borough.name;
+  document.getElementById('backBtn').style.display='block';
+  document.getElementById('filterBar').style.display='flex';
+  refreshBoroughIcons();
+  map.flyTo({center:borough.center,zoom:borough.zoom||13,pitch:45,duration:1500});
+}
+
+function updateMap(bg,results=[],showArcs=false){
+  const rNames=new Set(results.map(r=>r.name));
+  const bgF=(bg||[]).filter(r=>r.latitude&&r.longitude&&!rNames.has(r.name));
+  const fg=results.filter(r=>r.lat&&r.lon);
+  if(pulseAnimId){cancelAnimationFrame(pulseAnimId);pulseAnimId=null}
+  if(arcAnimId){cancelAnimationFrame(arcAnimId);arcAnimId=null}
+
+  // When showing results, use emoji icons for results + dim dots for bg
+  const layers=[
+    new deck.ScatterplotLayer({id:'bg',data:bgF,getPosition:d=>[d.longitude,d.latitude],getRadius:25,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),30],radiusMinPixels:1.5,radiusMaxPixels:5,pickable:true,onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${object.resource_type})`:''}}),
+    new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2}),
+  ];
+  if(deckOverlay)deckOverlay.setProps({layers});else{deckOverlay=new deck.MapboxOverlay({layers});map.addControl(deckOverlay)}
+  if(fg.length>0){
+    const aLat=fg.reduce((s,d)=>s+d.lat,0)/fg.length,aLon=fg.reduce((s,d)=>s+d.lon,0)/fg.length;
+    map.flyTo({center:[aLon,aLat],zoom:13,pitch:50,duration:1500});
+    startPulse(fg);
+    if(showArcs)startArcs(fg);
+  }
+}
+
+function startPulse(fg){
+  const t0=performance.now();
+  function tick(now){
+    const elapsed=(now-t0)/1000,scale=1+0.4*Math.sin(elapsed*2.5),opacity=0.3+0.15*Math.sin(elapsed*2.5);
+    const bgData=(allResources||[]).filter(r=>r.latitude&&r.longitude);
+    const layers=[
+      new deck.ScatterplotLayer({id:'bg',data:bgData,getPosition:d=>[d.longitude,d.latitude],getRadius:25,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),30],radiusMinPixels:1.5,radiusMaxPixels:5,pickable:false}),
+      new deck.ScatterplotLayer({id:'pulse',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:200*scale,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),Math.round(opacity*255)],radiusMinPixels:12,radiusMaxPixels:35,pickable:false}),
+      new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2}),
+    ];
+    if(deckOverlay)deckOverlay.setProps({layers});
+    pulseAnimId=requestAnimationFrame(tick);
+  }
+  pulseAnimId=requestAnimationFrame(tick);
+}
+
+function startArcs(fg){
+  const src=BOROUGH_CENTERS[fg[0]?.borough]||NYC;
+  const arcData=fg.map(d=>({source:src,target:[d.lon,d.lat],color:TYPE_COLORS[d.type]||[118,185,0]}));
+  const t0=performance.now(),dur=2000;
+  function tick(now){
+    const t=Math.min((now-t0)/dur,1),ease=1-Math.pow(1-t,3),tilt=90*(1-ease);
+    const cur=deckOverlay?._props?.layers||[];
+    const base=cur.filter(l=>l.id!=='arcs');
+    const arcLayer=new deck.ArcLayer({id:'arcs',data:arcData,getSourcePosition:d=>d.source,getTargetPosition:d=>d.target,getSourceColor:d=>[...d.color,Math.round(180*ease)],getTargetColor:d=>[...d.color,Math.round(220*ease)],getWidth:2,getTilt:tilt,greatCircle:false});
+    if(deckOverlay)deckOverlay.setProps({layers:[...base,arcLayer]});
+    if(t<1)arcAnimId=requestAnimationFrame(tick);
+    else setTimeout(()=>{if(deckOverlay){const l=(deckOverlay._props?.layers||[]).filter(x=>x.id!=='arcs');deckOverlay.setProps({layers:l})}},3000);
+  }
+  arcAnimId=requestAnimationFrame(tick);
+}
+
+// Chat
+function addMsg(html,role,staged=false){
+  const chat=document.getElementById('chat'),div=document.createElement('div');
+  div.className=`msg ${role}${staged?' staged':''}`;div.innerHTML=html;
+  chat.appendChild(div);chat.scrollTop=chat.scrollHeight;return div;
+}
+function showTyping(){
+  const chat=document.getElementById('chat'),div=document.createElement('div');
+  div.className='typing-indicator';div.id='typingIndicator';
+  div.innerHTML='<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+  chat.appendChild(div);chat.scrollTop=chat.scrollHeight;
+}
+function hideTyping(){const el=document.getElementById('typingIndicator');if(el)el.remove()}
+
+function makeCards(resources,emergency){
+  if(!resources||!resources.length)return '';
+  let html='';
+  if(emergency)html+='<div class="urgency-banner">Emergency &mdash; Priority resources shown first</div>';
+  html+='<div class="results-grid">';
+  for(const r of resources){
+    const sp=r.safety?Math.round(r.safety*100):null,sc=sp>=70?'high':sp>=40?'med':'low';
+    const mr=getMatchReason(r),ec=emergency?' emergency':'';
+    const en=(r.name||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+    const dist=r.distance_miles?`<div class="rc-distance"><span>${r.distance_miles} mi</span>${r.walk_min?` &middot; ~${r.walk_min} min walk`:''}</div>`:'';
+    const addr=r.address||'Address not listed';
+    const dirUrl=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr+', New York, NY')}`;
+    html+=`<div class="resource-card type-${r.type||'shelter'}${ec}" onclick="flyTo(${r.lat},${r.lon})">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="rc-name">${r.name||'Unknown'}</div>${emergency?'<span class="rc-urgency">Urgent</span>':''}</div>
+      <div class="rc-addr">${addr}</div>${dist}
+      ${mr?`<div class="rc-match"><div class="rc-match-label">Why this matches</div><div class="rc-match-text">${mr}</div></div>`:''}
+      <div class="rc-tags"><span class="rc-tag type">${(r.type||'').replace(/_/g,' ')}</span>${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}${sp!==null?`<span class="rc-tag safety ${sc}">Safety ${sp}%</span>`:''}</div>
+      <div class="rc-actions"><span class="rc-action directions" onclick="event.stopPropagation();getDirections(${r.lat},${r.lon},'${en}')">Directions</span><span class="rc-action" onclick="event.stopPropagation();flyTo(${r.lat},${r.lon})">Map</span><span class="rc-action" onclick="event.stopPropagation();reportIssue('${en}')">Report Issue</span></div>
+    </div>`;
+  }
+  return html+'</div>';
+}
+
+function makeVerifyHtml(v){
+  if(!v)return '<div class="verify-banner skipped">&#9889; Fast Mode &mdash; Verification skipped</div>';
+  const conf=v.confidence||'LOW',claims=v.claims||[],vC=v.verified_count||0,tC=v.total_count||0;
+  let cls,label;
+  if(!v.verified){cls='low';label='&#9888;&#65039; Needs Review &mdash; Some claims may exceed evidence';}
+  else if(conf==='HIGH'){cls='high';label=`&#9989; Verified &mdash; High confidence (${vC}/${tC})`;}
+  else{cls='medium';label=`&#9989; Verified &mdash; Medium confidence (${vC}/${tC})`;}
+  let html=`<div class="verify-banner ${cls}">${label}</div>`;
+  if(claims.length){const id='cl-'+Date.now();html+=`<div class="claims-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">&#9660; ${tC} claims checked</div><div class="claims-list" id="${id}">`;for(const c of claims)html+=`<div class="claim-item ${c.verdict==='VERIFIED'?'verified':'unverified'}">${c.verdict==='VERIFIED'?'&#9989;':'&#9888;&#65039;'} ${c.claim}</div>`;html+='</div>';}
+  return html;
+}
+function makeReasoningHtml(r,s){
+  if(!r||!r.length)return '';
+  const id='rp-'+Date.now();
+  let html=`<div class="reasoning-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">&#129504; Reasoning path (${r.length} hops)</div><div class="reasoning-panel" id="${id}">`;
+  if(s)html+=`<div class="reasoning-summary">${s}</div>`;
+  for(const h of r){const c=h.cumulative||0;html+=`<div class="reasoning-hop">${c>=0.7?'&#128994;':c>=0.5?'&#128993;':'&#128308;'} Hop ${h.hop||'?'}: ${h.fact||''} <span style="opacity:0.6">(${c})</span></div>`;}
+  return html+'</div>';
+}
+function makeClarifyHtml(q){if(!q)return '';return `<div class="clarify-box"><div class="clarify-label">Follow-up question</div><div class="clarify-question">${q}</div><div class="clarify-row"><input class="clarify-input" type="text" placeholder="Type your answer..." onkeydown="if(event.key==='Enter')sendClarify(this,'${encodeURIComponent(q)}')"><button class="clarify-send" onclick="sendClarify(this.previousElementSibling,'${encodeURIComponent(q)}')">Answer</button></div></div>`;}
+function makeFeedbackHtml(){return '<div class="feedback-bar"><input type="text" placeholder="Report issue: e.g. \'Shelter at 66 Boerum is full\'" onkeydown="if(event.key===\'Enter\')sendFeedback(this)"><button class="feedback-send" onclick="sendFeedback(this.previousElementSibling)">Report</button></div>';}
+function makeFollowupHtml(){return '<div class="followup-prompt"><input type="text" placeholder="Tell me more about your situation..." onkeydown="if(event.key===\'Enter\')sendFollowup(this)"><button class="followup-send" onclick="sendFollowup(this.previousElementSibling)">Send</button></div>';}
+
+// Actions
+async function sendClarify(input,encQ){
+  const ans=input.value.trim();if(!ans)return;addMsg(ans,'user');input.closest('.clarify-box').remove();
+  document.getElementById('sendBtn').disabled=true;showTyping();
+  try{const resp=await fetch('/api/clarify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({original_query:lastQuery,question:decodeURIComponent(encQ),answer:ans})});hideTyping();handleResponse(await resp.json());}
+  catch(err){hideTyping();addMsg(`Error: ${err.message}`,'system');}
+  document.getElementById('sendBtn').disabled=false;
+}
+function sendFollowup(input){const t=input.value.trim();if(!t)return;document.getElementById('queryInput').value=t;input.value='';sendQuery();}
+async function sendFeedback(input){
+  const text=input.value.trim();if(!text)return;input.value='';
+  let matched='';for(const r of lastResources)if(text.toLowerCase().includes((r.name||'').toLowerCase().slice(0,15))){matched=r.name;break;}
+  if(matched){await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_name:matched,issue:text,detail:text})});addMsg(`Noted &mdash; <b>${matched}</b> excluded. Searching alternatives...`,'assistant');document.getElementById('queryInput').value=lastQuery;sendQuery();}
+  else addMsg(`Couldn't identify which resource. Try mentioning the name.`,'system');
+}
+function flyTo(lat,lon){if(lat&&lon)map.flyTo({center:[lon,lat],zoom:15,pitch:55,duration:1000})}
+function reportIssue(name){
+  const issue=prompt(`What's wrong with ${name}?\n(e.g. "full", "closed", "wrong address")`);
+  if(issue){fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_name:name,issue:issue,detail:issue})});addMsg(`Noted &mdash; <b>${name}</b> excluded. Searching alternatives...`,'assistant');document.getElementById('queryInput').value=lastQuery;sendQuery();}
+}
+
+function handleResponse(data){
+  let html=`<div class="answer-text">${(data.answer||'No response').replace(/\n/g,'<br>')}</div>`;
+  html+=makeVerifyHtml(data.verification);
+  html+=makeReasoningHtml(data.reasoning,data.reasoning_summary);
+  if(data.resources&&data.resources.length>0){lastResources=data.resources;html+=makeCards(data.resources,isEmergency);}
+  html+=makeFeedbackHtml();
+  html+=data.clarify_question?makeClarifyHtml(data.clarify_question):makeFollowupHtml();
+  addMsg(html,'assistant',true);
+  if(data.resources&&data.resources.length>0)updateMap(allResources,data.resources,true);
+  if(data.timing){const t=data.timing,el=document.getElementById('timing');let s=`${t.total}s total | Plan ${t.plan}s | Exec ${t.execute}s | Synth ${t.synth}s`;if(t.verify)s+=` | Verify ${t.verify}s`;s+=` | ${data.llm||''}`;el.textContent=s;el.style.display='block';}
+}
+
+async function sendQuery(){
+  const input=document.getElementById('queryInput'),q=input.value.trim();if(!q)return;
+  lastQuery=q;isEmergency=detectEmergency(q);addMsg(q,'user');input.value='';
+  showTyping();document.getElementById('sendBtn').disabled=true;
+  try{const resp=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,demo_mode:false,case_id:currentCaseId})});hideTyping();handleResponse(await resp.json());}
+  catch(err){hideTyping();addMsg(`Connection error: ${err.message}. Is the backend running?`,'system');}
+  document.getElementById('sendBtn').disabled=false;
+}
+
+document.getElementById('queryInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendQuery();}});
+document.querySelectorAll('.cat-btn,.quick-btn').forEach(b=>b.addEventListener('click',()=>{document.getElementById('queryInput').value=b.dataset.q;sendQuery();}));
+
+// ── Geolocation + Directions ────────────────────────────────────────────────
+let userLocation = null;
+let userMarker = null;
+
+function getUserLocation() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
+      if (userMarker) userMarker.remove();
+      const el = document.createElement('div');
+      el.style.cssText = 'width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;';
+      userMarker = new maplibregl.Marker({element: el}).setLngLat([userLocation.lon, userLocation.lat]).addTo(map);
+      map.flyTo({center: [userLocation.lon, userLocation.lat], zoom: 14, duration: 1000});
+      document.getElementById('gpsBtn').classList.add('active');
+      addMsg('Located you. Results will be sorted by distance.', 'system');
+    },
+    () => { addMsg('Could not get GPS. Type your address in the location bar below.', 'system'); },
+    {enableHighAccuracy: true, timeout: 10000}
+  );
+}
+getUserLocation();
+
+async function setManualLocation() {
+  const input = document.getElementById('locationInput');
+  if (!input) return;
+  const addr = input.value.trim();
+  if (!addr) return;
+  try {
+    const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr+', NYC')}&format=json&limit=1&countrycodes=us`);
+    const results = await resp.json();
+    if (results && results.length > 0) {
+      userLocation = {lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon)};
+      if (userMarker) userMarker.remove();
+      const el = document.createElement('div');
+      el.style.cssText = 'width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;';
+      userMarker = new maplibregl.Marker({element: el}).setLngLat([userLocation.lon, userLocation.lat]).addTo(map);
+      map.flyTo({center: [userLocation.lon, userLocation.lat], zoom: 14, duration: 1000});
+      document.getElementById('gpsBtn').classList.remove('active');
+      input.value = results[0].display_name.split(',').slice(0,2).join(',');
+      addMsg(`Location set: ${results[0].display_name.split(',').slice(0,2).join(',')}`, 'system');
+    } else { addMsg('Address not found. Try a more specific NYC address.', 'system'); }
+  } catch(e) { addMsg('Could not look up address.', 'system'); }
+}
+
+// Store pending directions target for budget picker callback
+let _pendingDir = null;
+
+function getDirections(toLat, toLon, name) {
+  if (!userLocation) { addMsg('Set your location first — use the location bar at the bottom.', 'system'); return; }
+  _pendingDir = {toLat, toLon, name};
+  // Show inline budget picker instead of prompt()
+  const html = `
+  <div class="budget-picker">
+    <div class="budget-picker-label">How much can you spend on travel?</div>
+    <div class="budget-options">
+      <button class="budget-btn" onclick="fetchDirections(0)"><span class="budget-icon">&#128694;</span>$0<span class="budget-text">Walk only</span></button>
+      <button class="budget-btn" onclick="fetchDirections(2.9)"><span class="budget-icon">&#128647;</span>$2.90<span class="budget-text">Single ride</span></button>
+      <button class="budget-btn" onclick="fetchDirections(10)"><span class="budget-icon">&#128176;</span>$10+<span class="budget-text">Any option</span></button>
+      <button class="budget-btn" onclick="fetchDirections(null)"><span class="budget-icon">&#128269;</span>Show all<span class="budget-text">Compare</span></button>
+    </div>
+  </div>`;
+  addMsg(html, 'assistant');
+}
+
+async function fetchDirections(budget) {
+  if (!_pendingDir || !userLocation) return;
+  const {toLat, toLon, name} = _pendingDir;
+  _pendingDir = null;
+
+  // Remove budget picker
+  const pickers = document.querySelectorAll('.budget-picker');
+  pickers.forEach(p => p.closest('.msg')?.remove());
+
+  showTyping();
+  try {
+    const resp = await fetch('/api/directions', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({from_lat:userLocation.lat,from_lon:userLocation.lon,to_lat:toLat,to_lon:toLon,budget:budget}),
+    });
+    hideTyping();
+    const data = await resp.json();
+
+    let html = '<div class="directions-panel">';
+    html += `<div class="dir-header">&#128506; Directions to ${name}</div>`;
+
+    if (data.recommendation) {
+      html += `<div class="dir-recommendation">${data.recommendation}</div>`;
+    }
+
+    // Free MetroCard card
+    if (data.free_metrocard_location) {
+      const hra = data.free_metrocard_location;
+      html += `<div class="dir-metrocard" onclick="flyTo(${hra.lat},${hra.lon})">`;
+      html += `<div class="dir-metrocard-label">&#127915; Free MetroCard available</div>`;
+      html += `<div style="font-weight:600;font-size:13px;">${hra.name}</div>`;
+      html += `<div style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px;">${hra.address}</div>`;
+      html += `<div style="font-size:11px;margin-top:4px;color:var(--orange);">${hra.distance_miles} mi from you &middot; Get a free MetroCard or travel voucher here</div>`;
+      html += `</div>`;
+    }
+
+    // Route options
+    const options = data.options || [];
+    const bestIdx = options.length > 1 ? (budget === 0 ? 0 : options.length - 1) : 0;
+
+    for (let i = 0; i < options.length; i++) {
+      const opt = options[i];
+      const isWalk = opt.mode === 'walk';
+      const isBest = i === bestIdx;
+      const icon = isWalk ? '&#128694;' : '&#128647;';
+      const modeLabel = isWalk ? 'Walk' : 'Subway';
+      const costClass = opt.cost > 0 ? 'cost-paid' : 'cost-free';
+      const costText = opt.cost > 0 ? `$${opt.cost.toFixed(2)}` : 'Free';
+
+      html += `<div class="dir-option${isBest ? ' recommended' : ''}">`;
+      html += `<div class="dir-option-header"><span class="dir-mode-icon">${icon}</span><span class="dir-mode-label">${modeLabel}</span></div>`;
+      html += `<div class="dir-stats">`;
+      html += `<span class="dir-stat time">&#9201; ${opt.duration_min} min</span>`;
+      html += `<span class="dir-stat ${costClass}">${costText}</span>`;
+      html += `<span class="dir-stat">${opt.distance_miles} mi</span>`;
+      html += `</div>`;
+
+      if (opt.steps && opt.steps.length) {
+        html += '<div class="dir-steps">';
+        for (const s of opt.steps) {
+          const stepMode = s.mode || opt.mode;
+          const si = stepMode === 'transit' ? '&#128647;' : '&#128694;';
+          const stepClass = stepMode === 'transit' ? ' transit' : '';
+          let instr = s.instruction || '';
+          // Extract line badges from instruction or lines field
+          let badge = '';
+          const lines = s.lines || '';
+          if (lines) {
+            badge = lines.split(/[,\s]+/).filter(l=>l.length<=3&&l.length>0).map(l=>`<span class="dir-station-badge">${l}</span>`).join(' ');
+          }
+          const lineMatch = instr.match(/\(([A-Z0-9,\s]+)\)\s*$/);
+          if (lineMatch && !badge) {
+            badge = lineMatch[1].split(/[,\s]+/).filter(l=>l.length<=3).map(l=>`<span class="dir-station-badge">${l}</span>`).join(' ');
+            instr = instr.replace(lineMatch[0], '');
+          }
+          const detail = s.detail ? `<div style="font-size:10px;color:var(--text-muted);margin-top:1px">${s.detail}</div>` : '';
+          html += `<div class="dir-step${stepClass}"><span class="dir-step-icon">${si}</span><span class="dir-step-text">${instr} ${badge}${detail}</span><span class="dir-step-time">${s.duration_min} min</span></div>`;
+        }
+        html += '</div>';
+      }
+      // Nearby alternative stations
+      if (opt.nearby_stations && opt.nearby_stations.length) {
+        html += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted)">';
+        html += '<span style="font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:0.5px">Nearby stations:</span>';
+        for (const ns of opt.nearby_stations) {
+          const nsBadges = ns.lines ? ns.lines.split(/[,\s]+/).filter(l=>l.length<=3&&l.length>0).map(l=>`<span class="dir-station-badge">${l}</span>`).join(' ') : '';
+          html += `<div style="margin-top:3px">${ns.name} ${nsBadges} <span style="color:var(--text-muted)">&middot; ${ns.walk_min} min walk</span></div>`;
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+
+    addMsg(html, 'assistant', true);
+
+    // Draw route on map
+    const walkOpt = options.find(o => o.mode === 'walk' && o.geometry);
+    if (walkOpt && walkOpt.geometry) {
+      if (map.getSource('route')) map.getSource('route').setData(walkOpt.geometry);
+      else { map.addSource('route',{type:'geojson',data:walkOpt.geometry}); map.addLayer({id:'route',type:'line',source:'route',paint:{'line-color':'#76b900','line-width':4,'line-opacity':0.8}}); }
+    }
+
+    // Fly to show both origin and destination
+    const bounds = [[Math.min(userLocation.lon,toLon)-0.01, Math.min(userLocation.lat,toLat)-0.01],[Math.max(userLocation.lon,toLon)+0.01, Math.max(userLocation.lat,toLat)+0.01]];
+    map.fitBounds(bounds, {padding:60, duration:1500});
+
+  } catch(err) { hideTyping(); addMsg(`Directions error: ${err.message}`, 'system'); }
+}
+</script>
+</body>
+</html>

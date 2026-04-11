@@ -44,10 +44,11 @@ _mart: pd.DataFrame | None = None
 _graph_payload: dict | None = None
 
 BOROUGH_MAP = {
-    "manhattan": "MN", "mn": "MN",
+    "manhattan": "MN", "mn": "MN", "midtown": "MN", "mta": "MN",
+    "new york": "MN", "nyc": "MN",
     "brooklyn":  "BK", "bk": "BK",
     "queens":    "QN", "qn": "QN",
-    "bronx":     "BX", "bx": "BX",
+    "bronx":     "BX", "bx": "BX", "the bronx": "BX",
     "staten island": "SI", "si": "SI",
 }
 
@@ -104,9 +105,14 @@ def filter_resources(
     resource_types: list[str],
     filters: dict,
     limit: int = 5,
+    user_location: dict | None = None,
 ) -> pd.DataFrame:
     mart, _ = load_state()
     df = mart.copy()
+
+    # Convert cuDF → pandas early for geocode compatibility
+    if USE_GPU and hasattr(df, 'to_pandas'):
+        df = df.to_pandas()
 
     # Exclude user-reported resources
     if _excluded_resources and "name" in df.columns:
@@ -115,26 +121,41 @@ def filter_resources(
     if resource_types:
         df = df[df["resource_type"].isin(resource_types)]
 
+    # If we have user location, skip borough filter — distance sorting is better
+    # This prevents empty results when LLM outputs wrong borough codes like "MTA"
     borough = _norm_borough(filters.get("borough"))
-    if borough:
+    if borough and not user_location:
         df = df[df["borough"] == borough]
+    elif borough and user_location:
+        # Try borough filter first, but fall back to all if empty
+        filtered = df[df["borough"] == borough]
+        if len(filtered) > 0:
+            df = filtered
+        # else: skip borough filter, distance sort will handle it
 
     if filters.get("ada_accessible"):
         if "ada_accessible" in df.columns:
             ada_df = df[df["ada_accessible"].astype(str).isin(["True", "1", "true"])]
             if len(ada_df) > 0:
                 df = ada_df
-            # else: ADA data unavailable, return all results rather than empty
 
-    # Sort by safety_score desc, then quality_score desc
-    sort_cols = [c for c in ["safety_score", "quality_score"] if c in df.columns]
-    if sort_cols:
-        df = df.sort_values(sort_cols, ascending=False)
+    # Location-aware sorting: if user location is known, sort by distance
+    if user_location and user_location.get("lat") and user_location.get("lon"):
+        try:
+            from pipeline.geocode import sort_by_distance
+            df = sort_by_distance(df, user_location["lat"], user_location["lon"])
+        except Exception:
+            # Fallback to safety score sort
+            sort_cols = [c for c in ["safety_score", "quality_score"] if c in df.columns]
+            if sort_cols:
+                df = df.sort_values(sort_cols, ascending=False)
+    else:
+        # Default: sort by safety_score desc, then quality_score desc
+        sort_cols = [c for c in ["safety_score", "quality_score"] if c in df.columns]
+        if sort_cols:
+            df = df.sort_values(sort_cols, ascending=False)
 
     result = df.head(limit).reset_index(drop=True)
-    # Convert cuDF → pandas for downstream compatibility (synth, verify, UI)
-    if USE_GPU and hasattr(result, 'to_pandas'):
-        result = result.to_pandas()
     return result
 
 
@@ -195,7 +216,7 @@ def _cuopt_allocate(sites_df, people, centroid_lat, centroid_lon):
 
         cost_df = _cudf_opt.DataFrame(cost)
 
-        # Set up VRP: 1 "vehicle" per site, capacity = site capacity or people/n_sites
+        # Set up VRP: 1 "vehicle" per site (vehicle = transport route to that shelter)
         capacities = []
         for _, row in sites_df.iterrows():
             cap = row.get("capacity", None)
@@ -203,26 +224,41 @@ def _cuopt_allocate(sites_df, people, centroid_lat, centroid_lon):
                 cap = max(people // n_sites, 20)
             capacities.append(int(cap))
 
+        # n locations, n_sites vehicles
         data_model = cuopt_routing.DataModel(n, n_sites)
         data_model.add_cost_matrix(cost_df)
 
-        # Demands: depot=0, each site gets proportional demand
-        demands = [0]  # depot
+        # Demands per order: depot=0, each shelter order gets proportional demand
+        demands = [0]  # depot (location 0)
         per_site = people // n_sites
         remainder = people % n_sites
         for i in range(n_sites):
             demands.append(per_site + (1 if i < remainder else 0))
-        data_model.set_order_demands(demands)
 
-        # Vehicle capacities
-        data_model.set_vehicle_capacities(capacities)
+        # Add capacity dimension: "people" with demand per order and capacity per vehicle
+        data_model.add_capacity_dimension(
+            "people",
+            _cudf_opt.Series(demands),
+            _cudf_opt.Series(capacities),
+        )
+
+        # Vehicle start/end at depot (location 0)
+        data_model.set_vehicle_locations(
+            _cudf_opt.Series([0] * n_sites),  # start at depot
+            _cudf_opt.Series([0] * n_sites),  # return to depot
+        )
+
+        # Order locations: order i is at location i (all n locations including depot)
+        data_model.set_order_locations(
+            _cudf_opt.Series(list(range(n)))
+        )
 
         solver = cuopt_routing.SolverSettings()
         solver.set_time_limit(2.0)
         result = cuopt_routing.Solve(data_model, solver)
 
-        if result.get_status() == 0:
-            routes = result.get_routes()
+        status = result.get_status()
+        if status == 0:
             allocation = []
             for i, (_, row) in enumerate(sites_df.iterrows()):
                 allocation.append({
@@ -235,7 +271,8 @@ def _cuopt_allocate(sites_df, people, centroid_lat, centroid_lon):
                 })
             return allocation
     except Exception as e:
-        pass  # Fall through to greedy
+        import traceback
+        traceback.print_exc()
     return None
 
 
@@ -474,16 +511,37 @@ def simulate_resource_gap(params: dict) -> dict:
 
 
 # ── Main execute entry point ──────────────────────────────────────────────────
+def _get_user_location(plan: dict) -> dict | None:
+    """Try to extract user location from the plan for distance-based sorting."""
+    try:
+        from pipeline.geocode import geocode_location
+        # Check if plan has location info from the client profile
+        profile = plan.get("client_profile", {})
+        situation = profile.get("situation", "")
+
+        # Also check the original query stored in _last_query
+        query_text = plan.get("_original_query", situation)
+        if query_text:
+            loc = geocode_location(query_text)
+            if loc:
+                return loc
+    except Exception:
+        pass
+    return None
+
+
 def execute(plan: dict) -> dict[str, Any]:
     intent = plan.get("intent", "lookup")
+    user_loc = _get_user_location(plan)
 
     if intent == "lookup":
         results = filter_resources(
             resource_types=plan.get("resource_types", []),
             filters=plan.get("filters", {}),
             limit=plan.get("limit", 5),
+            user_location=user_loc,
         )
-        return {"intent": "lookup", "results": results}
+        return {"intent": "lookup", "results": results, "user_location": user_loc}
 
     elif intent == "needs_assessment":
         profile  = plan.get("client_profile", {})
@@ -494,11 +552,11 @@ def execute(plan: dict) -> dict[str, Any]:
         for search in searches:
             rtypes  = search.get("resource_types", [])
             filters = search.get("filters", {})
-            # Inherit borough from client profile if not specified
             if not filters.get("borough") and profile.get("borough"):
                 filters["borough"] = profile["borough"]
             key = "+".join(rtypes)
-            all_results[key] = filter_resources(rtypes, filters, limit=search.get("limit", 5))
+            all_results[key] = filter_resources(rtypes, filters, limit=search.get("limit", 5),
+                                                 user_location=user_loc)
 
         return {
             "intent": "needs_assessment",

@@ -7,13 +7,6 @@ import sys
 import time
 from pathlib import Path
 
-# GPU-accelerate all pandas operations transparently
-try:
-    import cudf.pandas
-    cudf.pandas.install()
-except ImportError:
-    pass
-
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
@@ -141,54 +134,153 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("🗽 NYC Social Services Intelligence Engine")
-st.caption("Powered by NVIDIA Nemotron · cuGraph · RAPIDS — DGX Spark")
+# ── Dark NVIDIA Theme ────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+/* NVIDIA Dark Theme */
+[data-testid="stAppViewContainer"] {
+    background-color: #0a0a0f;
+    color: #e0e0e0;
+}
+[data-testid="stSidebar"] {
+    background-color: #111118;
+    border-right: 1px solid #1e1e2a;
+}
+[data-testid="stHeader"] {
+    background-color: #0a0a0f;
+}
+
+/* NVIDIA Green accent */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #76b900, #5a8f00);
+    color: white;
+    border: none;
+    font-weight: bold;
+    box-shadow: 0 2px 8px rgba(118, 185, 0, 0.3);
+}
+.stButton > button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #8cd600, #76b900);
+    box-shadow: 0 4px 12px rgba(118, 185, 0, 0.5);
+}
+
+/* Sidebar buttons */
+[data-testid="stSidebar"] .stButton > button {
+    background-color: #1a1a24;
+    color: #e0e0e0;
+    border: 1px solid #2a2a3a;
+    transition: all 0.2s;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    border-color: #76b900;
+    color: #76b900;
+    transform: translateX(2px);
+}
+
+/* Title styling */
+h1 {
+    color: #76b900 !important;
+    text-shadow: 0 0 20px rgba(118, 185, 0, 0.3);
+}
+
+/* Chat messages */
+[data-testid="stChatMessage"] {
+    background-color: #12121a;
+    border: 1px solid #1e1e2a;
+    border-radius: 12px;
+}
+
+/* Expanders */
+[data-testid="stExpander"] {
+    background-color: #12121a;
+    border: 1px solid #1e1e2a;
+    border-radius: 8px;
+}
+
+/* Text inputs */
+textarea, input[type="text"] {
+    background-color: #12121a !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #2a2a3a !important;
+}
+textarea:focus, input[type="text"]:focus {
+    border-color: #76b900 !important;
+    box-shadow: 0 0 8px rgba(118, 185, 0, 0.2) !important;
+}
+
+/* Success/info/warning boxes */
+[data-testid="stAlert"] {
+    background-color: #12121a;
+    border: 1px solid #2a2a3a;
+}
+
+/* Metrics / stats */
+[data-testid="stMetric"] {
+    background-color: #12121a;
+    border: 1px solid #1e1e2a;
+    border-radius: 8px;
+    padding: 12px;
+}
+[data-testid="stMetricValue"] {
+    color: #76b900 !important;
+}
+
+/* Dividers */
+hr {
+    border-color: #1e1e2a !important;
+}
+
+/* Caption text */
+.stCaption, small {
+    color: #888 !important;
+}
+
+/* Toggle */
+[data-testid="stToggle"] label span {
+    color: #e0e0e0;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div style="text-align:center;padding:20px 0 10px 0;">
+    <div style="font-size:42px;font-weight:bold;color:#76b900;">Need Help?</div>
+    <div style="font-size:18px;color:#aaa;margin-top:4px;">Tell us what's going on. We'll find the right resources for you.</div>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("System Status")
-
-    # LLM provider
-    try:
-        provider = get_active_provider()
-        st.success(f"LLM: {provider}")
-    except Exception as e:
-        st.error(f"LLM: {e}")
-
-    # Data status
+    # Preload data silently
     try:
         mart, payload = load_state()
-        st.success(f"Mart: {len(mart):,} resources")
-        st.success(f"Graph: {payload['graph'].number_of_nodes():,} nodes · "
-                   f"{payload['graph'].number_of_edges():,} edges")
-        st.info(f"Backend: {payload.get('backend', 'networkx')}")
-    except Exception as e:
-        st.error(f"Data: {e}")
-
-    # Triples + KGE status
-    try:
-        triples_df = pd.read_parquet(str(ROOT / "data" / "triples.parquet"))
-        st.success(f"Triples: {len(triples_df):,} SPO facts")
-        st.info(f"Predicates: {triples_df['predicate'].nunique()} · Sources: {triples_df['source'].nunique()}")
     except Exception:
-        st.warning("Triples: not built yet (run build_triples.py)")
+        mart, payload = None, {}
+
+    st.markdown("""
+    <div style="text-align:center;padding:16px 0 8px 0;">
+        <div style="font-size:24px;font-weight:bold;color:#76b900;">NYC Help Finder</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">Shelters · Food · Healthcare · Benefits</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:10px;padding:14px;margin:8px 0;">
+        <div style="color:#ccc;font-size:14px;line-height:1.7;">
+            Just describe what you need — in your own words. We'll find shelters, food, hospitals, benefits, schools, and more near you.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.divider()
-    st.subheader("Try these queries")
+    st.markdown('<div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;">I need help with...</div>', unsafe_allow_html=True)
 
     EXAMPLES = {
-        "🏠 Caseworker — Family at risk": "I'm Tina, I have 4 kids ages 12-16, my income is $28K, and my sister is kicking us out of her Flatbush apartment next week. What do we do?",
-        "🚨 Caseworker — Crime victim": "Someone broke into my apartment last night. I don't feel safe going back. I have a 6 year old. What should I do?",
-        "🌍 Caseworker — Migrant family": "I just arrived from Haiti with my two children. We speak Haitian Creole and need shelter tonight near Flatbush.",
-        "🔍 Lookup — Brooklyn shelters": "What shelters in Brooklyn have available beds right now?",
-        "🏥 Lookup — Wheelchair hospitals": "Find wheelchair accessible hospitals near Jamaica Queens that accept Medicaid",
-        "🍎 Lookup — Bronx food banks": "How many food banks are open in the Bronx?",
-        "❄️  Sim — Cold emergency": "A cold emergency is declared. 3 Brooklyn shelters just hit capacity. 200 people are still outside. It's 15°F. What do we do?",
-        "📊 Sim — Resource gap": "Which NYC boroughs are most underserved by social services?",
-        "🏗️  Sim — Capacity change": "What happens if we add 500 shelter beds in the Bronx?",
-        "🌍 Sim — Migrant allocation": "A migrant bus just arrived with 80 people who speak Spanish and Mandarin. They need shelter, food, and schools for children.",
-        "🧠 Explain — Why underserved?": "Why is the Bronx the most underserved borough for social services?",
-        "🧠 Explain — Emergency confidence": "How confident are you in the cold emergency plan for Brooklyn?",
+        "I'm about to lose my housing": "I'm Tina, I have 4 kids ages 12-16, my income is $28K, and my sister is kicking us out of her Flatbush apartment next week. What do we do?",
+        "I don't feel safe at home": "Someone broke into my apartment last night. I don't feel safe going back. I have a 6 year old. What should I do?",
+        "I just arrived in NYC": "I just arrived from Haiti with my two children. We speak Haitian Creole and need shelter tonight near Flatbush.",
+        "I need a shelter tonight": "What shelters in Brooklyn have available beds right now?",
+        "I need to see a doctor": "Find wheelchair accessible hospitals near Jamaica Queens that accept Medicaid",
+        "I need food for my family": "How many food banks are open in the Bronx?",
     }
 
     for label, eq in EXAMPLES.items():
@@ -196,24 +288,57 @@ with st.sidebar:
             st.session_state["query_input"] = eq
 
     st.divider()
-    if st.button("🔄 Start Over", use_container_width=True):
+    st.markdown('<div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;">For coordinators</div>', unsafe_allow_html=True)
+
+    OPS_EXAMPLES = {
+        "Cold emergency — people outside": "A cold emergency is declared. 3 Brooklyn shelters just hit capacity. 200 people are still outside. It's 15°F. What do we do?",
+        "Which areas need more resources?": "Which NYC boroughs are most underserved by social services?",
+        "What if we add shelter beds?": "What happens if we add 500 shelter beds in the Bronx?",
+        "Migrant bus just arrived": "A migrant bus just arrived with 80 people who speak Spanish and Mandarin. They need shelter, food, and schools for children.",
+    }
+
+    for label, eq in OPS_EXAMPLES.items():
+        if st.button(label, use_container_width=True):
+            st.session_state["query_input"] = eq
+
+    st.divider()
+    demo_mode = st.toggle("Fast Mode", value=False,
+                          help="Skip claim verification for faster responses.")
+    st.session_state["demo_mode"] = demo_mode
+
+    if st.button("Start Over", use_container_width=True):
         for k in ["conv_history", "active_query", "_pending_clarify_q",
                   "_pending_clarify_turn", "_clarify_rerun", "query_input",
                   "excluded_resources", "feedback_log"]:
             st.session_state.pop(k, None)
         st.rerun()
 
+    # Tech details tucked away
+    with st.expander("System Info", expanded=False):
+        try:
+            st.caption(f"LLM: {get_active_provider()}")
+        except Exception:
+            pass
+        try:
+            _mc = len(mart) if hasattr(mart, '__len__') else 0
+            _ec = payload.get("edges")
+            _ec = len(_ec) if _ec is not None else 0
+            st.caption(f"Resources: {_mc:,} | Graph: {_ec:,} edges")
+            st.caption(f"Backend: {payload.get('backend', 'networkx')}")
+        except Exception:
+            pass
+
 
 # ── Main query interface ──────────────────────────────────────────────────────
 query = st.text_area(
-    "Describe the situation or ask a question:",
+    "What's going on?",
     value=st.session_state.get("query_input", ""),
-    height=100,
-    placeholder="e.g. 'I'm a family of 4 losing housing next week in Brooklyn. What help is available?'",
+    height=120,
+    placeholder="Tell us in your own words... e.g. 'I have 4 kids and we're about to lose our apartment. I make $28K a year. What help is there?'",
     key="query_input",
 )
 
-run = st.button("Run Query", type="primary", use_container_width=True)
+run = st.button("Find Help For Me", type="primary", use_container_width=True)
 
 # ── Detect clarification answer submitted via Enter key ──────────────────────
 # Must happen BEFORE the pipeline block so the rerun flag is set first.
@@ -295,16 +420,29 @@ if (run or _clarify_rerun) and query.strip():
         st.write(response)
 
     # ── Verification + Reasoning (for ALL intents) ─────────────────────────────
-    with st.spinner("Phase 2 — Verifying claims against data…"):
-        t4 = time.time()
-        verification = verify_answer(response, result)
-        verify_time = time.time() - t4
+    _demo_mode = st.session_state.get("demo_mode", False)
+
+    if not _demo_mode:
+        with st.spinner("Phase 2 — Verifying claims against data…"):
+            t4 = time.time()
+            verification = verify_answer(response, result)
+            verify_time = time.time() - t4
+    else:
+        verification = {"verified": True, "confidence": "SKIPPED", "claims": []}
+        verify_time = 0.0
 
     total_time = time.time() - t0
 
     # Verification banner
     v_conf = verification.get("confidence", "LOW")
-    if verification.get("verified"):
+    if _demo_mode:
+        st.markdown(
+            '<div style="background:linear-gradient(90deg,#9c27b0,#ba68c8);color:white;'
+            'padding:10px 16px;border-radius:8px;font-weight:bold;text-align:center;'
+            'margin:8px 0;box-shadow:0 2px 4px rgba(156,39,176,0.3);">'
+            '⚡ DEMO MODE — Verification skipped for speed</div>',
+            unsafe_allow_html=True)
+    elif verification.get("verified"):
         if v_conf == "HIGH":
             st.markdown(
                 '<div style="background:linear-gradient(90deg,#00c853,#00e676);color:white;'

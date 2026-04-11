@@ -1,14 +1,15 @@
 """
 engine/embeddings.py — Knowledge Graph Embeddings for resource similarity.
 
-Computes feature vectors for each resource based on their triples,
-then enables "find similar resources" queries via cosine similarity.
-
-On DGX: replace with cuML KNN + cuGraph node2vec for richer embeddings.
+Two modes:
+  1. PyKEEN mode (preferred): Loads real TransE/RotatE embeddings trained on 328K triples.
+     Run engine/train_kge.py first to generate data/kge_embeddings.pkl.
+  2. Fallback mode: Hand-crafted 40-dim feature vectors from resource mart + triples.
 
 Usage:
     from engine.embeddings import build_embeddings, find_similar, get_embedding
 """
+import pickle
 import time
 from pathlib import Path
 
@@ -20,6 +21,26 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 _embeddings: dict | None = None      # {resource_id: np.array}
 _feature_names: list | None = None   # feature dimension names
 _resource_meta: pd.DataFrame | None = None  # resource_id → name, type, borough
+_kge_mode: str = "unknown"           # "pykeen" or "handcrafted"
+
+
+def _load_pykeen_embeddings() -> dict | None:
+    """Try to load PyKEEN-trained embeddings from data/kge_embeddings.pkl."""
+    kge_path = DATA / "kge_embeddings.pkl"
+    if not kge_path.exists():
+        return None
+    try:
+        with open(kge_path, "rb") as f:
+            payload = pickle.load(f)
+        entity_embs = payload.get("entity_embeddings", {})
+        if not entity_embs:
+            return None
+        print(f"[KGE] Loaded PyKEEN {payload.get('model_name', '?')} embeddings: "
+              f"{len(entity_embs):,} entities, {payload.get('embedding_dim', '?')} dims")
+        return entity_embs
+    except Exception as e:
+        print(f"[KGE] Failed to load PyKEEN embeddings: {e}")
+        return None
 
 
 def build_embeddings(force: bool = False) -> dict:
@@ -37,14 +58,45 @@ def build_embeddings(force: bool = False) -> dict:
 
     Returns dict of {resource_id: np.array}
     """
-    global _embeddings, _feature_names, _resource_meta
+    global _embeddings, _feature_names, _resource_meta, _kge_mode
 
     if _embeddings is not None and not force:
         return _embeddings
 
     t0 = time.time()
-    triples = pd.read_parquet(DATA / "triples.parquet")
     mart = pd.read_parquet(DATA / "resource_mart.parquet")
+
+    # Build resource metadata (needed for both modes)
+    resource_meta = {}
+    for _, row in mart.iterrows():
+        rid = row.get("resource_id", "")
+        if rid:
+            resource_meta[rid] = {
+                "name": row.get("name", ""),
+                "resource_type": row.get("resource_type", ""),
+                "borough": row.get("borough", ""),
+                "address": row.get("address", ""),
+            }
+    _resource_meta = pd.DataFrame.from_dict(resource_meta, orient="index")
+
+    # Try PyKEEN embeddings first
+    pykeen_embs = _load_pykeen_embeddings()
+    if pykeen_embs is not None:
+        # Filter to only resource IDs that exist in the mart
+        resource_ids = set(mart["resource_id"].values)
+        embeddings = {k: v for k, v in pykeen_embs.items() if k in resource_ids}
+        if embeddings:
+            _embeddings = embeddings
+            _feature_names = [f"kge_dim_{i}" for i in range(len(next(iter(embeddings.values()))))]
+            _kge_mode = "pykeen"
+            print(f"[KGE] Using PyKEEN embeddings: {len(embeddings)} resources, "
+                  f"{len(_feature_names)} dims ({time.time()-t0:.1f}s)")
+            return _embeddings
+        print("[KGE] PyKEEN embeddings loaded but no resource IDs matched — falling back")
+
+    # Fallback: hand-crafted feature vectors
+    triples = pd.read_parquet(DATA / "triples.parquet")
+    _kge_mode = "handcrafted"
 
     # Define feature dimensions
     resource_types = sorted(mart["resource_type"].unique())
@@ -119,18 +171,11 @@ def build_embeddings(force: bool = False) -> dict:
         vec[bin_base + 2] = min(1.0, len(coloc) / 20)
 
         embeddings[rid] = vec
-        resource_meta[rid] = {
-            "name": row.get("name", ""),
-            "resource_type": rtype,
-            "borough": boro,
-            "address": row.get("address", ""),
-        }
 
     _embeddings = embeddings
     _feature_names = feature_names
-    _resource_meta = pd.DataFrame.from_dict(resource_meta, orient="index")
 
-    print(f"[KGE] Built {len(embeddings)} embeddings, {n_features} dimensions, "
+    print(f"[KGE] Built {len(embeddings)} handcrafted embeddings, {n_features} dimensions, "
           f"in {time.time()-t0:.1f}s")
     return embeddings
 
