@@ -137,6 +137,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 .loading-overlay.active{display:flex}
 .spinner{width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin 0.7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 6px #4fc3f788}50%{box-shadow:0 0 16px #4fc3f7cc}}
 .loading-text{color:var(--t3);font-size:13px;font-family:var(--mono)}
 
 /* Typing dots */
@@ -534,7 +535,7 @@ function toggleMap(){
     panel.classList.add('open');
     document.getElementById('mapToggleBtn').innerHTML='&#10005; Close map';
     if(!resultMap)initResultMap();
-    setTimeout(()=>{resultMap.resize();updateResultMapLayers()},350);
+    setTimeout(()=>{resultMap.resize();updateResultMapLayers();showUserMarker()},350);
   }else{
     panel.classList.remove('open');
     document.getElementById('mapToggleBtn').innerHTML='&#128506; Map';
@@ -565,6 +566,14 @@ function updateResultMapLayers(){
 function flyToResult(lat,lon){
   if(!mapOpen)toggleMap();
   setTimeout(()=>{if(resultMap){resultMap.resize();resultMap.flyTo({center:[lon,lat],zoom:16,pitch:50,duration:1000})}},400);
+}
+
+function showUserMarker(){
+  if(!userLocation||!resultMap)return;
+  if(userMarker)userMarker.remove();
+  const el=document.createElement('div');
+  el.style.cssText='width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;animation:pulse 2s infinite';
+  userMarker=new maplibregl.Marker({element:el}).setLngLat([userLocation.lon,userLocation.lat]).addTo(resultMap);
 }
 
 // ── Location ───────────────────────────────────────────────
