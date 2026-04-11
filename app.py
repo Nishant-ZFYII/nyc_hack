@@ -198,8 +198,8 @@ with st.sidebar:
     st.divider()
     st.subheader("Speed Settings")
     demo_mode = st.toggle("⚡ Demo Mode (skip verification)", value=False,
-                          help="Skip LLM verification for 2-3x faster responses. "
-                               "Use during live demos for speed.")
+                          help="Skip LLM claim verification for faster responses. "
+                               "Follow-up questions and all other features remain active.")
     st.session_state["demo_mode"] = demo_mode
 
     st.divider()
@@ -455,7 +455,7 @@ if (run or _clarify_rerun) and query.strip():
 
     # ── Multi-turn clarification ──────────────────────────────────────────────
     turn = len(st.session_state.conv_history)
-    if turn < 2 and not _demo_mode:
+    if turn < 2:
         with st.spinner("Thinking of a follow-up…"):
             clarify_q = get_clarifying_question(
                 st.session_state.active_query, response, turn
