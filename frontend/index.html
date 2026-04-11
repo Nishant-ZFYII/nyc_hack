@@ -7,9 +7,8 @@
 <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500;600&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300&display=swap" rel="stylesheet">
 <style>
-/* ── Reset & Variables ────────────────────────────────────────────────────── */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 :root {
   --bg-deep: #06060b;
@@ -32,6 +31,7 @@
   --teal: #4db6ac;
   --font-ui: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --font-display: 'Fraunces', Georgia, serif;
 }
 body {
   font-family: var(--font-ui);
@@ -42,572 +42,310 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Layout ───────────────────────────────────────────────────────────────── */
 .app { display: grid; grid-template-columns: 440px 1fr; height: 100vh; }
 
-/* ── Sidebar ──────────────────────────────────────────────────────────────── */
 .sidebar {
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden; position: relative;
 }
-
 .sidebar-header {
-  padding: 20px 20px 16px;
+  padding: 16px 20px 14px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, #0e0e18 0%, var(--bg-panel) 100%);
-  position: relative;
+  background: linear-gradient(180deg, #0e0e18, var(--bg-panel));
+  position: relative; flex-shrink: 0;
 }
 .sidebar-header::after {
-  content: '';
-  position: absolute;
-  bottom: -1px; left: 20px; right: 20px;
-  height: 1px;
+  content:''; position:absolute; bottom:-1px; left:20px; right:20px; height:1px;
   background: linear-gradient(90deg, transparent, var(--green-dim), transparent);
 }
 .sidebar-header h1 {
-  font-family: var(--font-mono);
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  background: linear-gradient(135deg, var(--green) 0%, #a0e030 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-family: var(--font-mono); font-size: 17px; font-weight: 600;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  background: linear-gradient(135deg, var(--green), #a0e030);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.sidebar-header .subtitle {
-  color: var(--text-secondary);
-  font-size: 12px;
-  margin-top: 4px;
-}
-.header-stats {
-  display: flex;
-  gap: 12px;
-  margin-top: 10px;
-}
+.sidebar-header .subtitle { color: var(--text-secondary); font-size: 11.5px; margin-top: 3px; }
+.header-stats { display: flex; gap: 12px; margin-top: 8px; }
 .header-stat {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+  letter-spacing: 0.5px; text-transform: uppercase;
 }
 .header-stat span { color: var(--green); font-weight: 600; }
 
-/* ── Tabs ─────────────────────────────────────────────────────────────────── */
-.tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+/* Onboarding */
+.onboarding {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg-panel);
+  z-index: 50; display: flex; flex-direction: column;
+  justify-content: center; padding: 30px 24px;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.onboarding.hidden { opacity: 0; transform: translateY(-20px); pointer-events: none; }
+.onboarding-title {
+  font-family: var(--font-display); font-size: 26px; font-weight: 300;
+  color: var(--text-primary); text-align: center; line-height: 1.3;
+  margin-bottom: 6px; animation: onbFadeIn 0.8s ease both;
+}
+.onboarding-sub {
+  font-size: 13px; color: var(--text-secondary); text-align: center;
+  margin-bottom: 24px; animation: onbFadeIn 0.8s ease 0.15s both;
+}
+.mood-cards { display: flex; flex-direction: column; gap: 8px; }
+.mood-card {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px 18px;
+  cursor: pointer; transition: all 0.3s cubic-bezier(0.22,1,0.36,1);
+  opacity: 0; animation: onbCardIn 0.5s ease both;
+}
+.mood-card:nth-child(1){animation-delay:0.2s}
+.mood-card:nth-child(2){animation-delay:0.3s}
+.mood-card:nth-child(3){animation-delay:0.4s}
+.mood-card:nth-child(4){animation-delay:0.5s}
+.mood-card:nth-child(5){animation-delay:0.6s}
+.mood-card:hover {
+  border-color: var(--green); transform: translateX(4px);
+  box-shadow: 0 4px 24px rgba(118,185,0,0.08);
+}
+.mood-card:active { transform: translateX(2px) scale(0.99); }
+.mood-icon { font-size: 28px; width: 44px; text-align: center; flex-shrink: 0; }
+.mood-label { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.mood-hint { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+.onboarding-skip { text-align: center; margin-top: 20px; animation: onbFadeIn 0.8s ease 0.7s both; }
+.onboarding-skip a {
+  color: var(--text-muted); font-size: 11px; text-decoration: none;
+  font-family: var(--font-mono); letter-spacing: 0.5px; transition: color 0.2s;
+}
+.onboarding-skip a:hover { color: var(--green); }
+@keyframes onbFadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+@keyframes onbCardIn { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
+
+/* Tabs */
+.tabs { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; }
 .tab {
-  flex: 1; padding: 10px; text-align: center;
-  font-size: 12px; font-weight: 500; color: var(--text-muted);
-  cursor: pointer; border-bottom: 2px solid transparent;
-  transition: all 0.2s; letter-spacing: 0.5px; text-transform: uppercase;
+  flex:1; padding:10px; text-align:center; font-size:12px; font-weight:500;
+  color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent;
+  transition:all 0.2s; letter-spacing:0.5px; text-transform:uppercase;
 }
-.tab:hover { color: var(--text-secondary); }
-.tab.active { color: var(--green); border-bottom-color: var(--green); }
-.tab-content { display: none; flex: 1; flex-direction: column; overflow: hidden; min-height: 0; }
-.tab-content.active { display: flex; }
+.tab:hover{color:var(--text-secondary)} .tab.active{color:var(--green);border-bottom-color:var(--green)}
+.tab-content{display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0}
+.tab-content.active{display:flex}
 
-/* ── Category Pills ───────────────────────────────────────────────────────── */
-.categories {
-  padding: 10px 16px;
-  display: flex; flex-wrap: wrap; gap: 5px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.cat-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 11px;
-  color: var(--text-secondary);
-  font-size: 11px; font-weight: 500;
-  cursor: pointer; transition: all 0.2s;
-  display: flex; align-items: center; gap: 5px;
-  font-family: var(--font-ui);
-}
-.cat-btn:hover, .cat-btn.active {
-  border-color: var(--green); color: var(--green);
-  background: rgba(118,185,0,0.06);
-}
-.cat-icon { font-size: 18px; }
+/* Categories */
+.categories{padding:10px 16px;display:flex;flex-wrap:wrap;gap:5px;border-bottom:1px solid var(--border);flex-shrink:0}
+.cat-btn{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px 11px;color:var(--text-secondary);font-size:11px;font-weight:500;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:5px;font-family:var(--font-ui)}
+.cat-btn:hover,.cat-btn.active{border-color:var(--green);color:var(--green);background:rgba(118,185,0,0.06)}
+.cat-icon{font-size:16px}
 
-/* ── Chat Area ────────────────────────────────────────────────────────────── */
-.chat-area {
-  flex: 1; overflow-y: auto; padding: 16px;
-  display: flex; flex-direction: column; gap: 10px; min-height: 0;
-}
-.msg {
-  max-width: 95%; padding: 12px 16px; border-radius: 12px;
-  font-size: 13.5px; line-height: 1.7;
-  animation: msgIn 0.35s cubic-bezier(0.22,1,0.36,1);
-}
-@keyframes msgIn {
-  from { opacity:0; transform:translateY(8px); }
-  to { opacity:1; transform:translateY(0); }
-}
-.msg.user {
-  background: linear-gradient(135deg, #1a3200, #243d00);
-  border: 1px solid var(--green-dim);
-  align-self: flex-end; border-radius: 12px 12px 3px 12px;
-}
-.msg.assistant {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  align-self: flex-start; border-radius: 12px 12px 12px 3px;
-}
-.msg.system {
-  background: transparent; border: none;
-  color: var(--text-muted); font-size: 12.5px;
-  text-align: center; align-self: center; padding: 8px;
-}
+/* Chat */
+.chat-area{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.msg{max-width:95%;padding:12px 16px;border-radius:12px;font-size:13.5px;line-height:1.7}
+.msg.user{background:linear-gradient(135deg,#1a3200,#243d00);border:1px solid var(--green-dim);align-self:flex-end;border-radius:12px 12px 3px 12px;animation:msgIn 0.35s cubic-bezier(0.22,1,0.36,1)}
+.msg.assistant{background:var(--bg-card);border:1px solid var(--border);align-self:flex-start;border-radius:12px 12px 12px 3px}
+.msg.system{background:transparent;border:none;color:var(--text-muted);font-size:12.5px;text-align:center;align-self:center;padding:8px;animation:msgIn 0.35s cubic-bezier(0.22,1,0.36,1)}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
-/* ── Verification Banner ──────────────────────────────────────────────────── */
-.verify-banner {
-  padding: 8px 14px; border-radius: 6px;
-  font-size: 11px; font-weight: 600;
-  font-family: var(--font-mono);
-  letter-spacing: 0.3px;
-  text-align: center;
-  margin-top: 10px;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-}
-.verify-banner.high {
-  background: rgba(0,200,83,0.08); border: 1px solid rgba(0,200,83,0.2);
-  color: #4caf50;
-}
-.verify-banner.medium {
-  background: rgba(33,150,243,0.08); border: 1px solid rgba(33,150,243,0.2);
-  color: var(--blue);
-}
-.verify-banner.low {
-  background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.2);
-  color: var(--orange);
-}
-.verify-banner.skipped {
-  background: rgba(171,71,188,0.08); border: 1px solid rgba(171,71,188,0.2);
-  color: var(--purple);
-}
+/* Typing Indicator */
+.typing-indicator{display:flex;align-items:center;gap:4px;padding:14px 18px;align-self:flex-start;background:var(--bg-card);border:1px solid var(--border);border-radius:12px 12px 12px 3px;animation:msgIn 0.3s ease}
+.typing-dot{width:7px;height:7px;border-radius:50%;background:var(--text-muted);animation:typingBounce 1.4s ease-in-out infinite}
+.typing-dot:nth-child(2){animation-delay:0.2s}.typing-dot:nth-child(3){animation-delay:0.4s}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:0.4}30%{transform:translateY(-6px);opacity:1}}
 
-/* ── Claims List ──────────────────────────────────────────────────────────── */
-.claims-toggle {
-  font-size: 11px; color: var(--text-muted); cursor: pointer;
-  margin-top: 6px; font-family: var(--font-mono);
-  transition: color 0.2s;
-}
-.claims-toggle:hover { color: var(--green); }
-.claims-list {
-  display: none; margin-top: 6px;
-  padding: 8px; background: var(--bg-deep);
-  border-radius: 6px; border: 1px solid var(--border);
-}
-.claims-list.open { display: block; }
-.claim-item {
-  font-size: 11px; padding: 4px 8px; margin: 3px 0;
-  border-radius: 4px; line-height: 1.5;
-}
-.claim-item.verified { background: rgba(0,200,83,0.06); color: #81c784; }
-.claim-item.unverified { background: rgba(255,152,0,0.06); color: var(--orange); }
+/* Staged Reveal */
+.msg.assistant.staged{animation:none}
+.staged .answer-text{animation:stageIn 0.4s ease both}
+.staged .verify-banner{animation:stageIn 0.4s ease 0.15s both}
+.staged .reasoning-toggle{animation:stageIn 0.3s ease 0.25s both}
+.staged .results-grid .resource-card{animation:stageSlide 0.35s ease both}
+.staged .results-grid .resource-card:nth-child(1){animation-delay:0.3s}
+.staged .results-grid .resource-card:nth-child(2){animation-delay:0.4s}
+.staged .results-grid .resource-card:nth-child(3){animation-delay:0.5s}
+.staged .results-grid .resource-card:nth-child(4){animation-delay:0.6s}
+.staged .results-grid .resource-card:nth-child(5){animation-delay:0.7s}
+.staged .results-grid .resource-card:nth-child(n+6){animation-delay:0.8s}
+.staged .clarify-box,.staged .followup-prompt,.staged .feedback-bar{animation:stageIn 0.4s ease 0.9s both}
+@keyframes stageIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes stageSlide{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
 
-/* ── Reasoning Path ───────────────────────────────────────────────────────── */
-.reasoning-toggle {
-  font-size: 11px; color: var(--text-muted); cursor: pointer;
-  margin-top: 4px; font-family: var(--font-mono);
-  transition: color 0.2s;
-}
-.reasoning-toggle:hover { color: var(--green); }
-.reasoning-panel {
-  display: none; margin-top: 6px;
-  padding: 10px; background: var(--bg-deep);
-  border-radius: 6px; border: 1px solid var(--border);
-}
-.reasoning-panel.open { display: block; }
-.reasoning-summary {
-  font-size: 12px; color: var(--text-secondary);
-  line-height: 1.6; margin-bottom: 8px;
-}
-.reasoning-hop {
-  font-size: 11px; font-family: var(--font-mono);
-  padding: 3px 0; color: var(--text-muted);
-  border-bottom: 1px solid rgba(255,255,255,0.03);
-}
-.reasoning-hop .hop-conf { font-size: 10px; }
+/* Verification */
+.verify-banner{padding:8px 14px;border-radius:6px;font-size:11px;font-weight:600;font-family:var(--font-mono);letter-spacing:0.3px;text-align:center;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px}
+.verify-banner.high{background:rgba(0,200,83,0.08);border:1px solid rgba(0,200,83,0.2);color:#4caf50}
+.verify-banner.medium{background:rgba(33,150,243,0.08);border:1px solid rgba(33,150,243,0.2);color:var(--blue)}
+.verify-banner.low{background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.2);color:var(--orange)}
+.verify-banner.skipped{background:rgba(171,71,188,0.08);border:1px solid rgba(171,71,188,0.2);color:var(--purple)}
+.claims-toggle{font-size:11px;color:var(--text-muted);cursor:pointer;margin-top:6px;font-family:var(--font-mono);transition:color 0.2s}
+.claims-toggle:hover{color:var(--green)}
+.claims-list{display:none;margin-top:6px;padding:8px;background:var(--bg-deep);border-radius:6px;border:1px solid var(--border)}
+.claims-list.open{display:block}
+.claim-item{font-size:11px;padding:4px 8px;margin:3px 0;border-radius:4px;line-height:1.5}
+.claim-item.verified{background:rgba(0,200,83,0.06);color:#81c784}
+.claim-item.unverified{background:rgba(255,152,0,0.06);color:var(--orange)}
 
-/* ── Resource Cards ───────────────────────────────────────────────────────── */
-.results-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+/* Reasoning */
+.reasoning-toggle{font-size:11px;color:var(--text-muted);cursor:pointer;margin-top:4px;font-family:var(--font-mono);transition:color 0.2s}
+.reasoning-toggle:hover{color:var(--green)}
+.reasoning-panel{display:none;margin-top:6px;padding:10px;background:var(--bg-deep);border-radius:6px;border:1px solid var(--border)}
+.reasoning-panel.open{display:block}
+.reasoning-summary{font-size:12px;color:var(--text-secondary);line-height:1.6;margin-bottom:8px}
+.reasoning-hop{font-size:11px;font-family:var(--font-mono);padding:3px 0;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.03)}
 
-.resource-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 8px; padding: 12px 14px;
-  transition: all 0.25s cubic-bezier(0.22,1,0.36,1);
-  cursor: pointer; position: relative; overflow: hidden;
-}
-.resource-card:hover {
-  border-color: var(--border-hover); transform: translateX(2px);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-}
-.resource-card::before {
-  content: ''; position: absolute;
-  left: 0; top: 0; bottom: 0; width: 3px;
-  border-radius: 3px 0 0 3px;
-}
-.resource-card.type-shelter::before { background: var(--green); }
-.resource-card.type-food_bank::before { background: var(--orange); }
-.resource-card.type-hospital::before { background: var(--red); }
-.resource-card.type-school::before { background: var(--blue); }
-.resource-card.type-benefits_center::before { background: var(--purple); }
-.resource-card.type-domestic_violence::before { background: var(--coral); }
-.resource-card.type-dropin_center::before { background: var(--teal); }
+/* Resource Cards */
+.results-grid{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.resource-card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;transition:all 0.25s cubic-bezier(0.22,1,0.36,1);cursor:pointer;position:relative;overflow:hidden}
+.resource-card:hover{border-color:var(--border-hover);transform:translateX(2px);box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+.resource-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px 0 0 3px}
+.resource-card.type-shelter::before{background:var(--green)}
+.resource-card.type-food_bank::before{background:var(--orange)}
+.resource-card.type-hospital::before{background:var(--red)}
+.resource-card.type-school::before{background:var(--blue)}
+.resource-card.type-benefits_center::before{background:var(--purple)}
+.resource-card.type-domestic_violence::before{background:var(--coral)}
+.resource-card.type-dropin_center::before{background:var(--teal)}
+.rc-name{color:var(--text-primary);font-weight:600;font-size:13.5px;line-height:1.3}
+.rc-addr{color:var(--text-muted);font-size:11px;margin-top:3px;font-family:var(--font-mono);letter-spacing:0.2px}
+.rc-distance{color:var(--text-secondary);font-size:11px;margin-top:2px;font-family:var(--font-mono)}
+.rc-distance span{color:var(--green);font-weight:600}
+.rc-match{margin-top:6px;padding:5px 8px;background:rgba(118,185,0,0.05);border-radius:4px;border-left:2px solid var(--green-dim)}
+.rc-match-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--green);font-family:var(--font-mono)}
+.rc-match-text{font-size:11.5px;color:var(--text-secondary);margin-top:1px}
+.rc-tags{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.rc-tag{padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;font-family:var(--font-mono);letter-spacing:0.3px;text-transform:uppercase}
+.rc-tag.type{background:rgba(118,185,0,0.1);color:var(--green);border:1px solid var(--green-dim)}
+.rc-tag.borough{background:rgba(66,165,245,0.08);color:var(--blue);border:1px solid rgba(66,165,245,0.2)}
+.rc-tag.safety{border:1px solid var(--border)}
+.rc-tag.safety.high{color:var(--green);border-color:var(--green-dim)}
+.rc-tag.safety.med{color:var(--orange);border-color:rgba(255,183,77,0.2)}
+.rc-tag.safety.low{color:var(--red);border-color:rgba(239,83,80,0.2)}
+.rc-urgency{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;font-family:var(--font-mono);letter-spacing:0.8px;text-transform:uppercase;background:rgba(239,83,80,0.12);color:var(--red);border:1px solid rgba(239,83,80,0.25)}
+.rc-urgency::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--red);animation:urgencyDot 1.5s ease-in-out infinite}
+@keyframes urgencyDot{0%,100%{opacity:1}50%{opacity:0.3}}
+.rc-actions{display:flex;gap:5px;margin-top:8px}
+.rc-action{background:var(--bg-elevated);border:1px solid var(--border);border-radius:4px;padding:3px 8px;font-size:10px;font-weight:500;color:var(--text-muted);cursor:pointer;transition:all 0.2s;font-family:var(--font-ui);text-decoration:none}
+.rc-action:hover{border-color:var(--green);color:var(--green)}
+.rc-action.directions{background:rgba(118,185,0,0.08);border-color:var(--green-dim);color:var(--green);font-weight:600}
+.rc-action.directions:hover{background:rgba(118,185,0,0.15)}
 
-.rc-name { color: var(--text-primary); font-weight: 600; font-size: 13.5px; line-height: 1.3; }
-.rc-addr {
-  color: var(--text-muted); font-size: 11.5px; margin-top: 3px;
-  font-family: var(--font-mono); letter-spacing: 0.2px;
-}
+/* Emergency */
+.urgency-banner{background:linear-gradient(135deg,#2a0a0a,#1a0505);border:1px solid rgba(239,83,80,0.3);color:var(--red);padding:10px 14px;border-radius:8px;font-size:12px;font-weight:600;text-align:center;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:8px;animation:criticalFlash 3s ease-in-out infinite;font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase}
+.urgency-banner::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--red);animation:urgencyDot 1s ease-in-out infinite;flex-shrink:0}
+@keyframes criticalFlash{0%,100%{box-shadow:0 0 15px rgba(239,83,80,0.1)}50%{box-shadow:0 0 30px rgba(239,83,80,0.25)}}
+.resource-card.emergency{border-color:rgba(239,83,80,0.2)}
 
-/* Why-it-matches */
-.rc-match {
-  margin-top: 6px; padding: 5px 8px;
-  background: rgba(118,185,0,0.05); border-radius: 4px;
-  border-left: 2px solid var(--green-dim);
-}
-.rc-match-label {
-  font-size: 9px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.8px; color: var(--green); font-family: var(--font-mono);
-}
-.rc-match-text { font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; }
+/* Clarify / Follow-up / Feedback */
+.clarify-box{margin-top:10px;padding:12px;background:rgba(66,165,245,0.04);border:1px solid rgba(66,165,245,0.15);border-radius:8px}
+.clarify-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--blue);font-family:var(--font-mono);margin-bottom:6px}
+.clarify-question{font-size:13px;color:var(--text-primary);margin-bottom:8px;line-height:1.5}
+.clarify-row{display:flex;gap:6px}
+.clarify-input{flex:1;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text-primary);font-size:12.5px;font-family:var(--font-ui);outline:none}
+.clarify-input:focus{border-color:var(--blue)}.clarify-input::placeholder{color:var(--text-muted)}
+.clarify-send{background:var(--blue);border:none;color:#fff;border-radius:4px;padding:6px 12px;font-size:10px;font-weight:700;font-family:var(--font-mono);cursor:pointer;letter-spacing:0.5px;text-transform:uppercase}
+.clarify-send:hover{background:#64b5f6}
+.followup-prompt{margin-top:10px;padding:10px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;display:flex;gap:8px;align-items:center}
+.followup-prompt input{flex:1;background:transparent;border:none;color:var(--text-primary);font-size:12.5px;font-family:var(--font-ui);outline:none}
+.followup-prompt input::placeholder{color:var(--text-muted)}
+.followup-send{background:var(--green);border:none;color:#000;border-radius:4px;padding:5px 10px;font-size:10px;font-weight:700;font-family:var(--font-mono);cursor:pointer;letter-spacing:0.5px;text-transform:uppercase}
+.followup-send:hover{background:#8cd600}
+.feedback-bar{margin-top:8px;padding:8px 10px;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;display:flex;gap:6px;align-items:center}
+.feedback-bar input{flex:1;background:transparent;border:none;color:var(--text-primary);font-size:11.5px;font-family:var(--font-ui);outline:none}
+.feedback-bar input::placeholder{color:var(--text-muted)}
+.feedback-send{background:var(--coral);border:none;color:#fff;border-radius:4px;padding:4px 8px;font-size:9px;font-weight:700;font-family:var(--font-mono);cursor:pointer;letter-spacing:0.5px;text-transform:uppercase}
 
-/* Tags */
-.rc-tags { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
-.rc-tag {
-  padding: 2px 7px; border-radius: 4px;
-  font-size: 10px; font-weight: 600;
-  font-family: var(--font-mono); letter-spacing: 0.3px; text-transform: uppercase;
-}
-.rc-tag.type { background: rgba(118,185,0,0.1); color: var(--green); border: 1px solid var(--green-dim); }
-.rc-tag.borough { background: rgba(66,165,245,0.08); color: var(--blue); border: 1px solid rgba(66,165,245,0.2); }
-.rc-tag.safety { border: 1px solid var(--border); }
-.rc-tag.safety.high { color: var(--green); border-color: var(--green-dim); }
-.rc-tag.safety.med { color: var(--orange); border-color: rgba(255,183,77,0.2); }
-.rc-tag.safety.low { color: var(--red); border-color: rgba(239,83,80,0.2); }
+/* Input */
+.input-area{padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-panel);flex-shrink:0}
+.input-row{display:flex;gap:8px}
+.input-area textarea{flex:1;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text-primary);font-size:13px;font-family:var(--font-ui);resize:none;outline:none;transition:all 0.2s}
+.input-area textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(118,185,0,0.08)}
+.input-area textarea::placeholder{color:var(--text-muted)}
+.send-btn{background:var(--green);color:#000;border:none;border-radius:8px;padding:10px 20px;font-weight:700;font-size:12px;font-family:var(--font-mono);cursor:pointer;transition:all 0.2s;white-space:nowrap;letter-spacing:0.5px;text-transform:uppercase}
+.send-btn:hover{background:#8cd600;box-shadow:0 4px 20px rgba(118,185,0,0.3);transform:translateY(-1px)}
+.send-btn:disabled{opacity:0.3;cursor:not-allowed;transform:none}
 
-/* Urgency badge */
-.rc-urgency {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 4px;
-  font-size: 9px; font-weight: 700;
-  font-family: var(--font-mono); letter-spacing: 0.8px; text-transform: uppercase;
-  background: rgba(239,83,80,0.12); color: var(--red);
-  border: 1px solid rgba(239,83,80,0.25);
-}
-.rc-urgency::before {
-  content: ''; width: 5px; height: 5px;
-  border-radius: 50%; background: var(--red);
-  animation: urgencyDot 1.5s ease-in-out infinite;
-}
-@keyframes urgencyDot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+/* Quick Actions */
+.quick-actions{padding:8px 16px;display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0;border-top:1px solid var(--border)}
+.quick-btn{background:none;border:1px solid var(--border);border-radius:4px;padding:4px 9px;color:var(--text-muted);font-size:10px;font-weight:500;cursor:pointer;transition:all 0.2s;font-family:var(--font-ui)}
+.quick-btn:hover{border-color:var(--green);color:var(--green)}
 
-/* Card actions */
-.rc-actions { display: flex; gap: 5px; margin-top: 8px; }
-.rc-action {
-  background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 4px; padding: 3px 8px;
-  font-size: 10px; font-weight: 500; color: var(--text-muted);
-  cursor: pointer; transition: all 0.2s; font-family: var(--font-ui);
-}
-.rc-action:hover { border-color: var(--green); color: var(--green); }
+/* Footer */
+.powered-footer{padding:8px 16px;border-top:1px solid var(--border);background:var(--bg-deep);display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap}
+.powered-label{font-size:8px;font-weight:600;color:var(--text-muted);font-family:var(--font-mono);letter-spacing:1px;text-transform:uppercase;margin-right:2px}
+.powered-badge{padding:2px 7px;border-radius:3px;font-size:9px;font-weight:600;font-family:var(--font-mono);background:rgba(118,185,0,0.06);color:rgba(118,185,0,0.6);border:1px solid rgba(118,185,0,0.1);transition:all 0.3s}
+.powered-badge:hover{color:var(--green);border-color:var(--green-dim);background:rgba(118,185,0,0.1)}
 
-/* ── Emergency Styles ─────────────────────────────────────────────────────── */
-.urgency-banner {
-  background: linear-gradient(135deg, #2a0a0a, #1a0505);
-  border: 1px solid rgba(239,83,80,0.3);
-  color: var(--red); padding: 10px 14px; border-radius: 8px;
-  font-size: 12px; font-weight: 600; text-align: center;
-  margin-bottom: 8px; display: flex; align-items: center;
-  justify-content: center; gap: 8px;
-  animation: criticalFlash 3s ease-in-out infinite;
-  font-family: var(--font-mono); letter-spacing: 0.5px; text-transform: uppercase;
-}
-.urgency-banner::before {
-  content: ''; width: 8px; height: 8px;
-  border-radius: 50%; background: var(--red);
-  animation: urgencyDot 1s ease-in-out infinite; flex-shrink: 0;
-}
-@keyframes criticalFlash {
-  0%,100% { box-shadow: 0 0 15px rgba(239,83,80,0.1); }
-  50% { box-shadow: 0 0 30px rgba(239,83,80,0.25); }
-}
-.resource-card.emergency {
-  border-color: rgba(239,83,80,0.2);
-  animation: cardEmergencyPulse 4s ease-in-out infinite;
-}
-@keyframes cardEmergencyPulse {
-  0%,100% { box-shadow: inset 0 0 0 0 rgba(239,83,80,0); }
-  50% { box-shadow: inset 0 0 20px rgba(239,83,80,0.04); }
-}
+/* Map */
+.map-container{position:relative}
+#map{width:100%;height:100%}
+.map-overlay{position:absolute;z-index:10;background:rgba(12,12,20,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:8px}
+.status-pill{top:16px;right:16px;padding:7px 12px;font-size:11px;font-family:var(--font-mono);display:flex;align-items:center;gap:6px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green-glow);animation:dotPulse 2s infinite}
+@keyframes dotPulse{0%,100%{box-shadow:0 0 4px var(--green-glow)}50%{box-shadow:0 0 10px var(--green-glow)}}
+.legend{bottom:16px;right:16px;padding:10px 14px}
+.legend-title{font-size:9px;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px}
+.legend-item{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-secondary);margin:3px 0}
+.legend-dot{width:8px;height:8px;border-radius:50%}
+.timing-bar{bottom:16px;left:16px;padding:6px 12px;font-size:10px;font-family:var(--font-mono);color:var(--text-muted);display:none}
 
-/* ── Clarification Box ────────────────────────────────────────────────────── */
-.clarify-box {
-  margin-top: 10px; padding: 12px;
-  background: rgba(66,165,245,0.04);
-  border: 1px solid rgba(66,165,245,0.15);
-  border-radius: 8px;
-  animation: msgIn 0.4s cubic-bezier(0.22,1,0.36,1) 0.2s both;
-}
-.clarify-label {
-  font-size: 9px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.8px; color: var(--blue);
-  font-family: var(--font-mono); margin-bottom: 6px;
-}
-.clarify-question {
-  font-size: 13px; color: var(--text-primary);
-  margin-bottom: 8px; line-height: 1.5;
-}
-.clarify-row { display: flex; gap: 6px; }
-.clarify-input {
-  flex: 1; background: var(--bg-deep); border: 1px solid var(--border);
-  border-radius: 6px; padding: 8px 12px;
-  color: var(--text-primary); font-size: 12.5px;
-  font-family: var(--font-ui); outline: none;
-}
-.clarify-input:focus { border-color: var(--blue); }
-.clarify-input::placeholder { color: var(--text-muted); }
-.clarify-send {
-  background: var(--blue); border: none; color: #fff;
-  border-radius: 4px; padding: 6px 12px;
-  font-size: 10px; font-weight: 700;
-  font-family: var(--font-mono); cursor: pointer;
-  letter-spacing: 0.5px; text-transform: uppercase;
-}
-.clarify-send:hover { background: #64b5f6; }
+.loading{display:none;padding:20px;text-align:center}
+.loading.active{display:flex;align-items:center;justify-content:center;gap:10px}
+.spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:var(--text-muted);font-size:12px;font-family:var(--font-mono)}
 
-/* ── Follow-up Prompt ─────────────────────────────────────────────────────── */
-.followup-prompt {
-  margin-top: 10px; padding: 10px 12px;
-  background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 8px; display: flex; gap: 8px; align-items: center;
-  animation: msgIn 0.4s cubic-bezier(0.22,1,0.36,1) 0.3s both;
-}
-.followup-prompt input {
-  flex: 1; background: transparent; border: none;
-  color: var(--text-primary); font-size: 12.5px;
-  font-family: var(--font-ui); outline: none;
-}
-.followup-prompt input::placeholder { color: var(--text-muted); }
-.followup-send {
-  background: var(--green); border: none; color: #000;
-  border-radius: 4px; padding: 5px 10px;
-  font-size: 10px; font-weight: 700;
-  font-family: var(--font-mono); cursor: pointer;
-  letter-spacing: 0.5px; text-transform: uppercase;
-}
-.followup-send:hover { background: #8cd600; }
+/* Guided */
+.guided-card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:6px;cursor:pointer;transition:all 0.25s cubic-bezier(0.22,1,0.36,1)}
+.guided-card:hover{border-color:var(--border-hover);transform:translateX(2px)}
+.guided-card.selected{border-color:var(--green);background:rgba(118,185,0,0.04)}
+.gc-icon{font-size:22px;margin-bottom:4px}.gc-title{font-weight:600;font-size:14px}.gc-desc{color:var(--text-muted);font-size:11.5px;margin-top:2px}
+.guided-label{color:var(--text-muted);font-size:10px;font-weight:600;font-family:var(--font-mono);letter-spacing:0.5px;text-transform:uppercase;display:block;margin-bottom:4px}
+.guided-select,.guided-input{width:100%;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text-primary);font-size:13px;font-family:var(--font-ui);outline:none}
+.guided-select:focus,.guided-input:focus{border-color:var(--green)}
+.guided-checkbox-group{display:flex;flex-wrap:wrap;gap:8px}
+.guided-checkbox-label{color:var(--text-secondary);font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer}
 
-/* ── Feedback Bar ─────────────────────────────────────────────────────────── */
-.feedback-bar {
-  margin-top: 8px; padding: 8px 10px;
-  background: var(--bg-deep); border: 1px solid var(--border);
-  border-radius: 6px; display: flex; gap: 6px; align-items: center;
-}
-.feedback-bar input {
-  flex: 1; background: transparent; border: none;
-  color: var(--text-primary); font-size: 11.5px;
-  font-family: var(--font-ui); outline: none;
-}
-.feedback-bar input::placeholder { color: var(--text-muted); }
-.feedback-send {
-  background: var(--coral); border: none; color: #fff;
-  border-radius: 4px; padding: 4px 8px;
-  font-size: 9px; font-weight: 700;
-  font-family: var(--font-mono); cursor: pointer;
-  letter-spacing: 0.5px; text-transform: uppercase;
-}
-
-/* ── Input Area ───────────────────────────────────────────────────────────── */
-.input-area {
-  padding: 12px 16px; border-top: 1px solid var(--border);
-  background: var(--bg-panel); flex-shrink: 0;
-}
-.input-row { display: flex; gap: 8px; }
-.input-area textarea {
-  flex: 1; background: var(--bg-deep); border: 1px solid var(--border);
-  border-radius: 8px; padding: 10px 14px;
-  color: var(--text-primary); font-size: 13px;
-  font-family: var(--font-ui); resize: none; outline: none;
-  transition: all 0.2s;
-}
-.input-area textarea:focus {
-  border-color: var(--green); box-shadow: 0 0 0 3px rgba(118,185,0,0.08);
-}
-.input-area textarea::placeholder { color: var(--text-muted); }
-.send-btn {
-  background: var(--green); color: #000; border: none;
-  border-radius: 8px; padding: 10px 20px;
-  font-weight: 700; font-size: 12px;
-  font-family: var(--font-mono); cursor: pointer;
-  transition: all 0.2s; white-space: nowrap;
-  letter-spacing: 0.5px; text-transform: uppercase;
-}
-.send-btn:hover {
-  background: #8cd600; box-shadow: 0 4px 20px rgba(118,185,0,0.3);
-  transform: translateY(-1px);
-}
-.send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
-
-/* ── Quick Actions ────────────────────────────────────────────────────────── */
-.quick-actions {
-  padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 4px;
-  flex-shrink: 0; border-top: 1px solid var(--border);
-}
-.quick-btn {
-  background: none; border: 1px solid var(--border);
-  border-radius: 4px; padding: 4px 9px;
-  color: var(--text-muted); font-size: 10px; font-weight: 500;
-  cursor: pointer; transition: all 0.2s; font-family: var(--font-ui);
-}
-.quick-btn:hover { border-color: var(--green); color: var(--green); }
-
-/* ── Powered-By Footer ────────────────────────────────────────────────────── */
-.powered-footer {
-  padding: 8px 16px; border-top: 1px solid var(--border);
-  background: var(--bg-deep);
-  display: flex; align-items: center; gap: 6px;
-  flex-shrink: 0; flex-wrap: wrap;
-}
-.powered-label {
-  font-size: 8px; font-weight: 600; color: var(--text-muted);
-  font-family: var(--font-mono); letter-spacing: 1px;
-  text-transform: uppercase; margin-right: 2px;
-}
-.powered-badge {
-  padding: 2px 7px; border-radius: 3px;
-  font-size: 9px; font-weight: 600;
-  font-family: var(--font-mono);
-  background: rgba(118,185,0,0.06); color: rgba(118,185,0,0.6);
-  border: 1px solid rgba(118,185,0,0.1);
-  transition: all 0.3s;
-}
-.powered-badge:hover {
-  color: var(--green); border-color: var(--green-dim);
-  background: rgba(118,185,0,0.1);
-}
-
-/* ── Map ──────────────────────────────────────────────────────────────────── */
-.map-container { position: relative; }
-#map { width: 100%; height: 100%; }
-
-.map-overlay {
-  position: absolute; z-index: 10;
-  background: rgba(12,12,20,0.92); backdrop-filter: blur(12px);
-  border: 1px solid var(--border); border-radius: 8px;
-}
-.status-pill {
-  top: 16px; right: 16px; padding: 7px 12px;
-  font-size: 11px; font-family: var(--font-mono);
-  display: flex; align-items: center; gap: 6px;
-}
-.dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--green); box-shadow: 0 0 6px var(--green-glow);
-  animation: dotPulse 2s infinite;
-}
-@keyframes dotPulse {
-  0%,100% { box-shadow: 0 0 4px var(--green-glow); }
-  50% { box-shadow: 0 0 10px var(--green-glow); }
-}
-
-.legend { bottom: 16px; right: 16px; padding: 10px 14px; }
-.legend-title {
-  font-size: 9px; font-family: var(--font-mono); color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px;
-}
-.legend-item {
-  display: flex; align-items: center; gap: 7px;
-  font-size: 11px; color: var(--text-secondary); margin: 3px 0;
-}
-.legend-dot { width: 8px; height: 8px; border-radius: 50%; }
-
-.timing-bar {
-  bottom: 16px; left: 16px; padding: 6px 12px;
-  font-size: 10px; font-family: var(--font-mono);
-  color: var(--text-muted); display: none;
-}
-
-/* ── Loading ──────────────────────────────────────────────────────────────── */
-.loading { display: none; padding: 20px; text-align: center; }
-.loading.active { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.spinner {
-  width: 16px; height: 16px;
-  border: 2px solid var(--border); border-top-color: var(--green);
-  border-radius: 50%; animation: spin 0.7s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.loading-text { color: var(--text-muted); font-size: 12px; font-family: var(--font-mono); }
-
-/* ── Guided Search ────────────────────────────────────────────────────────── */
-.guided-card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 8px; padding: 14px; margin-bottom: 6px;
-  cursor: pointer; transition: all 0.25s cubic-bezier(0.22,1,0.36,1);
-}
-.guided-card:hover { border-color: var(--border-hover); transform: translateX(2px); }
-.guided-card.selected { border-color: var(--green); background: rgba(118,185,0,0.04); }
-.gc-icon { font-size: 22px; margin-bottom: 4px; }
-.gc-title { font-weight: 600; font-size: 14px; }
-.gc-desc { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; }
-
-.guided-label {
-  color: var(--text-muted); font-size: 10px; font-weight: 600;
-  font-family: var(--font-mono); letter-spacing: 0.5px;
-  text-transform: uppercase; display: block; margin-bottom: 4px;
-}
-.guided-select, .guided-input {
-  width: 100%; background: var(--bg-deep); border: 1px solid var(--border);
-  border-radius: 6px; padding: 8px 12px;
-  color: var(--text-primary); font-size: 13px;
-  font-family: var(--font-ui); outline: none;
-}
-.guided-select:focus, .guided-input:focus { border-color: var(--green); }
-.guided-checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
-.guided-checkbox-label {
-  color: var(--text-secondary); font-size: 12px;
-  display: flex; align-items: center; gap: 4px; cursor: pointer;
-}
-
-/* ── Scrollbar ────────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
-
-/* ── Responsive ───────────────────────────────────────────────────────────── */
-@media (max-width: 900px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: 1fr 40vh; }
-  .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
-}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+@media(max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:1fr 40vh}.sidebar{border-right:none;border-bottom:1px solid var(--border)}}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="sidebar">
+    <div class="onboarding" id="onboarding">
+      <div class="onboarding-title">How can we help you?</div>
+      <div class="onboarding-sub">Tap what you need &mdash; we'll find the right services across NYC.</div>
+      <div class="mood-cards">
+        <div class="mood-card" onclick="moodSelect('I need a shelter tonight. I have nowhere to sleep.')">
+          <div class="mood-icon">&#127769;</div>
+          <div class="mood-text"><div class="mood-label">I have nowhere to sleep tonight</div><div class="mood-hint">Emergency shelters, transitional housing</div></div>
+        </div>
+        <div class="mood-card" onclick="moodSelect('Where can I get free food near me? I need to eat.')">
+          <div class="mood-icon">&#127858;</div>
+          <div class="mood-text"><div class="mood-label">I need food</div><div class="mood-hint">Food pantries, soup kitchens, SNAP</div></div>
+        </div>
+        <div class="mood-card" onclick="moodSelect('I don\'t feel safe at home. I have a child and need help now.')">
+          <div class="mood-icon">&#128737;&#65039;</div>
+          <div class="mood-text"><div class="mood-label">I don't feel safe</div><div class="mood-hint">Domestic violence, crime victim services</div></div>
+        </div>
+        <div class="mood-card" onclick="moodSelect('I have a family and we need help with housing, food, healthcare, and benefits.')">
+          <div class="mood-icon">&#128106;</div>
+          <div class="mood-text"><div class="mood-label">I need help for my family</div><div class="mood-hint">Full needs assessment across all services</div></div>
+        </div>
+        <div class="mood-card" onclick="moodSelectOps()">
+          <div class="mood-icon">&#128225;</div>
+          <div class="mood-text"><div class="mood-label">I'm a city coordinator</div><div class="mood-hint">Operations mode &mdash; simulations, gap analysis</div></div>
+        </div>
+      </div>
+      <div class="onboarding-skip"><a href="#" onclick="dismissOnboarding();return false;">Skip to chat &rarr;</a></div>
+    </div>
+
     <div class="sidebar-header">
       <h1>NYC Services Engine</h1>
-      <p class="subtitle">Social Services Intelligence &mdash; City-Scale Operations</p>
+      <p class="subtitle">Social Services Intelligence &mdash; City-Scale Ops</p>
       <div class="header-stats">
         <div class="header-stat"><span id="statResources">--</span> resources</div>
         <div class="header-stat"><span id="statEdges">--</span> graph edges</div>
         <div class="header-stat"><span id="statLLM">...</span></div>
       </div>
-      <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">
-        <input type="text" id="locationInput" placeholder="Your location (or use GPS)"
-          style="flex:1;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:5px 10px;color:var(--text-primary);font-size:12px;">
-        <button onclick="setManualLocation()" style="background:var(--green);color:white;border:none;border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap;">Set</button>
-        <button onclick="getUserLocation()" style="background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;" title="Use GPS">&#128205;</button>
-      </div>
-      <div id="locationStatus" style="font-size:11px;color:var(--text-muted);margin-top:4px;"></div>
     </div>
 
     <div class="tabs">
@@ -615,7 +353,6 @@ body {
       <div class="tab" onclick="switchTab('guided')">Guided Search</div>
     </div>
 
-    <!-- Chat Tab -->
     <div class="tab-content active" id="tab-chat">
       <div class="categories">
         <button class="cat-btn" data-q="I need a shelter tonight in Brooklyn"><span class="cat-icon">&#127968;</span> Shelter</button>
@@ -625,108 +362,37 @@ body {
         <button class="cat-btn" data-q="I don't feel safe at home, I have a child"><span class="cat-icon">&#128737;&#65039;</span> Safety</button>
         <button class="cat-btn" data-q="I just arrived in NYC and need help"><span class="cat-icon">&#127758;</span> New to NYC</button>
       </div>
-
-      <div class="chat-area" id="chat">
-        <div class="msg system">
-          Describe what's going on &mdash; or tap a category above.<br>
-          I'll find the right services across all of NYC.
-        </div>
-      </div>
-
-      <div class="loading" id="loading">
-        <div class="spinner"></div>
-        <span class="loading-text">Searching NYC resources...</span>
-      </div>
-
-      <div class="quick-actions">
+      <div class="chat-area" id="chat"><div class="msg system">Describe what's going on &mdash; or tap a category above.</div></div>
+      <div class="loading" id="loading"><div class="spinner"></div><span class="loading-text">Analyzing your situation...</span></div>
+      <div class="quick-actions" id="quickActions">
         <button class="quick-btn" data-q="I'm Tina, 4 kids, income $28K, losing housing in Flatbush next week">Family losing housing</button>
         <button class="quick-btn" data-q="Someone broke into my apartment. I have a 6 year old. I don't feel safe.">Crime victim</button>
         <button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button>
         <button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>
       </div>
-
-      <div class="input-area">
-        <div class="input-row">
-          <textarea id="queryInput" rows="2" placeholder="Tell me what's happening..."></textarea>
-          <button class="send-btn" id="sendBtn" onclick="sendQuery()">Send</button>
-        </div>
-      </div>
+      <div class="input-area"><div class="input-row">
+        <textarea id="queryInput" rows="2" placeholder="Tell me what's happening..."></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendQuery()">Send</button>
+      </div></div>
     </div>
 
-    <!-- Guided Search Tab -->
     <div class="tab-content" id="tab-guided">
       <div style="padding:16px;flex:1;overflow-y:auto;">
         <div style="font-family:var(--font-mono);color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Select a need</div>
         <div id="guidedOptions">
-          <div class="guided-card" onclick="guidedSelect('housing')">
-            <div class="gc-icon">&#127968;</div>
-            <div class="gc-title">Housing & Shelter</div>
-            <div class="gc-desc">Emergency shelter, transitional housing, NYCHA</div>
-          </div>
-          <div class="guided-card" onclick="guidedSelect('food')">
-            <div class="gc-icon">&#127822;</div>
-            <div class="gc-title">Food & Meals</div>
-            <div class="gc-desc">Food pantries, soup kitchens, SNAP enrollment</div>
-          </div>
-          <div class="guided-card" onclick="guidedSelect('health')">
-            <div class="gc-icon">&#127973;</div>
-            <div class="gc-title">Healthcare</div>
-            <div class="gc-desc">Hospitals, clinics, mental health, Medicaid</div>
-          </div>
-          <div class="guided-card" onclick="guidedSelect('safety')">
-            <div class="gc-icon">&#128737;&#65039;</div>
-            <div class="gc-title">Safety & DV</div>
-            <div class="gc-desc">Domestic violence, crime victim services</div>
-          </div>
-          <div class="guided-card" onclick="guidedSelect('benefits')">
-            <div class="gc-icon">&#128203;</div>
-            <div class="gc-title">Benefits & Aid</div>
-            <div class="gc-desc">SNAP, Medicaid, cash assistance, WIC</div>
-          </div>
-          <div class="guided-card" onclick="guidedSelect('children')">
-            <div class="gc-icon">&#128118;</div>
-            <div class="gc-title">Children & Schools</div>
-            <div class="gc-desc">Childcare, schools, after-school programs</div>
-          </div>
+          <div class="guided-card" onclick="guidedSelect('housing')"><div class="gc-icon">&#127968;</div><div class="gc-title">Housing & Shelter</div><div class="gc-desc">Emergency shelter, transitional housing, NYCHA</div></div>
+          <div class="guided-card" onclick="guidedSelect('food')"><div class="gc-icon">&#127822;</div><div class="gc-title">Food & Meals</div><div class="gc-desc">Food pantries, soup kitchens, SNAP</div></div>
+          <div class="guided-card" onclick="guidedSelect('health')"><div class="gc-icon">&#127973;</div><div class="gc-title">Healthcare</div><div class="gc-desc">Hospitals, clinics, mental health, Medicaid</div></div>
+          <div class="guided-card" onclick="guidedSelect('safety')"><div class="gc-icon">&#128737;&#65039;</div><div class="gc-title">Safety & DV</div><div class="gc-desc">Domestic violence, crime victim services</div></div>
+          <div class="guided-card" onclick="guidedSelect('benefits')"><div class="gc-icon">&#128203;</div><div class="gc-title">Benefits & Aid</div><div class="gc-desc">SNAP, Medicaid, cash assistance, WIC</div></div>
+          <div class="guided-card" onclick="guidedSelect('children')"><div class="gc-icon">&#128118;</div><div class="gc-title">Children & Schools</div><div class="gc-desc">Childcare, schools, after-school programs</div></div>
         </div>
-
         <div id="guidedForm" style="display:none;margin-top:14px;">
           <div style="font-family:var(--font-mono);color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Tell us more</div>
-          <div style="margin-bottom:10px;">
-            <label class="guided-label">Borough</label>
-            <select id="guidedBorough" class="guided-select">
-              <option value="">Any borough</option>
-              <option value="Brooklyn">Brooklyn</option>
-              <option value="Manhattan">Manhattan</option>
-              <option value="Queens">Queens</option>
-              <option value="Bronx">Bronx</option>
-              <option value="Staten Island">Staten Island</option>
-            </select>
-          </div>
-          <div style="margin-bottom:10px;">
-            <label class="guided-label">Household Size</label>
-            <input id="guidedHousehold" type="number" value="1" min="1" max="20" class="guided-input">
-          </div>
-          <div style="margin-bottom:10px;">
-            <label class="guided-label">Special Needs</label>
-            <div class="guided-checkbox-group">
-              <label class="guided-checkbox-label"><input type="checkbox" id="guidedADA"> Wheelchair accessible</label>
-              <label class="guided-checkbox-label"><input type="checkbox" id="guidedChildren"> Have children</label>
-              <label class="guided-checkbox-label"><input type="checkbox" id="guidedUrgent"> Urgent / tonight</label>
-            </div>
-          </div>
-          <div style="margin-bottom:10px;">
-            <label class="guided-label">Language (optional)</label>
-            <select id="guidedLanguage" class="guided-select">
-              <option value="">English</option>
-              <option value="Spanish">Spanish</option>
-              <option value="Mandarin">Mandarin</option>
-              <option value="Haitian Creole">Haitian Creole</option>
-              <option value="Russian">Russian</option>
-              <option value="Arabic">Arabic</option>
-              <option value="Bengali">Bengali</option>
-            </select>
-          </div>
+          <div style="margin-bottom:10px;"><label class="guided-label">Borough</label><select id="guidedBorough" class="guided-select"><option value="">Any borough</option><option value="Brooklyn">Brooklyn</option><option value="Manhattan">Manhattan</option><option value="Queens">Queens</option><option value="Bronx">Bronx</option><option value="Staten Island">Staten Island</option></select></div>
+          <div style="margin-bottom:10px;"><label class="guided-label">Household Size</label><input id="guidedHousehold" type="number" value="1" min="1" max="20" class="guided-input"></div>
+          <div style="margin-bottom:10px;"><label class="guided-label">Special Needs</label><div class="guided-checkbox-group"><label class="guided-checkbox-label"><input type="checkbox" id="guidedADA"> Wheelchair accessible</label><label class="guided-checkbox-label"><input type="checkbox" id="guidedChildren"> Have children</label><label class="guided-checkbox-label"><input type="checkbox" id="guidedUrgent"> Urgent / tonight</label></div></div>
+          <div style="margin-bottom:10px;"><label class="guided-label">Language</label><select id="guidedLanguage" class="guided-select"><option value="">English</option><option value="Spanish">Spanish</option><option value="Mandarin">Mandarin</option><option value="Haitian Creole">Haitian Creole</option><option value="Russian">Russian</option><option value="Arabic">Arabic</option><option value="Bengali">Bengali</option></select></div>
           <button class="send-btn" style="width:100%;margin-top:8px;" onclick="sendGuidedQuery()">Find Resources</button>
         </div>
       </div>
@@ -743,17 +409,13 @@ body {
     </div>
   </div>
 
-  <!-- Map -->
   <div class="map-container">
     <div id="map"></div>
-    <div class="map-overlay status-pill" id="status">
-      <span class="dot"></span>
-      <span id="statusText">Connecting...</span>
-    </div>
+    <div class="map-overlay status-pill" id="status"><span class="dot"></span><span id="statusText">Connecting...</span></div>
     <div class="map-overlay legend">
       <div class="legend-title">Resource Types</div>
       <div class="legend-item"><span class="legend-dot" style="background:var(--green);"></span> Shelters</div>
-      <div class="legend-item"><span class="legend-dot" style="background:var(--orange);"></span> Food Banks</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--orange);"></span> Food</div>
       <div class="legend-item"><span class="legend-dot" style="background:var(--red);"></span> Hospitals</div>
       <div class="legend-item"><span class="legend-dot" style="background:var(--blue);"></span> Schools</div>
       <div class="legend-item"><span class="legend-dot" style="background:var(--purple);"></span> Benefits</div>
@@ -764,572 +426,234 @@ body {
 </div>
 
 <script>
-// ── State ───────────────────────────────────────────────────────────────────
-let guidedNeed = '';
-let lastQuery = '';
-let isEmergency = false;
-let lastResources = [];  // for feedback matching
+let guidedNeed='',lastQuery='',isEmergency=false,lastResources=[],opsMode=false,pulseAnimId=null,arcAnimId=null;
+const EMERGENCY_KEYWORDS=['emergency','urgent','tonight','right now','immediately','cold emergency','hit capacity','outside','don\'t feel safe','not safe','broke in','domestic violence','dv','fleeing','danger','crisis','15 degrees','freezing','hypothermia','overdose'];
+const TYPE_COLORS={shelter:[118,185,0],food_bank:[255,183,77],hospital:[239,83,80],school:[66,165,245],benefits_center:[171,71,188],domestic_violence:[255,112,67],transit_station:[60,60,70],community_center:[90,90,100],senior_services:[77,182,172],childcare:[129,199,132],mental_health:[149,117,205],dropin_center:[77,182,172]};
+const BOROUGH_CENTERS={MN:[-73.97,40.78],BK:[-73.95,40.65],QN:[-73.79,40.73],BX:[-73.87,40.85],SI:[-74.15,40.58],Manhattan:[-73.97,40.78],Brooklyn:[-73.95,40.65],Queens:[-73.79,40.73],Bronx:[-73.87,40.85],'Staten Island':[-74.15,40.58]};
+const NYC=[-73.98,40.74];
 
-const EMERGENCY_KEYWORDS = [
-  'emergency','urgent','tonight','right now','immediately','cold emergency',
-  'hit capacity','outside','don\'t feel safe','not safe','broke in',
-  'domestic violence','dv','fleeing','danger','crisis','15 degrees',
-  'freezing','hypothermia','overdose'
-];
-
-function detectEmergency(query) {
-  const q = query.toLowerCase();
-  return EMERGENCY_KEYWORDS.some(kw => q.includes(kw));
+function detectEmergency(q){return EMERGENCY_KEYWORDS.some(kw=>q.toLowerCase().includes(kw))}
+function getMatchReason(r){
+  const p=[];
+  if(r.need)r.need.split('+').forEach(n=>p.push(n.trim().replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())));
+  if(!p.length&&r.type)p.push(r.type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()));
+  return p.join(' + ');
 }
 
-function getMatchReason(resource) {
-  const parts = [];
-  if (resource.need) {
-    resource.need.split('+').forEach(n => {
-      const words = n.trim().replace(/_/g,' ').split(' ');
-      parts.push(words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
-    });
+// Counter animation
+function animateCounter(el,target,dur=1500){
+  const start=performance.now();
+  function tick(now){
+    const t=Math.min((now-start)/dur,1),ease=1-Math.pow(1-t,4);
+    el.textContent=Math.round(target*ease).toLocaleString();
+    if(t<1)requestAnimationFrame(tick);
   }
-  if (!parts.length && resource.type) {
-    const words = resource.type.replace(/_/g,' ').split(' ');
-    parts.push(words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
-  }
-  return parts.join(' + ');
+  requestAnimationFrame(tick);
 }
 
-// ── Tabs ────────────────────────────────────────────────────────────────────
-function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+// Onboarding
+function dismissOnboarding(){
+  const el=document.getElementById('onboarding');
+  el.classList.add('hidden');
+  setTimeout(()=>el.style.display='none',500);
+}
+function moodSelect(query){dismissOnboarding();setTimeout(()=>{document.getElementById('queryInput').value=query;sendQuery();},300)}
+function moodSelectOps(){
+  opsMode=true;dismissOnboarding();
+  const qa=document.getElementById('quickActions');
+  qa.innerHTML='<button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button><button class="quick-btn" data-q="Which neighborhoods are more than 30 minutes from the nearest shelter?">Resource gaps</button><button class="quick-btn" data-q="What if we add 500 shelter beds in the Bronx?">Capacity sim</button><button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>';
+  qa.querySelectorAll('.quick-btn').forEach(b=>b.addEventListener('click',()=>{document.getElementById('queryInput').value=b.dataset.q;sendQuery();}));
+}
+
+// Tabs
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelector(`.tab-content#tab-${tab}`).classList.add('active');
   document.querySelectorAll('.tab')[tab==='chat'?0:1].classList.add('active');
 }
 
-// ── Guided Search ───────────────────────────────────────────────────────────
-function guidedSelect(need) {
-  guidedNeed = need;
-  document.querySelectorAll('.guided-card').forEach(c => c.classList.remove('selected'));
-  event.currentTarget.classList.add('selected');
-  document.getElementById('guidedForm').style.display = 'block';
+// Guided
+function guidedSelect(need){guidedNeed=need;document.querySelectorAll('.guided-card').forEach(c=>c.classList.remove('selected'));event.currentTarget.classList.add('selected');document.getElementById('guidedForm').style.display='block'}
+function sendGuidedQuery(){
+  const b=document.getElementById('guidedBorough').value,h=document.getElementById('guidedHousehold').value,ada=document.getElementById('guidedADA').checked,ch=document.getElementById('guidedChildren').checked,urg=document.getElementById('guidedUrgent').checked,lang=document.getElementById('guidedLanguage').value;
+  const nm={housing:'emergency shelter and housing assistance',food:'food — a food pantry or soup kitchen',health:'medical care at a hospital or clinic',safety:'help with a domestic violence or safety situation',benefits:'benefits enrollment — SNAP, Medicaid, and cash assistance',children:'childcare and schools for my children'};
+  const p=[];
+  if(h>1){p.push(`I have a family of ${h}${ch?' with children':''}`);p.push(`and we need ${nm[guidedNeed]||'help'}`);}else p.push(`I need ${nm[guidedNeed]||'help'}`);
+  if(b)p.push(`in ${b}`);if(ada)p.push('I need wheelchair accessible facilities');if(lang)p.push(`We speak ${lang}`);if(urg)p.push('This is urgent — we need help tonight');
+  switchTab('chat');document.getElementById('queryInput').value=p.join('. ')+'.';sendQuery();
 }
 
-function sendGuidedQuery() {
-  const borough = document.getElementById('guidedBorough').value;
-  const household = document.getElementById('guidedHousehold').value;
-  const ada = document.getElementById('guidedADA').checked;
-  const children = document.getElementById('guidedChildren').checked;
-  const urgent = document.getElementById('guidedUrgent').checked;
-  const language = document.getElementById('guidedLanguage').value;
+// Map
+const map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:11,pitch:45,bearing:-10});
+map.addControl(new maplibregl.NavigationControl(),'top-left');
+let deckOverlay=null,allResources=[];
 
-  const needMap = {
-    housing:'emergency shelter and housing assistance',
-    food:'food — a food pantry or soup kitchen',
-    health:'medical care at a hospital or clinic',
-    safety:'help with a domestic violence or safety situation',
-    benefits:'benefits enrollment — SNAP, Medicaid, and cash assistance',
-    children:'childcare and schools for my children',
-  };
+fetch('/api/resources').then(r=>r.json()).then(d=>{allResources=d;updateMap(d)}).catch(()=>{});
+fetch('/api/status').then(r=>r.json()).then(d=>{
+  const c=d.resources||0,e=d.edges||0;
+  document.getElementById('statusText').textContent=`${c.toLocaleString()} resources | ${d.llm||'...'}`;
+  animateCounter(document.getElementById('statResources'),c);
+  animateCounter(document.getElementById('statEdges'),e);
+  document.getElementById('statLLM').textContent=d.llm||'...';
+}).catch(()=>{document.getElementById('statusText').textContent='Offline'});
 
-  const parts = [];
-  if (household > 1) {
-    parts.push(`I have a family of ${household}${children?' with children':''}`);
-    parts.push(`and we need ${needMap[guidedNeed]||'help'}`);
-  } else {
-    parts.push(`I need ${needMap[guidedNeed]||'help'}`);
-  }
-  if (borough) parts.push(`in ${borough}`);
-  if (ada) parts.push('I need wheelchair accessible facilities');
-  if (language) parts.push(`We speak ${language}`);
-  if (urgent) parts.push('This is urgent — we need help tonight');
-
-  switchTab('chat');
-  document.getElementById('queryInput').value = parts.join('. ')+'.';
-  sendQuery();
-}
-
-// ── Map Setup ───────────────────────────────────────────────────────────────
-const NYC = [-73.98, 40.74];
-const map = new maplibregl.Map({
-  container:'map',
-  style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-  center:NYC, zoom:11, pitch:45, bearing:-10,
-});
-map.addControl(new maplibregl.NavigationControl(), 'top-left');
-
-let deckOverlay = null;
-let allResources = [];
-
-const TYPE_COLORS = {
-  shelter:[118,185,0], food_bank:[255,183,77], hospital:[239,83,80],
-  school:[66,165,245], benefits_center:[171,71,188],
-  domestic_violence:[255,112,67], transit_station:[60,60,70],
-  community_center:[90,90,100], senior_services:[77,182,172],
-  childcare:[129,199,132], mental_health:[149,117,205],
-  dropin_center:[77,182,172], police_precinct:[100,100,120],
-};
-
-fetch('/api/resources').then(r=>r.json()).then(data=>{
-  allResources=data; updateMap(data);
-}).catch(()=>{});
-
-fetch('/api/status').then(r=>r.json()).then(data=>{
-  const c=(data.resources||0), e=(data.edges||0);
-  document.getElementById('statusText').textContent=`${c.toLocaleString()} resources | ${data.llm||'...'}`;
-  document.getElementById('statResources').textContent=c.toLocaleString();
-  document.getElementById('statEdges').textContent=e.toLocaleString();
-  document.getElementById('statLLM').textContent=data.llm||'...';
-}).catch(()=>{
-  document.getElementById('statusText').textContent='Offline';
-});
-
-function updateMap(bg, results=[]) {
-  const resultNames = new Set(results.map(r=>r.name));
-  const bgF = (bg||[]).filter(r=>r.latitude&&r.longitude&&!resultNames.has(r.name));
-  const fg = results.filter(r=>r.lat&&r.lon);
-
-  const layers = [
-    new deck.ScatterplotLayer({
-      id:'bg', data:bgF,
-      getPosition:d=>[d.longitude,d.latitude],
-      getRadius:25, getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),30],
-      radiusMinPixels:1.5, radiusMaxPixels:5, pickable:true,
-      onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${object.resource_type})`:'';}
-    }),
-    new deck.ScatterplotLayer({
-      id:'results', data:fg,
-      getPosition:d=>[d.lon,d.lat],
-      getRadius:100, getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],
-      radiusMinPixels:8, radiusMaxPixels:25, pickable:true,
-      stroked:true, getLineColor:[255,255,255,180], lineWidthMinPixels:2,
-    }),
+function updateMap(bg,results=[],showArcs=false){
+  const rNames=new Set(results.map(r=>r.name));
+  const bgF=(bg||[]).filter(r=>r.latitude&&r.longitude&&!rNames.has(r.name));
+  const fg=results.filter(r=>r.lat&&r.lon);
+  if(pulseAnimId){cancelAnimationFrame(pulseAnimId);pulseAnimId=null}
+  if(arcAnimId){cancelAnimationFrame(arcAnimId);arcAnimId=null}
+  const layers=[
+    new deck.ScatterplotLayer({id:'bg',data:bgF,getPosition:d=>[d.longitude,d.latitude],getRadius:25,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),30],radiusMinPixels:1.5,radiusMaxPixels:5,pickable:true,onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${object.resource_type})`:''}}),
+    new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2}),
   ];
-
-  if(deckOverlay){deckOverlay.setProps({layers});}
-  else{deckOverlay=new deck.MapboxOverlay({layers});map.addControl(deckOverlay);}
-
+  if(deckOverlay)deckOverlay.setProps({layers});else{deckOverlay=new deck.MapboxOverlay({layers});map.addControl(deckOverlay)}
   if(fg.length>0){
-    const aLat=fg.reduce((s,d)=>s+d.lat,0)/fg.length;
-    const aLon=fg.reduce((s,d)=>s+d.lon,0)/fg.length;
+    const aLat=fg.reduce((s,d)=>s+d.lat,0)/fg.length,aLon=fg.reduce((s,d)=>s+d.lon,0)/fg.length;
     map.flyTo({center:[aLon,aLat],zoom:13,pitch:50,duration:1500});
+    startPulse(fg);
+    if(showArcs)startArcs(fg);
   }
 }
 
-// ── Chat ────────────────────────────────────────────────────────────────────
-function addMsg(html, role) {
-  const chat = document.getElementById('chat');
-  const div = document.createElement('div');
-  div.className = `msg ${role}`;
-  div.innerHTML = html;
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
+function startPulse(fg){
+  const t0=performance.now();
+  function tick(now){
+    const elapsed=(now-t0)/1000,scale=1+0.4*Math.sin(elapsed*2.5),opacity=0.3+0.15*Math.sin(elapsed*2.5);
+    const bgData=(allResources||[]).filter(r=>r.latitude&&r.longitude);
+    const layers=[
+      new deck.ScatterplotLayer({id:'bg',data:bgData,getPosition:d=>[d.longitude,d.latitude],getRadius:25,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),30],radiusMinPixels:1.5,radiusMaxPixels:5,pickable:false}),
+      new deck.ScatterplotLayer({id:'pulse',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:200*scale,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),Math.round(opacity*255)],radiusMinPixels:12,radiusMaxPixels:35,pickable:false}),
+      new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2}),
+    ];
+    if(deckOverlay)deckOverlay.setProps({layers});
+    pulseAnimId=requestAnimationFrame(tick);
+  }
+  pulseAnimId=requestAnimationFrame(tick);
 }
 
-function makeCards(resources, emergency) {
-  if(!resources||!resources.length) return '';
-  let html = '';
-
-  if(emergency) {
-    html += '<div class="urgency-banner">Emergency &mdash; Priority resources shown first</div>';
+function startArcs(fg){
+  const src=BOROUGH_CENTERS[fg[0]?.borough]||NYC;
+  const arcData=fg.map(d=>({source:src,target:[d.lon,d.lat],color:TYPE_COLORS[d.type]||[118,185,0]}));
+  const t0=performance.now(),dur=2000;
+  function tick(now){
+    const t=Math.min((now-t0)/dur,1),ease=1-Math.pow(1-t,3),tilt=90*(1-ease);
+    const cur=deckOverlay?._props?.layers||[];
+    const base=cur.filter(l=>l.id!=='arcs');
+    const arcLayer=new deck.ArcLayer({id:'arcs',data:arcData,getSourcePosition:d=>d.source,getTargetPosition:d=>d.target,getSourceColor:d=>[...d.color,Math.round(180*ease)],getTargetColor:d=>[...d.color,Math.round(220*ease)],getWidth:2,getTilt:tilt,greatCircle:false});
+    if(deckOverlay)deckOverlay.setProps({layers:[...base,arcLayer]});
+    if(t<1)arcAnimId=requestAnimationFrame(tick);
+    else setTimeout(()=>{if(deckOverlay){const l=(deckOverlay._props?.layers||[]).filter(x=>x.id!=='arcs');deckOverlay.setProps({layers:l})}},3000);
   }
+  arcAnimId=requestAnimationFrame(tick);
+}
 
-  html += '<div class="results-grid">';
-  for(const r of resources) {
-    const safetyPct = r.safety ? Math.round(r.safety*100) : null;
-    const safetyClass = safetyPct>=70?'high':safetyPct>=40?'med':'low';
-    const matchReason = getMatchReason(r);
-    const emergencyClass = emergency?' emergency':'';
-    const eName = (r.name||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+// Chat
+function addMsg(html,role,staged=false){
+  const chat=document.getElementById('chat'),div=document.createElement('div');
+  div.className=`msg ${role}${staged?' staged':''}`;div.innerHTML=html;
+  chat.appendChild(div);chat.scrollTop=chat.scrollHeight;return div;
+}
+function showTyping(){
+  const chat=document.getElementById('chat'),div=document.createElement('div');
+  div.className='typing-indicator';div.id='typingIndicator';
+  div.innerHTML='<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+  chat.appendChild(div);chat.scrollTop=chat.scrollHeight;
+}
+function hideTyping(){const el=document.getElementById('typingIndicator');if(el)el.remove()}
 
-    html += `
-    <div class="resource-card type-${r.type||'shelter'}${emergencyClass}" onclick="flyTo(${r.lat},${r.lon})">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div class="rc-name">${r.name||'Unknown'}</div>
-        ${emergency?'<span class="rc-urgency">Urgent</span>':''}
-      </div>
-      <div class="rc-addr">${r.address||'Address not listed'}</div>
-      ${matchReason?`
-      <div class="rc-match">
-        <div class="rc-match-label">Why this matches</div>
-        <div class="rc-match-text">${matchReason}</div>
-      </div>`:''}
-      <div class="rc-tags">
-        <span class="rc-tag type">${(r.type||'').replace(/_/g,' ')}</span>
-        ${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}
-        ${safetyPct!==null?`<span class="rc-tag safety ${safetyClass}">Safety ${safetyPct}%</span>`:''}
-      </div>
-      <div class="rc-actions">
-        <span class="rc-action" onclick="event.stopPropagation();flyTo(${r.lat},${r.lon})">Map</span>
-        <span class="rc-action" onclick="event.stopPropagation();getDirections(${r.lat},${r.lon},'${eName}')">Directions</span>
-        <span class="rc-action" onclick="event.stopPropagation();reportIssue('${eName}')">Report Issue</span>
-      </div>
+function makeCards(resources,emergency){
+  if(!resources||!resources.length)return '';
+  let html='';
+  if(emergency)html+='<div class="urgency-banner">Emergency &mdash; Priority resources shown first</div>';
+  html+='<div class="results-grid">';
+  for(const r of resources){
+    const sp=r.safety?Math.round(r.safety*100):null,sc=sp>=70?'high':sp>=40?'med':'low';
+    const mr=getMatchReason(r),ec=emergency?' emergency':'';
+    const en=(r.name||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+    const dist=r.distance_miles?`<div class="rc-distance"><span>${r.distance_miles} mi</span>${r.walk_min?` &middot; ~${r.walk_min} min walk`:''}</div>`:'';
+    const addr=r.address||'Address not listed';
+    const dirUrl=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr+', New York, NY')}`;
+    html+=`<div class="resource-card type-${r.type||'shelter'}${ec}" onclick="flyTo(${r.lat},${r.lon})">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="rc-name">${r.name||'Unknown'}</div>${emergency?'<span class="rc-urgency">Urgent</span>':''}</div>
+      <div class="rc-addr">${addr}</div>${dist}
+      ${mr?`<div class="rc-match"><div class="rc-match-label">Why this matches</div><div class="rc-match-text">${mr}</div></div>`:''}
+      <div class="rc-tags"><span class="rc-tag type">${(r.type||'').replace(/_/g,' ')}</span>${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}${sp!==null?`<span class="rc-tag safety ${sc}">Safety ${sp}%</span>`:''}</div>
+      <div class="rc-actions"><a class="rc-action directions" href="${dirUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Get Directions</a><span class="rc-action" onclick="event.stopPropagation();flyTo(${r.lat},${r.lon})">Map</span><span class="rc-action" onclick="event.stopPropagation();reportIssue('${en}')">Report Issue</span></div>
     </div>`;
   }
-  html += '</div>';
+  return html+'</div>';
+}
+
+function makeVerifyHtml(v){
+  if(!v)return '<div class="verify-banner skipped">&#9889; Fast Mode &mdash; Verification skipped</div>';
+  const conf=v.confidence||'LOW',claims=v.claims||[],vC=v.verified_count||0,tC=v.total_count||0;
+  let cls,label;
+  if(!v.verified){cls='low';label='&#9888;&#65039; Needs Review &mdash; Some claims may exceed evidence';}
+  else if(conf==='HIGH'){cls='high';label=`&#9989; Verified &mdash; High confidence (${vC}/${tC})`;}
+  else{cls='medium';label=`&#9989; Verified &mdash; Medium confidence (${vC}/${tC})`;}
+  let html=`<div class="verify-banner ${cls}">${label}</div>`;
+  if(claims.length){const id='cl-'+Date.now();html+=`<div class="claims-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">&#9660; ${tC} claims checked</div><div class="claims-list" id="${id}">`;for(const c of claims)html+=`<div class="claim-item ${c.verdict==='VERIFIED'?'verified':'unverified'}">${c.verdict==='VERIFIED'?'&#9989;':'&#9888;&#65039;'} ${c.claim}</div>`;html+='</div>';}
   return html;
 }
+function makeReasoningHtml(r,s){
+  if(!r||!r.length)return '';
+  const id='rp-'+Date.now();
+  let html=`<div class="reasoning-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">&#129504; Reasoning path (${r.length} hops)</div><div class="reasoning-panel" id="${id}">`;
+  if(s)html+=`<div class="reasoning-summary">${s}</div>`;
+  for(const h of r){const c=h.cumulative||0;html+=`<div class="reasoning-hop">${c>=0.7?'&#128994;':c>=0.5?'&#128993;':'&#128308;'} Hop ${h.hop||'?'}: ${h.fact||''} <span style="opacity:0.6">(${c})</span></div>`;}
+  return html+'</div>';
+}
+function makeClarifyHtml(q){if(!q)return '';return `<div class="clarify-box"><div class="clarify-label">Follow-up question</div><div class="clarify-question">${q}</div><div class="clarify-row"><input class="clarify-input" type="text" placeholder="Type your answer..." onkeydown="if(event.key==='Enter')sendClarify(this,'${encodeURIComponent(q)}')"><button class="clarify-send" onclick="sendClarify(this.previousElementSibling,'${encodeURIComponent(q)}')">Answer</button></div></div>`;}
+function makeFeedbackHtml(){return '<div class="feedback-bar"><input type="text" placeholder="Report issue: e.g. \'Shelter at 66 Boerum is full\'" onkeydown="if(event.key===\'Enter\')sendFeedback(this)"><button class="feedback-send" onclick="sendFeedback(this.previousElementSibling)">Report</button></div>';}
+function makeFollowupHtml(){return '<div class="followup-prompt"><input type="text" placeholder="Tell me more about your situation..." onkeydown="if(event.key===\'Enter\')sendFollowup(this)"><button class="followup-send" onclick="sendFollowup(this.previousElementSibling)">Send</button></div>';}
 
-// ── Verification Banner ─────────────────────────────────────────────────────
-function makeVerificationHtml(verification) {
-  if(!verification) return '<div class="verify-banner skipped">&#9889; Demo Mode &mdash; Verification skipped for speed</div>';
-
-  const conf = verification.confidence || 'LOW';
-  const verified = verification.verified;
-  const claims = verification.claims || [];
-  const vCount = verification.verified_count || 0;
-  const tCount = verification.total_count || 0;
-
-  let cls, label;
-  if(!verified) {
-    cls='low'; label=`&#9888;&#65039; Needs Review &mdash; Some claims may exceed available evidence`;
-  } else if(conf==='HIGH') {
-    cls='high'; label=`&#9989; Verified &mdash; High confidence, claims backed by data (${vCount}/${tCount})`;
-  } else {
-    cls='medium'; label=`&#9989; Verified &mdash; Medium confidence (${vCount}/${tCount} claims)`;
-  }
-
-  let html = `<div class="verify-banner ${cls}">${label}</div>`;
-
-  // Claims detail (collapsible)
-  if(claims.length) {
-    const id = 'claims-' + Date.now();
-    html += `<div class="claims-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">&#9660; ${tCount} claims checked</div>`;
-    html += `<div class="claims-list" id="${id}">`;
-    for(const c of claims) {
-      const isV = c.verdict === 'VERIFIED';
-      html += `<div class="claim-item ${isV?'verified':'unverified'}">${isV?'&#9989;':'&#9888;&#65039;'} ${c.claim}</div>`;
-    }
-    html += '</div>';
-  }
-
-  return html;
+// Actions
+async function sendClarify(input,encQ){
+  const ans=input.value.trim();if(!ans)return;addMsg(ans,'user');input.closest('.clarify-box').remove();
+  document.getElementById('sendBtn').disabled=true;showTyping();
+  try{const resp=await fetch('/api/clarify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({original_query:lastQuery,question:decodeURIComponent(encQ),answer:ans})});hideTyping();handleResponse(await resp.json());}
+  catch(err){hideTyping();addMsg(`Error: ${err.message}`,'system');}
+  document.getElementById('sendBtn').disabled=false;
+}
+function sendFollowup(input){const t=input.value.trim();if(!t)return;document.getElementById('queryInput').value=t;input.value='';sendQuery();}
+async function sendFeedback(input){
+  const text=input.value.trim();if(!text)return;input.value='';
+  let matched='';for(const r of lastResources)if(text.toLowerCase().includes((r.name||'').toLowerCase().slice(0,15))){matched=r.name;break;}
+  if(matched){await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_name:matched,issue:text,detail:text})});addMsg(`Noted &mdash; <b>${matched}</b> excluded. Searching alternatives...`,'assistant');document.getElementById('queryInput').value=lastQuery;sendQuery();}
+  else addMsg(`Couldn't identify which resource. Try mentioning the name.`,'system');
+}
+function flyTo(lat,lon){if(lat&&lon)map.flyTo({center:[lon,lat],zoom:15,pitch:55,duration:1000})}
+function reportIssue(name){
+  const issue=prompt(`What's wrong with ${name}?\n(e.g. "full", "closed", "wrong address")`);
+  if(issue){fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resource_name:name,issue:issue,detail:issue})});addMsg(`Noted &mdash; <b>${name}</b> excluded. Searching alternatives...`,'assistant');document.getElementById('queryInput').value=lastQuery;sendQuery();}
 }
 
-// ── Reasoning Path ──────────────────────────────────────────────────────────
-function makeReasoningHtml(reasoning, summary) {
-  if(!reasoning || !reasoning.length) return '';
-
-  const id = 'reasoning-' + Date.now();
-  let html = `<div class="reasoning-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">&#129504; Show reasoning path (${reasoning.length} hops)</div>`;
-  html += `<div class="reasoning-panel" id="${id}">`;
-
-  if(summary) {
-    html += `<div class="reasoning-summary">${summary}</div>`;
-  }
-
-  for(const hop of reasoning) {
-    const cum = hop.cumulative || 0;
-    const dot = cum >= 0.7 ? '&#128994;' : cum >= 0.5 ? '&#128993;' : '&#128308;';
-    html += `<div class="reasoning-hop">${dot} Hop ${hop.hop||'?'}: ${hop.fact||''} <span class="hop-conf">(conf: ${hop.confidence||0}, cumul: ${cum})</span></div>`;
-  }
-  html += '</div>';
-  return html;
+function handleResponse(data){
+  let html=`<div class="answer-text">${(data.answer||'No response').replace(/\n/g,'<br>')}</div>`;
+  html+=makeVerifyHtml(data.verification);
+  html+=makeReasoningHtml(data.reasoning,data.reasoning_summary);
+  if(data.resources&&data.resources.length>0){lastResources=data.resources;html+=makeCards(data.resources,isEmergency);}
+  html+=makeFeedbackHtml();
+  html+=data.clarify_question?makeClarifyHtml(data.clarify_question):makeFollowupHtml();
+  addMsg(html,'assistant',true);
+  if(data.resources&&data.resources.length>0)updateMap(allResources,data.resources,true);
+  if(data.timing){const t=data.timing,el=document.getElementById('timing');let s=`${t.total}s total | Plan ${t.plan}s | Exec ${t.execute}s | Synth ${t.synth}s`;if(t.verify)s+=` | Verify ${t.verify}s`;s+=` | ${data.llm||''}`;el.textContent=s;el.style.display='block';}
 }
 
-// ── Clarification Box ───────────────────────────────────────────────────────
-function makeClarifyHtml(question) {
-  if(!question) return '';
-  return `
-  <div class="clarify-box">
-    <div class="clarify-label">Follow-up question</div>
-    <div class="clarify-question">${question}</div>
-    <div class="clarify-row">
-      <input class="clarify-input" type="text" placeholder="Type your answer..." onkeydown="if(event.key==='Enter')sendClarify(this,'${encodeURIComponent(question)}')">
-      <button class="clarify-send" onclick="sendClarify(this.previousElementSibling,'${encodeURIComponent(question)}')">Answer</button>
-    </div>
-  </div>`;
+async function sendQuery(){
+  const input=document.getElementById('queryInput'),q=input.value.trim();if(!q)return;
+  if(!document.getElementById('onboarding').classList.contains('hidden'))dismissOnboarding();
+  lastQuery=q;isEmergency=detectEmergency(q);addMsg(q,'user');input.value='';
+  showTyping();document.getElementById('sendBtn').disabled=true;
+  try{const resp=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,demo_mode:false})});hideTyping();handleResponse(await resp.json());}
+  catch(err){hideTyping();addMsg(`Connection error: ${err.message}. Is the backend running?`,'system');}
+  document.getElementById('sendBtn').disabled=false;
 }
 
-// ── Feedback Bar ────────────────────────────────────────────────────────────
-function makeFeedbackHtml() {
-  return `
-  <div class="feedback-bar">
-    <input type="text" placeholder="Report an issue: e.g. 'The shelter at 66 Boerum is full'" onkeydown="if(event.key==='Enter')sendFeedback(this)">
-    <button class="feedback-send" onclick="sendFeedback(this.previousElementSibling)">Report</button>
-  </div>`;
-}
-
-// ── Follow-up Prompt ────────────────────────────────────────────────────────
-function makeFollowupHtml() {
-  return `
-  <div class="followup-prompt">
-    <input type="text" placeholder="Tell me more about your situation..." onkeydown="if(event.key==='Enter')sendFollowup(this)">
-    <button class="followup-send" onclick="sendFollowup(this.previousElementSibling)">Send</button>
-  </div>`;
-}
-
-async function sendClarify(input, encodedQuestion) {
-  const ans = input.value.trim();
-  if(!ans) return;
-  const question = decodeURIComponent(encodedQuestion);
-
-  addMsg(ans, 'user');
-  input.closest('.clarify-box').remove();
-
-  document.getElementById('loading').classList.add('active');
-  document.getElementById('sendBtn').disabled = true;
-
-  try {
-    const resp = await fetch('/api/clarify', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({original_query:lastQuery, question:question, answer:ans}),
-    });
-    const data = await resp.json();
-    handleResponse(data);
-  } catch(err) {
-    addMsg(`Error: ${err.message}`, 'system');
-  }
-
-  document.getElementById('loading').classList.remove('active');
-  document.getElementById('sendBtn').disabled = false;
-}
-
-function sendFollowup(input) {
-  const text = input.value.trim();
-  if(!text) return;
-  document.getElementById('queryInput').value = text;
-  input.value = '';
-  sendQuery();
-}
-
-async function sendFeedback(input) {
-  const text = input.value.trim();
-  if(!text) return;
-  input.value = '';
-
-  // Try to match resource name from last results
-  let matchedName = '';
-  for(const r of lastResources) {
-    if(text.toLowerCase().includes((r.name||'').toLowerCase().slice(0,15))) {
-      matchedName = r.name;
-      break;
-    }
-  }
-
-  if(matchedName) {
-    await fetch('/api/feedback', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({resource_name:matchedName, issue:text, detail:text}),
-    });
-    addMsg(`Noted &mdash; <b>${matchedName}</b> flagged. Searching for alternatives...`, 'assistant');
-    // Re-run query without excluded resource
-    document.getElementById('queryInput').value = lastQuery;
-    sendQuery();
-  } else {
-    addMsg(`I couldn't identify which resource you mean. Try mentioning the name specifically.`, 'system');
-  }
-}
-
-function flyTo(lat,lon){if(lat&&lon)map.flyTo({center:[lon,lat],zoom:15,pitch:55,duration:1000});}
-
-function reportIssue(name) {
-  const issue = prompt(`What's wrong with ${name}?\n(e.g. "full", "closed", "wrong address")`);
-  if(issue){
-    fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({resource_name:name,issue:issue,detail:issue})
-    }).then(r=>r.json()).then(()=>{
-      addMsg(`Noted &mdash; <b>${name}</b> excluded. Searching for alternatives...`,'assistant');
-      document.getElementById('queryInput').value = lastQuery;
-      sendQuery();
-    });
-  }
-}
-
-// ── Handle API Response ─────────────────────────────────────────────────────
-function handleResponse(data) {
-  let html = (data.answer||'No response').replace(/\n/g,'<br>');
-
-  // Verification
-  html += makeVerificationHtml(data.verification);
-
-  // Reasoning path
-  html += makeReasoningHtml(data.reasoning, data.reasoning_summary);
-
-  // Resource cards
-  if(data.resources && data.resources.length > 0) {
-    lastResources = data.resources;
-    html += makeCards(data.resources, isEmergency);
-  }
-
-  // Feedback bar
-  html += makeFeedbackHtml();
-
-  // Clarification question from AI
-  if(data.clarify_question) {
-    html += makeClarifyHtml(data.clarify_question);
-  } else {
-    html += makeFollowupHtml();
-  }
-
-  addMsg(html, 'assistant');
-
-  if(data.resources && data.resources.length>0) updateMap(allResources, data.resources);
-
-  if(data.timing) {
-    const t = data.timing;
-    const el = document.getElementById('timing');
-    let text = `${t.total}s total | Plan ${t.plan}s | Exec ${t.execute}s | Synth ${t.synth}s`;
-    if(t.verify) text += ` | Verify ${t.verify}s`;
-    text += ` | ${data.llm||''}`;
-    el.textContent = text;
-    el.style.display = 'block';
-  }
-}
-
-// ── Send Query ──────────────────────────────────────────────────────────────
-async function sendQuery() {
-  const input = document.getElementById('queryInput');
-  const q = input.value.trim();
-  if(!q) return;
-
-  lastQuery = q;
-  isEmergency = detectEmergency(q);
-  addMsg(q, 'user');
-  input.value = '';
-
-  document.getElementById('loading').classList.add('active');
-  document.getElementById('sendBtn').disabled = true;
-
-  try {
-    const resp = await fetch('/api/query', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({query:q, demo_mode:false}),
-    });
-    const data = await resp.json();
-    handleResponse(data);
-  } catch(err) {
-    addMsg(`Connection error: ${err.message}. Is the backend running?`, 'system');
-  }
-
-  document.getElementById('loading').classList.remove('active');
-  document.getElementById('sendBtn').disabled = false;
-}
-
-// ── Event Listeners ─────────────────────────────────────────────────────────
-document.getElementById('queryInput').addEventListener('keydown', e=>{
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendQuery();}
-});
-document.querySelectorAll('.cat-btn,.quick-btn').forEach(b=>{
-  b.addEventListener('click',()=>{
-    document.getElementById('queryInput').value=b.dataset.q;
-    sendQuery();
-  });
-});
-
-// ── Geolocation: Get user's real-time position ─────────────────────────────
-let userLocation = null;
-let userMarker = null;
-
-function getUserLocation() {
-  if (!navigator.geolocation) {
-    addMsg('Location not available on this device.', 'system');
-    return;
-  }
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
-      // Add user marker to map
-      if (userMarker) userMarker.remove();
-      const el = document.createElement('div');
-      el.style.cssText = 'width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;';
-      userMarker = new maplibregl.Marker({element: el}).setLngLat([userLocation.lon, userLocation.lat]).addTo(map);
-      map.flyTo({center: [userLocation.lon, userLocation.lat], zoom: 14, duration: 1000});
-      addMsg(`Located you at ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}. Results will be sorted by distance from you.`, 'system');
-    },
-    (err) => {
-      addMsg('Could not get your location. You can type your address instead.', 'system');
-    },
-    {enableHighAccuracy: true, timeout: 10000}
-  );
-}
-
-// Try auto-detect on load (silent fail)
-getUserLocation();
-
-async function setManualLocation() {
-  const input = document.getElementById('locationInput').value.trim();
-  if (!input) return;
-
-  document.getElementById('locationStatus').textContent = 'Looking up address...';
-  try {
-    const resp = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(input + ', New York City, NY')}&format=json&limit=1&countrycodes=us`, {
-      headers: {'User-Agent': 'NYC-SocialServices/1.0'}
-    });
-    const results = await resp.json();
-    if (results && results.length > 0) {
-      userLocation = {lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon)};
-      if (userMarker) userMarker.remove();
-      const el = document.createElement('div');
-      el.style.cssText = 'width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;';
-      userMarker = new maplibregl.Marker({element: el}).setLngLat([userLocation.lon, userLocation.lat]).addTo(map);
-      map.flyTo({center: [userLocation.lon, userLocation.lat], zoom: 14, duration: 1000});
-      document.getElementById('locationStatus').textContent = `Location set: ${results[0].display_name.split(',')[0]}`;
-      addMsg(`Location set to ${results[0].display_name.split(',').slice(0,2).join(',')}. Results will be sorted by distance.`, 'system');
-    } else {
-      document.getElementById('locationStatus').textContent = 'Address not found. Try being more specific.';
-    }
-  } catch(err) {
-    document.getElementById('locationStatus').textContent = 'Could not look up address.';
-  }
-}
-
-// ── Directions: Get walking/transit route to a resource ────────────────────
-async function getDirections(toLat, toLon, resourceName) {
-  if (!userLocation) {
-    addMsg('Please share your location first (tap the location button or type your address).', 'system');
-    return;
-  }
-
-  addMsg(`Getting directions to <b>${resourceName}</b>...`, 'system');
-
-  try {
-    const resp = await fetch('/api/directions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        from_lat: userLocation.lat, from_lon: userLocation.lon,
-        to_lat: toLat, to_lon: toLon, budget: null
-      }),
-    });
-    const data = await resp.json();
-
-    let html = `<div style="margin-bottom:8px;"><b>Directions to ${resourceName}</b> (${data.distance_miles} mi)</div>`;
-    html += `<div style="color:#76b900;margin-bottom:8px;">${data.recommendation || ''}</div>`;
-
-    for (const opt of (data.options || [])) {
-      const modeIcon = opt.mode === 'walk' ? '🚶' : '🚇';
-      const costStr = opt.cost > 0 ? `$${opt.cost.toFixed(2)}` : 'Free';
-      html += `<div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:10px;margin:6px 0;">`;
-      html += `<div style="font-weight:600;">${modeIcon} ${opt.mode === 'walk' ? 'Walk' : 'Transit'} — ${opt.duration_min} min — ${costStr}</div>`;
-      if (opt.steps) {
-        html += '<div style="margin-top:6px;font-size:12px;color:#aaa;">';
-        for (const step of opt.steps) {
-          const icon = step.mode === 'transit' ? '🚇' : '🚶';
-          html += `<div style="margin:3px 0;">${icon} ${step.instruction} (${step.duration_min} min)</div>`;
-        }
-        html += '</div>';
-      }
-      html += '</div>';
-    }
-
-    addMsg(html, 'assistant');
-
-    // Draw route line on map if we have geometry
-    const walkOpt = data.options?.find(o => o.mode === 'walk' && o.geometry);
-    if (walkOpt && walkOpt.geometry) {
-      if (map.getSource('route')) {
-        map.getSource('route').setData(walkOpt.geometry);
-      } else {
-        map.addSource('route', {type: 'geojson', data: walkOpt.geometry});
-        map.addLayer({
-          id: 'route', type: 'line', source: 'route',
-          paint: {'line-color': '#76b900', 'line-width': 4, 'line-opacity': 0.8},
-        });
-      }
-    }
-  } catch (err) {
-    addMsg(`Could not get directions: ${err.message}`, 'system');
-  }
-}
+document.getElementById('queryInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendQuery();}});
+document.querySelectorAll('.cat-btn,.quick-btn').forEach(b=>b.addEventListener('click',()=>{document.getElementById('queryInput').value=b.dataset.q;sendQuery();}));
 </script>
 </body>
 </html>
