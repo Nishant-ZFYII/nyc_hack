@@ -67,8 +67,10 @@ def confirm_destination_intent(case: dict, resource: dict,
         ec = {"name": ec}
     ec_username = cfg.get("ec_discord_username", "") or ec.get("discord_username", "")
     bot_token_for_dm = cfg.get("bot_token", DISCORD_BOT_TOKEN)
-    guild_id_for_dm = cfg.get("coord_channel_id", DISCORD_COORD_CHANNEL_ID)
+    channel_id_for_dm = cfg.get("coord_channel_id", DISCORD_COORD_CHANNEL_ID)
     if ec_username and bot_token_for_dm:
+        # Resolve actual guild_id from the channel_id
+        guild_id_for_dm = _get_guild_id_from_channel(channel_id_for_dm, bot_token_for_dm)
         dm_sent = _dm_user_by_username(
             ec_username, _build_ec_embed(case, resource),
             bot_token_for_dm, guild_id_for_dm,
@@ -308,8 +310,9 @@ def _schedule_sla_check(case_id: str, resource_name: str,
                 # Also DM the EC if they're on file
                 ec_username = cfg.get("ec_discord_username", "")
                 bot_token = cfg.get("bot_token", DISCORD_BOT_TOKEN)
-                guild_id = cfg.get("coord_channel_id", DISCORD_COORD_CHANNEL_ID)
+                channel_id = cfg.get("coord_channel_id", DISCORD_COORD_CHANNEL_ID)
                 if ec_username and bot_token:
+                    guild_id = _get_guild_id_from_channel(channel_id, bot_token)
                     _dm_user_by_username(ec_username, sla_embed, bot_token, guild_id)
         except Exception:
             pass
@@ -319,6 +322,23 @@ def _schedule_sla_check(case_id: str, resource_name: str,
 
 
 # ── Discord DM utility ────────────────────────────────────────────────────────
+
+def _get_guild_id_from_channel(channel_id: str, bot_token: str) -> str:
+    """Fetch the guild_id that owns a given channel_id via the bot API."""
+    if not _HAS_REQUESTS or not channel_id or not bot_token:
+        return ""
+    try:
+        r = _req.get(
+            f"https://discord.com/api/v10/channels/{channel_id}",
+            headers={"Authorization": f"Bot {bot_token}"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            return r.json().get("guild_id", "")
+    except Exception:
+        pass
+    return ""
+
 
 def _dm_user_by_username(username: str, embed: dict,
                           bot_token: str, guild_id: str = "") -> bool:
