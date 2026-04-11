@@ -124,7 +124,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 #mapEl{width:100%;height:100%}
 .map-wrap{flex:1;position:relative}
 .map-overlay{position:absolute;z-index:10;background:rgba(255,255,255,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow)}
-.filter-bar{top:16px;left:16px;padding:8px 10px;display:flex;flex-wrap:wrap;gap:4px;max-width:360px}
+.filter-bar{top:16px;left:16px;right:16px;padding:8px 10px;display:flex;gap:4px;overflow-x:auto;white-space:nowrap}
 .filter-btn{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--t3);font-size:11px;cursor:pointer;transition:all 0.2s;font-family:var(--ui)}
 .filter-btn:hover{border-color:var(--green);color:var(--t2)}
 .filter-btn.active{border-color:var(--green);color:var(--green);background:rgba(118,185,0,0.08)}
@@ -330,13 +330,13 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   <div id="explore-map" style="display:none;flex:1;position:relative">
     <div id="exploreMapEl" style="width:100%;height:100%"></div>
     <div class="map-overlay filter-bar" id="exploreFilters">
-      <button class="filter-btn active" data-type="all" onclick="toggleExploreFilter('all')">All</button>
-      <button class="filter-btn active" data-type="shelter" onclick="toggleExploreFilter('shelter')">&#127968; Shelter</button>
-      <button class="filter-btn active" data-type="food_bank" onclick="toggleExploreFilter('food_bank')">&#127822; Food</button>
-      <button class="filter-btn active" data-type="hospital" onclick="toggleExploreFilter('hospital')">&#127973; Hospital</button>
-      <button class="filter-btn active" data-type="clinic" onclick="toggleExploreFilter('clinic')">&#129658; Clinic</button>
-      <button class="filter-btn active" data-type="school" onclick="toggleExploreFilter('school')">&#128218; School</button>
-      <button class="filter-btn active" data-type="childcare" onclick="toggleExploreFilter('childcare')">&#128118; Childcare</button>
+      <button class="filter-btn" data-type="all" onclick="toggleExploreFilter('all')">All</button>
+      <button class="filter-btn" data-type="shelter" onclick="toggleExploreFilter('shelter')">&#127968; Shelter</button>
+      <button class="filter-btn" data-type="food_bank" onclick="toggleExploreFilter('food_bank')">&#127822; Food</button>
+      <button class="filter-btn" data-type="hospital" onclick="toggleExploreFilter('hospital')">&#127973; Hospital</button>
+      <button class="filter-btn" data-type="clinic" onclick="toggleExploreFilter('clinic')">&#129658; Clinic</button>
+      <button class="filter-btn" data-type="school" onclick="toggleExploreFilter('school')">&#128218; School</button>
+      <button class="filter-btn" data-type="childcare" onclick="toggleExploreFilter('childcare')">&#128118; Childcare</button>
     </div>
     <div class="map-overlay" style="top:16px;left:16px;padding:8px 14px;font-size:12px;cursor:pointer" onclick="backToBoroughs()">&#8592; All boroughs</div>
     <div class="map-overlay map-legend">
@@ -361,7 +361,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 let currentCaseId=null, currentUserName='', lastQuery='', lastResources=[], isEmergency=false;
 let allResources=[], boroughCounts={};
 let resultMap=null, resultDeck=null, exploreMap=null, exploreDeck=null;
-let exploreFilters=new Set(['shelter','food_bank','hospital','clinic','school','childcare','youth_services','community_center','senior_services','library','emergency_services','education','legal_aid']);
+let exploreFilters=new Set(); // start empty — user picks what to see
 let exploreBoro=null;
 
 const NYC=[-73.98,40.74];
@@ -776,7 +776,6 @@ function refreshExploreIcons(){
   const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===exploreBoro&&exploreFilters.has(r.resource_type));
   const layers=[
     new deck.ScatterplotLayer({id:'explore-icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],getRadius:60,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[118,185,0]),200],radiusMinPixels:5,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,120],lineWidthMinPixels:1,onHover:({object})=>{document.getElementById('exploreMapEl').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
-    new deck.ScatterplotLayer({id:'explore-bg',data:allResources.filter(r=>r.latitude&&r.longitude&&r.borough!==exploreBoro),getPosition:d=>[d.longitude,d.latitude],getRadius:15,getFillColor:[150,150,150,10],radiusMinPixels:1,radiusMaxPixels:2,pickable:false}),
   ];
   if(exploreDeck)exploreDeck.setProps({layers});else{exploreDeck=new deck.MapboxOverlay({layers});exploreMap.addControl(exploreDeck)}
 }
