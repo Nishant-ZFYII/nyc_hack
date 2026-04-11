@@ -217,9 +217,10 @@ def generate_plan(nl_query: str) -> dict:
     Convert a natural language query to a JSON plan.
     Tries LLM first, falls back to rule-based classifier.
     """
+    # /no_think disables Qwen3's thinking mode for faster JSON output
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": nl_query},
+        {"role": "user",   "content": nl_query + " /no_think"},
     ]
     raw = plan_chat(messages)
     if not raw:

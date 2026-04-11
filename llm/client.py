@@ -46,16 +46,16 @@ class Provider:
 
 PROVIDERS: list[Provider] = [
     Provider(
-        name="Ollama Nemotron Mini (DGX Spark)",
-        base_url="http://127.0.0.1:11434/v1",
-        api_key="ollama",
-        model="nemotron-mini",
-    ),
-    Provider(
         name="Ollama Qwen3-30B MoE (DGX Spark)",
         base_url="http://127.0.0.1:11434/v1",
         api_key="ollama",
         model="qwen3-30b",
+    ),
+    Provider(
+        name="Ollama Nemotron Mini (DGX Spark)",
+        base_url="http://127.0.0.1:11434/v1",
+        api_key="ollama",
+        model="nemotron-mini",
     ),
     Provider(
         name="NIM (DGX Spark)",
@@ -233,14 +233,18 @@ def chat(
                     result = "{" + result
                 return result
 
-            # OpenAI-compatible path (vLLM, NIM, OpenRouter, GPT)
+            # OpenAI-compatible path (vLLM, NIM, OpenRouter, GPT, Ollama)
             resp = client.chat.completions.create(
                 model=provider.model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            return resp.choices[0].message.content
+            result = resp.choices[0].message.content
+            # Strip Qwen3 thinking blocks if present
+            import re as _re
+            result = _re.sub(r'<think>.*?</think>', '', result or '', flags=_re.DOTALL).strip()
+            return result
 
         except Exception as e:
             logger.warning("LLM call failed (attempt %d/%d): %s", attempt + 1, retries, e)
