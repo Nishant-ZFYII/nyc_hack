@@ -7,6 +7,13 @@ import sys
 import time
 from pathlib import Path
 
+# GPU-accelerate all pandas operations transparently
+try:
+    import cudf.pandas
+    cudf.pandas.install()
+except ImportError:
+    pass
+
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
