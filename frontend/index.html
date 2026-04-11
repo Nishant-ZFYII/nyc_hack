@@ -639,6 +639,7 @@ function getDirections(toLat,toLon,name){
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn-secondary" onclick="fetchDirections(0)" style="flex:1;text-align:center"><div style="font-size:16px">&#128694;</div>$0 / Walk</button>
       <button class="btn-secondary" onclick="fetchDirections(2.9)" style="flex:1;text-align:center"><div style="font-size:16px">&#128647;</div>$2.90 / Subway</button>
+      <button class="btn-secondary" onclick="fetchDirections('sponsored')" style="flex:1;text-align:center;border-color:var(--green-d);background:rgba(118,185,0,0.04)"><div style="font-size:16px">&#128663;</div>Sponsored Ride</button>
       <button class="btn-secondary" onclick="fetchDirections(null)" style="flex:1;text-align:center"><div style="font-size:16px">&#128269;</div>Show all</button>
     </div>
   </div>`);
@@ -668,9 +669,31 @@ async function fetchDirections(budget){
     }
     // Filter options based on what user selected
     let options=data.options||[];
-    if(budget===0)options=options.filter(o=>o.mode==='walk');
-    else if(budget===2.9)options=options.filter(o=>o.mode==='transit');
-    // budget===null means show all
+    const sponsors=['NVIDIA','Acer','Uber','Lyft'];
+    const sponsor=sponsors[Math.floor(Math.random()*sponsors.length)];
+
+    if(budget==='sponsored'){
+      // Show sponsored ride option
+      const dist=data.distance_miles||0;
+      const rideMin=Math.max(Math.round(dist*3+5),5);
+      html+=`<div style="background:linear-gradient(135deg,rgba(118,185,0,0.08),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:8px;padding:14px;margin:8px 0">`;
+      html+=`<div style="font-weight:600;font-size:14px">&#128663; Sponsored Ride &mdash; ${rideMin} min &mdash; Free</div>`;
+      html+=`<div style="font-size:12px;color:var(--t2);margin-top:6px">Courtesy of <b style="color:var(--green)">${sponsor}</b></div>`;
+      html+=`<div style="font-size:12px;color:var(--t2);margin-top:4px">A car will pick you up at your location and drop you off at ${name}.</div>`;
+      html+=`<div style="margin-top:10px;display:flex;gap:8px">`;
+      html+=`<button class="btn-primary" style="padding:10px 20px;font-size:12px" onclick="alert('Ride requested! ${sponsor} will send a car to your location.')">Request Ride</button>`;
+      html+=`<span style="font-size:10px;color:var(--t3);align-self:center;font-family:var(--mono)">EST. ${dist} mi &middot; ${rideMin} min</span>`;
+      html+=`</div></div>`;
+      options=[];// don't show walk/transit below
+    } else if(budget===0){options=options.filter(o=>o.mode==='walk')}
+    else if(budget===2.9){options=options.filter(o=>o.mode==='transit')}
+    // budget===null means show all — also show sponsored as bonus
+    if(budget===null){
+      html+=`<div style="background:linear-gradient(135deg,rgba(118,185,0,0.08),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:8px;padding:12px;margin:8px 0">`;
+      html+=`<div style="font-weight:600;font-size:13px">&#128663; Sponsored Ride &mdash; Free</div>`;
+      html+=`<div style="font-size:11px;color:var(--t2);margin-top:4px">Courtesy of <b style="color:var(--green)">${sponsor}</b> &middot; Request a free car pickup</div>`;
+      html+=`</div>`;
+    }
     for(const opt of options){
       const icon=opt.mode==='walk'?'&#128694;':'&#128647;';
       const cost=opt.cost>0?`$${opt.cost.toFixed(2)}`:'Free';
