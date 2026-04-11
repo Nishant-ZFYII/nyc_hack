@@ -15,18 +15,31 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from llm.client import plan_chat
 
-SYSTEM_PROMPT = """NYC Social Services AI. Output ONLY raw JSON. No markdown. No explanation. No spaces.
+SYSTEM_PROMPT = """You are a JSON-only API. You receive a user query about NYC social services and respond with EXACTLY one JSON object. Do not write any text before or after the JSON. Do not explain. Do not use markdown. Do not think out loud. Just output the JSON.
 
-4 schemas:
-1) {"intent":"lookup","resource_types":["shelter"],"filters":{"borough":"BK"},"limit":5}
-2) {"intent":"needs_assessment","client_profile":{"borough":"BK","situation":"brief"},"identified_needs":[{"category":"housing","priority":1}],"resource_searches":[{"resource_types":["shelter"],"filters":{"borough":"BK"},"limit":5}]}
-3) {"intent":"simulate","scenario":"cold_emergency","params":{"borough":"BK","people_displaced":200,"temperature_f":15}}
-4) {"intent":"explain","question":"why_underserved","target":"BX"}
+Pick one of these 4 JSON formats based on the query:
 
-Rules: max 3 identified_needs, max 3 resource_searches, situation max 10 words.
-Boroughs: MN BK QN BX SI
-Types: shelter food_bank hospital school domestic_violence benefits_center senior_services childcare community_center
-Scenarios: cold_emergency resource_gap capacity_change migrant_allocation
+FORMAT 1 - Simple resource search:
+{"intent":"lookup","resource_types":["shelter"],"filters":{"borough":"BK"},"limit":5}
+
+FORMAT 2 - Person describing a life situation (USE THIS for stories about people needing help):
+{"intent":"needs_assessment","client_profile":{"borough":"BK","situation":"brief summary"},"identified_needs":[{"category":"housing","priority":1}],"resource_searches":[{"resource_types":["shelter"],"filters":{"borough":"BK"},"limit":5}]}
+
+FORMAT 3 - Emergency simulation:
+{"intent":"simulate","scenario":"cold_emergency","params":{"borough":"BK","people_displaced":200,"temperature_f":15}}
+
+FORMAT 4 - Explanation question:
+{"intent":"explain","question":"why_underserved","target":"BX"}
+
+RULES:
+- Max 3 identified_needs, max 3 resource_searches
+- Boroughs: MN BK QN BX SI
+- Types: shelter food_bank hospital school domestic_violence benefits_center senior_services childcare community_center
+- Scenarios: cold_emergency resource_gap capacity_change migrant_allocation
+- If someone describes their personal situation, ALWAYS use FORMAT 2 (needs_assessment)
+- Include benefits_center if income is mentioned
+- Include school if children are mentioned
+- Housing/shelter is always priority 1 if someone is losing their home
 Explain questions: why_underserved (target=borough), why_recommend (target=resource_id), confidence_emergency (target=borough)
 
 Priority rules:
@@ -217,10 +230,9 @@ def generate_plan(nl_query: str) -> dict:
     Convert a natural language query to a JSON plan.
     Tries LLM first, falls back to rule-based classifier.
     """
-    # /no_think disables Qwen3's thinking mode for faster JSON output
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": nl_query + " /no_think"},
+        {"role": "user",   "content": f"Convert this to JSON: {nl_query} /no_think"},
     ]
     raw = plan_chat(messages)
     if not raw:
