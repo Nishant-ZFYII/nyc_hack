@@ -351,12 +351,12 @@ body {
 .guided-checkbox-label{color:var(--text-secondary);font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer}
 
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-@media(max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:1fr 40vh}.sidebar{border-right:none;border-bottom:1px solid var(--border)}}
+@media(max-width:480px){.app{grid-template-columns:1fr;grid-template-rows:1fr 40vh}.sidebar{border-right:none;border-bottom:1px solid var(--border)}}
 </style>
 </head>
 <body>
-<div class="app">
-  <div class="sidebar">
+<div class="app" style="display:grid;grid-template-columns:440px 1fr;height:100vh">
+  <div class="sidebar" style="grid-column:1;grid-row:1">
     <div class="sidebar-header">
       <h1>NYC Services Engine</h1>
       <p class="subtitle">Social Services Intelligence &mdash; City-Scale Ops</p>
@@ -486,7 +486,7 @@ body {
     </div>
   </div>
 
-  <div class="map-container">
+  <div class="map-container" style="grid-column:2;grid-row:1;height:100vh">
     <div id="map"></div>
     <div class="map-overlay status-pill" id="status"><span class="dot"></span><span id="statusText">Connecting...</span></div>
     <div class="map-overlay legend">
