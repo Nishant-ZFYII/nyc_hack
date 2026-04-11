@@ -337,7 +337,9 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   <div id="explore-map" style="display:none;flex:1;position:relative">
     <div id="exploreMapEl" style="width:100%;height:100%"></div>
     <!-- Resource info popup -->
-    <div class="map-overlay" id="explorePopup" style="bottom:16px;left:190px;right:16px;max-width:400px;max-height:50vh;overflow-y:auto;padding:16px;display:none">
+    <!-- Resource detail sidebar -->
+    <div id="explorePanel" style="position:absolute;top:0;right:0;bottom:0;width:0;background:var(--bg2);border-left:0px solid var(--border);overflow-y:auto;transition:all 0.3s ease;z-index:15;box-shadow:-4px 0 20px rgba(0,0,0,0.08)">
+      <div id="explorePanelContent" style="padding:24px;min-width:340px"></div>
     </div>
     <div class="map-overlay filter-bar" id="exploreFilters">
       <!-- Location input -->
@@ -820,24 +822,34 @@ function refreshExploreIcons(){
   if(exploreDeck)exploreDeck.setProps({layers});else{exploreDeck=new deck.MapboxOverlay({layers});exploreMap.addControl(exploreDeck)}
 }
 
-function showExplorePopup(resource){
-  // Clear old route
+function openExplorePanel(){
+  const panel=document.getElementById('explorePanel');
+  panel.style.width='360px';
+  panel.style.borderLeftWidth='1px';
+}
+function closeExplorePanel(){
+  const panel=document.getElementById('explorePanel');
+  panel.style.width='0';
+  panel.style.borderLeftWidth='0';
   if(exploreMap){try{if(exploreMap.getSource('explore-route'))exploreMap.getSource('explore-route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
-  const popup=document.getElementById('explorePopup');
-  const rtype=(resource.resource_type||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+}
+
+function showExplorePopup(resource){
+  if(exploreMap){try{if(exploreMap.getSource('explore-route'))exploreMap.getSource('explore-route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
+  const c=document.getElementById('explorePanelContent');
+  const rtype=(resource.resource_type||'').replace(/_/g,' ').replace(/\b\w/g,ch=>ch.toUpperCase());
   const eName=(resource.name||'').replace(/'/g,'&#39;');
-  let html=`<div style="font-weight:600;font-size:15px;margin-bottom:4px">${resource.name||'Unknown'}</div>`;
-  html+=`<div style="font-size:12px;color:var(--t3);font-family:var(--mono)">${resource.address||''}</div>`;
-  html+=`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">`;
-  html+=`<span class="rc-tag type">${rtype}</span>`;
-  if(resource.borough)html+=`<span class="rc-tag borough">${resource.borough}</span>`;
+  let html=`<button onclick="closeExplorePanel()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--t3);float:right;padding:0">&times;</button>`;
+  html+=`<div style="font-weight:700;font-size:20px;margin-bottom:6px;line-height:1.3;padding-right:30px">${resource.name||'Unknown'}</div>`;
+  html+=`<div style="font-size:14px;color:var(--t2);font-family:var(--mono);margin-bottom:12px">${resource.address||'Address not listed'}</div>`;
+  html+=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">`;
+  html+=`<span class="rc-tag type" style="font-size:12px;padding:4px 10px">${rtype}</span>`;
+  if(resource.borough)html+=`<span class="rc-tag borough" style="font-size:12px;padding:4px 10px">${resource.borough}</span>`;
   html+=`</div>`;
-  html+=`<div style="display:flex;gap:8px;margin-top:10px">`;
-  html+=`<button class="btn-primary" style="padding:8px 16px;font-size:11px;width:auto;flex:1" onclick="getExploreDirections(${resource.latitude},${resource.longitude},'${eName}')">Directions</button>`;
-  html+=`<button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="document.getElementById('explorePopup').style.display='none'">Close</button>`;
-  html+=`</div>`;
-  popup.innerHTML=html;
-  popup.style.display='block';
+  html+=`<button class="btn-primary" style="padding:14px 24px;font-size:14px;margin-bottom:12px" onclick="getExploreDirections(${resource.latitude},${resource.longitude},'${eName}')">&#128204; Get Directions</button>`;
+  html+=`<div id="exploreDirResult"></div>`;
+  c.innerHTML=html;
+  openExplorePanel();
   exploreMap.flyTo({center:[resource.longitude,resource.latitude],zoom:15,duration:800});
 }
 
@@ -888,22 +900,21 @@ function getExploreDirections(toLat,toLon,name){
     document.getElementById('exploreLocInput').focus();
     return;
   }
-  // Show budget picker in the popup
-  const popup=document.getElementById('explorePopup');
-  popup.innerHTML=`<div style="font-weight:600;margin-bottom:8px">Directions to ${name}</div>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:10px">How much can you spend?</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button class="btn-secondary" style="flex:1;text-align:center;padding:10px" onclick="fetchExploreDirections(0,${toLat},${toLon},'${name}')"><div>&#128694;</div>Walk</button>
-      <button class="btn-secondary" style="flex:1;text-align:center;padding:10px" onclick="fetchExploreDirections(2.9,${toLat},${toLon},'${name}')"><div>&#128647;</div>Subway</button>
-      <button class="btn-secondary" style="flex:1;text-align:center;padding:10px;border-color:var(--green-d)" onclick="fetchExploreDirections('sponsored',${toLat},${toLon},'${name}')"><div>&#128663;</div>Ride</button>
-      <button class="btn-secondary" style="flex:1;text-align:center;padding:10px" onclick="fetchExploreDirections(null,${toLat},${toLon},'${name}')"><div>&#128269;</div>All</button>
-    </div>`;
+  const target=document.getElementById('exploreDirResult');
+  target.innerHTML=`<div style="margin-top:8px">
+    <div style="font-size:13px;color:var(--t2);margin-bottom:10px">How do you want to get there?</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn-secondary" style="padding:12px;font-size:14px;text-align:left" onclick="fetchExploreDirections(0,${toLat},${toLon},'${name}')">&#128694; Walk &mdash; Free</button>
+      <button class="btn-secondary" style="padding:12px;font-size:14px;text-align:left" onclick="fetchExploreDirections(2.9,${toLat},${toLon},'${name}')">&#128647; Subway &mdash; $2.90</button>
+      <button class="btn-secondary" style="padding:12px;font-size:14px;text-align:left;border-color:var(--green-d)" onclick="fetchExploreDirections('sponsored',${toLat},${toLon},'${name}')">&#128663; Sponsored Ride &mdash; Free</button>
+      <button class="btn-secondary" style="padding:12px;font-size:14px;text-align:left" onclick="fetchExploreDirections(null,${toLat},${toLon},'${name}')">&#128269; Show all options</button>
+    </div>
+  </div>`;
 }
 
 async function fetchExploreDirections(budget,toLat,toLon,name){
-  const popup=document.getElementById('explorePopup');
-  popup.innerHTML='<div style="text-align:center;padding:12px"><div class="spinner" style="margin:0 auto"></div><div style="margin-top:8px;font-size:12px;color:var(--t3)">Getting directions...</div></div>';
-  // Clear old route
+  const target=document.getElementById('exploreDirResult');
+  target.innerHTML='<div style="text-align:center;padding:16px"><div class="spinner" style="margin:0 auto"></div><div style="margin-top:8px;font-size:13px;color:var(--t3)">Getting directions...</div></div>';
   if(exploreMap){try{if(exploreMap.getSource('explore-route'))exploreMap.getSource('explore-route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
   try{
     const bVal=budget==='sponsored'?null:budget;
@@ -917,28 +928,34 @@ async function fetchExploreDirections(budget,toLat,toLon,name){
     const etaMin=Math.floor(Math.random()*4)+3;
 
     if(budget==='sponsored'){
-      const rId='er-'+Date.now();
-      popup.innerHTML=`<div id="${rId}" style="text-align:center;padding:8px"><div style="font-weight:600;font-size:15px;margin-bottom:6px">&#128663; Sponsored Ride</div><div style="font-size:13px;color:var(--t1)">Free ride to ${name}</div><div style="font-size:12px;color:var(--t2);margin:8px 0">Courtesy of <b style="color:var(--green)">${sp}</b> &middot; ETA: ${etaMin} min &middot; ${dist} mi</div><button class="btn-primary" style="padding:10px 20px;font-size:12px" onclick="this.parentElement.innerHTML='<div style=\\'font-size:15px;margin-bottom:6px\\'>&#9989;</div><div style=\\'font-weight:600;color:var(--green)\\'>Ride confirmed!</div><div style=\\'font-size:12px;color:var(--t2);margin-top:6px\\'>${sp} car arrives in ${etaMin} min</div>'">Request Ride</button></div>`;
+      target.innerHTML=`<div style="margin-top:16px;text-align:center;padding:16px;background:var(--bg3);border-radius:10px">
+        <div style="font-size:24px;margin-bottom:8px">&#128663;</div>
+        <div style="font-weight:700;font-size:18px;margin-bottom:6px">Sponsored Ride</div>
+        <div style="font-size:14px;color:var(--t1)">Free ride to ${name}</div>
+        <div style="font-size:13px;color:var(--t2);margin:10px 0">Courtesy of <b style="color:var(--green)">${sp}</b></div>
+        <div style="font-size:13px;color:var(--t2);margin-bottom:14px">ETA: ${etaMin} min &middot; ${dist} mi</div>
+        <button class="btn-primary" style="padding:14px 24px;font-size:14px" onclick="this.parentElement.innerHTML='<div style=\\'font-size:28px;margin-bottom:8px\\'>&#9989;</div><div style=\\'font-weight:700;font-size:18px;color:var(--green)\\'>Ride confirmed!</div><div style=\\'font-size:14px;color:var(--t2);margin-top:8px\\'>${sp} car arrives in ${etaMin} min</div><div style=\\'font-size:12px;color:var(--t3);margin-top:6px\\'>Look for a dark sedan at your location</div>'">Request Ride</button>
+      </div>`;
       return;
     }
 
     if(budget===0)options=options.filter(o=>o.mode==='walk');
     else if(budget===2.9)options=options.filter(o=>o.mode==='transit');
 
-    let html=`<div style="font-weight:600;margin-bottom:6px">Directions to ${name}</div>`;
-    if(data.recommendation)html+=`<div style="color:var(--green);font-size:12px;margin-bottom:8px">${data.recommendation}</div>`;
+    let html=`<div style="margin-top:16px">`;
+    if(data.recommendation)html+=`<div style="color:var(--green);font-size:13px;margin-bottom:12px;line-height:1.5">${data.recommendation}</div>`;
     for(const opt of options){
       const icon=opt.mode==='walk'?'&#128694;':'&#128647;';
       const cost=opt.cost>0?`$${opt.cost.toFixed(2)}`:'Free';
-      html+=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;margin:6px 0">`;
-      html+=`<div style="font-weight:600;font-size:13px">${icon} ${opt.mode==='walk'?'Walk':'Subway'} &mdash; ${opt.duration_min} min &mdash; ${cost}</div>`;
-      if(opt.steps){html+=`<div style="margin-top:6px;font-size:11px;color:var(--t2)">`;for(const s of opt.steps){const si=(s.mode||opt.mode)==='transit'?'&#128647;':'&#128694;';html+=`<div style="margin:3px 0">${si} ${s.instruction} (${s.duration_min} min)</div>`}html+=`</div>`}
+      html+=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin:8px 0">`;
+      html+=`<div style="font-weight:600;font-size:15px">${icon} ${opt.mode==='walk'?'Walk':'Subway'} &mdash; ${opt.duration_min} min &mdash; ${cost}</div>`;
+      if(opt.steps){html+=`<div style="margin-top:8px;font-size:13px;color:var(--t2);line-height:1.8">`;for(const s of opt.steps){const si=(s.mode||opt.mode)==='transit'?'&#128647;':'&#128694;';html+=`<div style="margin:4px 0">${si} ${s.instruction} (${s.duration_min} min)</div>`}html+=`</div>`}
       html+=`</div>`;
     }
-    html+=`<button class="btn-secondary" style="width:100%;margin-top:8px" onclick="document.getElementById('explorePopup').style.display='none'">Close</button>`;
-    popup.innerHTML=html;
+    html+=`<button class="btn-secondary" style="width:100%;margin-top:12px;padding:12px;font-size:13px" onclick="getExploreDirections(${toLat},${toLon},'${name}')">&#8592; Change travel option</button>`;
+    html+=`</div>`;
+    target.innerHTML=html;
 
-    // Draw walk route on explore map
     if(budget!==2.9){
       const walkOpt=data.options?.find(o=>o.mode==='walk'&&o.geometry);
       if(walkOpt&&walkOpt.geometry&&exploreMap){
@@ -946,10 +963,9 @@ async function fetchExploreDirections(budget,toLat,toLon,name){
         else{exploreMap.addSource('explore-route',{type:'geojson',data:walkOpt.geometry});exploreMap.addLayer({id:'explore-route',type:'line',source:'explore-route',paint:{'line-color':'#3a7d0a','line-width':4,'line-opacity':0.8}})}
       }
     }
-    // Fit bounds
     const bounds=[[Math.min(exploreUserLoc.lon,toLon)-0.01,Math.min(exploreUserLoc.lat,toLat)-0.01],[Math.max(exploreUserLoc.lon,toLon)+0.01,Math.max(exploreUserLoc.lat,toLat)+0.01]];
-    exploreMap.fitBounds(bounds,{padding:80,duration:1000});
-  }catch(err){popup.innerHTML=`<div style="color:var(--red);padding:12px">Error: ${err.message}</div>`}
+    exploreMap.fitBounds(bounds,{padding:{top:80,bottom:80,left:200,right:380},duration:1000});
+  }catch(err){target.innerHTML=`<div style="color:var(--red);padding:12px;font-size:14px">Error: ${err.message}</div>`}
 }
 
 function toggleExploreFilter(type){
