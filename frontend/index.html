@@ -124,7 +124,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 #mapEl{width:100%;height:100%}
 .map-wrap{flex:1;position:relative}
 .map-overlay{position:absolute;z-index:10;background:rgba(255,255,255,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow)}
-.filter-bar{top:16px;left:16px;right:16px;padding:8px 10px;display:flex;gap:4px;overflow-x:auto;white-space:nowrap}
+.filter-bar{top:16px;left:16px;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
 .filter-btn{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px 8px;color:var(--t3);font-size:11px;cursor:pointer;transition:all 0.2s;font-family:var(--ui)}
 .filter-btn:hover{border-color:var(--green);color:var(--t2)}
 .filter-btn.active{border-color:var(--green);color:var(--green);background:rgba(118,185,0,0.08)}
