@@ -93,6 +93,31 @@ def _norm_borough(b):
     return BOROUGH_MAP.get(str(b).strip().lower(), str(b).strip().upper()[:2])
 
 
+def _borough_from_coords(lat, lon):
+    """Detect NYC borough from lat/lon coordinates."""
+    # Approximate bounding boxes for NYC boroughs
+    if lat > 40.8 and lon > -73.93:
+        return "BX"  # Bronx
+    if lat > 40.7 and lon > -74.01 and lon < -73.9:
+        return "MN"  # Manhattan
+    if lat < 40.7 and lon < -73.85:
+        return "BK"  # Brooklyn
+    if lat > 40.7 and lon > -73.85 and lon < -73.7:
+        return "QN"  # Queens
+    if lat < 40.65 and lon < -74.05:
+        return "SI"  # Staten Island
+    # Fallback: check which borough centroid is closest
+    centroids = {
+        "MN": (40.7831, -73.9712), "BK": (40.6501, -73.9496),
+        "QN": (40.7282, -73.7949), "BX": (40.8448, -73.8648),
+        "SI": (40.5795, -74.1502),
+    }
+    import math
+    closest = min(centroids.items(),
+                  key=lambda x: math.hypot(lat - x[1][0], lon - x[1][1]))
+    return closest[0]
+
+
 # ── Core filter ───────────────────────────────────────────────────────────────
 _excluded_resources: list[str] = []
 
@@ -121,9 +146,13 @@ def filter_resources(
     if resource_types:
         df = df[df["resource_type"].isin(resource_types)]
 
-    # If we have user location, skip borough filter — distance sorting is better
-    # This prevents empty results when LLM outputs wrong borough codes like "MTA"
+    # Detect borough from user location if available (more reliable than LLM)
     borough = _norm_borough(filters.get("borough"))
+    if user_location and user_location.get("lat"):
+        detected_borough = _borough_from_coords(user_location["lat"], user_location.get("lon", 0))
+        if detected_borough:
+            borough = detected_borough
+
     if borough and not user_location:
         df = df[df["borough"] == borough]
     elif borough and user_location:
@@ -513,13 +542,16 @@ def simulate_resource_gap(params: dict) -> dict:
 # ── Main execute entry point ──────────────────────────────────────────────────
 def _get_user_location(plan: dict) -> dict | None:
     """Try to extract user location from the plan for distance-based sorting."""
+    # Priority 1: explicit user location from frontend GPS/manual input
+    if plan.get("_user_location"):
+        return plan["_user_location"]
+
+    # Priority 2: geocode from query text
     try:
         from pipeline.geocode import geocode_location
-        # Check if plan has location info from the client profile
         profile = plan.get("client_profile", {})
         situation = profile.get("situation", "")
 
-        # Also check the original query stored in _last_query
         query_text = plan.get("_original_query", situation)
         if query_text:
             loc = geocode_location(query_text)

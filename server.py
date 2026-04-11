@@ -42,10 +42,15 @@ app = FastAPI(title="NYC Social Services Intelligence Engine")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
+class LocationModel(BaseModel):
+    lat: float
+    lon: float
+
 class QueryRequest(BaseModel):
     query: str
     demo_mode: bool = False
-    case_id: str | None = None  # optional: link query to a case
+    case_id: str | None = None
+    location: LocationModel | None = None  # user's current location for distance sorting
 
 
 class FeedbackRequest(BaseModel):
@@ -103,6 +108,11 @@ async def query(req: QueryRequest):
     t0 = time.time()
     set_excluded_resources(_excluded)
 
+    # Build user location dict for executor
+    user_loc = None
+    if req.location:
+        user_loc = {"lat": req.location.lat, "lon": req.location.lon}
+
     # Plan
     t1 = time.time()
     try:
@@ -110,6 +120,10 @@ async def query(req: QueryRequest):
     except Exception as e:
         raise HTTPException(500, f"Planner error: {e}")
     plan_time = time.time() - t1
+
+    # Inject user location into plan so executor can use it for distance sorting
+    if user_loc:
+        plan["_user_location"] = user_loc
 
     # Execute
     t2 = time.time()
