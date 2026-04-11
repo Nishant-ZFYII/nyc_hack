@@ -69,6 +69,70 @@ An AI caseworker system for the NYC Department of Social Services that performs 
 
 ---
 
+## Technology Stack
+
+### Data Storage — No Database, Pure In-Memory
+
+There is no traditional database (no SQL, no Postgres, no Redis). Everything is flat Parquet files loaded directly into GPU memory at startup. The DGX Spark's 128 GB unified memory IS the database.
+
+| Data Layer | Format | Size | Query Engine | Loaded When |
+|-----------|--------|------|-------------|-------------|
+| Resource mart (7,759 resources, 19 types) | Parquet | 1.4 MB | **cuDF** (GPU) / pandas (CPU) | App startup |
+| PLUTO spatial layer (857K NYC tax lots) | Parquet | 38 MB | pandas | On-demand (simulations only) |
+| Knowledge graph (7.7K nodes, 500K+ edges) | Pickle (networkx/cuGraph) | 12 MB | **cuGraph** (GPU) / networkx (CPU) | App startup |
+| SPO triples (328K subject-predicate-object facts) | Parquet | 2.2 MB | pandas | On-demand (explain queries) |
+| 311 txt2kg triples (1.2M extracted facts) | Parquet | 4.7 MB | pandas | On-demand |
+| KGE embeddings (7,759 vectors × 40 dims) | Computed at runtime | ~1 MB | scikit-learn cosine similarity | On-demand |
+
+**Why no database:** A database adds latency (network round-trip, query parsing, connection pooling) and infrastructure complexity. With 128 GB unified memory, the entire state of NYC social services (~58 MB total) fits in GPU RAM with room to spare. Queries run as native cuDF/cuGraph operations in microseconds, not milliseconds.
+
+**Zero infrastructure:** No database to install, configure, or maintain. Clone the repo, run the app. The Parquet files ARE the database.
+
+### NVIDIA Stack (GPU-Accelerated)
+
+| Tool | Role in Our System | What It Replaces |
+|------|--------------------|-----------------|
+| **cuDF** (RAPIDS) | GPU DataFrame — filters 7,759 resources in <1ms | pandas |
+| **cuGraph** (RAPIDS) | GPU graph engine — SSSP, BFS, nearest neighbor on 500K+ edges | networkx |
+| **cuML** (RAPIDS) | GPU ML — KNN spatial joins, HDBSCAN clustering | scikit-learn |
+| **cuPy** | GPU arrays — distance calculations, accessibility heatmaps | numpy |
+| **Nemotron** (via Ollama/NIM) | Local LLM — query planning, synthesis, verification | Cloud API calls |
+
+### Application Stack
+
+| Tool | Role |
+|------|------|
+| **Streamlit** | Web UI — conversation layout, maps, verification badges |
+| **OpenAI SDK** | Client for Ollama/NIM/vLLM (OpenAI-compatible API) |
+| **Anthropic SDK** | Claude API fallback for local development |
+| **scipy** | KDTree spatial indexing (graph build phase) |
+| **scikit-learn** | Cosine similarity for KGE embedding search |
+| **networkx** | CPU fallback graph engine |
+| **pandas** | Data cleaning pipeline + cuDF interop |
+| **pyarrow** | Parquet read/write |
+
+### Data Sources
+
+All data from **NYC Open Data** (data.cityofnewyork.us) via the Socrata API. 14 datasets, zero hardcoded data.
+
+| Dataset | Socrata ID | Rows | Purpose |
+|---------|-----------|------|---------|
+| PLUTO (tax lots) | `64uk-42ks` | 857K | Base spatial layer + overflow site discovery |
+| DOHMH Facilities | `ji82-xba5` | 9,783 | Backbone — shelters, hospitals, schools, clinics, food banks |
+| NYPD Complaints | `qgea-i56i` | 500K | Safety scores (crimes within 500m of each resource) |
+| 311 HPD Complaints | `erm2-nwe9` | 300K | Quality scores + txt2kg triple extraction |
+| MTA Subway Stations | CSV | 496 | Transit graph + walk-time calculations |
+| Domestic Violence | `5ziv-wcy4` | 252 | DV shelters and services |
+| Hospitals | Manual CSV | 78 | NYC Health + Hospitals system |
+| HRA Benefits Centers | `9d9t-bmk7` | 29 | SNAP/Medicaid enrollment offices |
+| Drop-in Centers | `bmxf-3rd4` | 8 | Overnight drop-in centers |
+| Cooling Centers | `h2bn-gu9k` | ~200 | Emergency cooling/warming centers |
+| NYCHA Developments | `phvi-damg` | ~200 | Public housing |
+| DOE Schools | via DOHMH | ~2,170 | School locations for family proximity |
+| Women's Resources | `pqg4-dm6b` | ~1,000 | Legal aid, language services |
+
+---
+
 ## Pipeline Flow
 
 ### Phase 1 — Planning (planner.py)
