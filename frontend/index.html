@@ -412,6 +412,7 @@ async function sendQuery(){
     document.getElementById('userLabel').textContent=n;
     try{await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,name:n})})}catch(e){}
   }
+  console.log('sendQuery userLocation:', userLocation);
   lastQuery=q;isEmergency=detectEmergency(q);
   document.getElementById('loadingOverlay').classList.add('active');
   document.getElementById('sendBtn').disabled=true;
@@ -585,6 +586,7 @@ async function setManualLocation(){
     const results=await resp.json();
     if(results&&results.length>0){
       userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
+      console.log('Location set:', userLocation);
       input.style.borderColor='var(--green)';
       const ls=document.getElementById('locStatus');
       if(ls){ls.textContent='Location set: '+results[0].display_name.split(',').slice(0,2).join(',');ls.style.color='var(--green)'}
@@ -594,8 +596,8 @@ async function setManualLocation(){
         userMarker=new maplibregl.Marker({element:el}).setLngLat([userLocation.lon,userLocation.lat]).addTo(resultMap);
         resultMap.flyTo({center:[userLocation.lon,userLocation.lat],zoom:14,duration:1000});
       }
-    }
-  }catch(e){}
+    } else {const ls=document.getElementById('locStatus');if(ls){ls.textContent='Address not found — try a more specific NYC address';ls.style.color='var(--orange)'}}
+  }catch(e){console.error('Location error:',e);const ls=document.getElementById('locStatus');if(ls){ls.textContent='Error looking up address';ls.style.color='var(--red)'}}
 }
 
 // ── Directions ─────────────────────────────────────────────
