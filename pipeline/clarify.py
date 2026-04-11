@@ -9,7 +9,7 @@ The caseworker asks ONE targeted question to unlock better resource matching:
 Returns a single question string, or empty string if nothing useful to ask.
 """
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from llm.client import synth_chat
 
 CLARIFY_PROMPT = """You are an NYC DSS caseworker AI. You just gave a client a resource referral.

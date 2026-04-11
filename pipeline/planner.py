@@ -12,7 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from llm.client import plan_chat
 
 SYSTEM_PROMPT = """NYC Social Services AI. Output ONLY raw JSON. No markdown. No explanation. No spaces.
