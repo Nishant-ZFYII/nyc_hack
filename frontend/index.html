@@ -686,18 +686,13 @@ async function fetchDirections(budget){
     setTimeout(()=>{
       if(resultMap){
         resultMap.resize();
-        // Draw walk route if available
-        const walkOpt=data.options?.find(o=>o.mode==='walk'&&o.geometry);
-        if(walkOpt&&walkOpt.geometry){
-          if(resultMap.getSource('route'))resultMap.getSource('route').setData(walkOpt.geometry);
-          else{resultMap.addSource('route',{type:'geojson',data:walkOpt.geometry});resultMap.addLayer({id:'route',type:'line',source:'route',paint:{'line-color':'#76b900','line-width':4,'line-opacity':0.8}})}
-        }
-        // Draw transit route as a straight line from origin to destination (via stations)
-        const transitOpt=data.options?.find(o=>o.mode==='transit');
-        if(transitOpt){
-          const transitLine={type:'Feature',geometry:{type:'LineString',coordinates:[[userLocation.lon,userLocation.lat],[toLon,toLat]]}};
-          if(resultMap.getSource('transit-route'))resultMap.getSource('transit-route').setData(transitLine);
-          else{resultMap.addSource('transit-route',{type:'geojson',data:transitLine});resultMap.addLayer({id:'transit-route',type:'line',source:'transit-route',paint:{'line-color':'#42a5f5','line-width':4,'line-opacity':0.7,'line-dasharray':[2,2]}})}
+        // Only draw walk route when walk is selected (budget===0 or null)
+        if(budget!==2.9){
+          const walkOpt=data.options?.find(o=>o.mode==='walk'&&o.geometry);
+          if(walkOpt&&walkOpt.geometry){
+            if(resultMap.getSource('route'))resultMap.getSource('route').setData(walkOpt.geometry);
+            else{resultMap.addSource('route',{type:'geojson',data:walkOpt.geometry});resultMap.addLayer({id:'route',type:'line',source:'route',paint:{'line-color':'#76b900','line-width':4,'line-opacity':0.8}})}
+          }
         }
         const bounds=[[Math.min(userLocation.lon,toLon)-0.01,Math.min(userLocation.lat,toLat)-0.01],[Math.max(userLocation.lon,toLon)+0.01,Math.max(userLocation.lat,toLat)+0.01]];
         resultMap.fitBounds(bounds,{padding:60,duration:1500});
