@@ -300,12 +300,21 @@ def build_graph_obj(edges_df):
 def save_graph(G, resources, transit, tracts, edges_df):
     log.info("Step 5/5: Saving graph…")
     out = DATA / "graph.pkl"
+
+    # Convert cuDF DataFrames to pandas for pickling
+    def to_pd(df):
+        if hasattr(df, 'to_pandas'):
+            return df.to_pandas()
+        return df
+
+    # Don't save cuGraph object — it can't be pickled.
+    # Save edges instead; graph is rebuilt at load time.
     payload = {
-        "graph":     G,
-        "resources": resources,
-        "transit":   transit,
-        "tracts":    tracts,
-        "edges":     edges_df,
+        "graph":     G if not USE_GPU else None,
+        "resources": to_pd(resources),
+        "transit":   to_pd(transit),
+        "tracts":    to_pd(tracts),
+        "edges":     to_pd(edges_df),
         "backend":   "cugraph" if USE_GPU else "networkx",
         "offsets": {
             "resource": RESOURCE_OFFSET,

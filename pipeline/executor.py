@@ -55,6 +55,27 @@ def load_state():
     if _graph_payload is None:
         with open(DATA / "graph.pkl", "rb") as f:
             _graph_payload = pickle.load(f)
+        # Rebuild cuGraph from edges if graph was saved as None (cuGraph can't be pickled)
+        if _graph_payload.get("graph") is None and USE_CUGRAPH:
+            import cugraph as _cg
+            import cudf as _cudf
+            edges = _graph_payload["edges"]
+            gdf = _cudf.DataFrame({
+                "src": edges["src"].values,
+                "dst": edges["dst"].values,
+                "weight": edges["weight"].values,
+            })
+            G = _cg.Graph(directed=True)
+            G.from_cudf_edgelist(gdf, source="src", destination="dst",
+                                 edge_attr="weight", renumber=False)
+            _graph_payload["graph"] = G
+        elif _graph_payload.get("graph") is None:
+            G = nx.DiGraph()
+            edges = _graph_payload["edges"]
+            for _, row in edges.iterrows():
+                G.add_edge(int(row["src"]), int(row["dst"]),
+                           weight=row["weight"], edge_type=row.get("edge_type", ""))
+            _graph_payload["graph"] = G
     return _mart, _graph_payload
 
 
