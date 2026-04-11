@@ -617,6 +617,18 @@ async function setManualLocation(){
   }catch(e){console.error('Location error:',e);const ls=document.getElementById('locStatus');if(ls){ls.textContent='Error looking up address';ls.style.color='var(--red)'}}
 }
 
+// ── Sponsored Ride ─────────────────────────────────────────
+function requestRide(rideId,sponsorName,etaMin){
+  const el=document.getElementById(rideId);
+  if(!el){
+    // For "show all" compact version — append confirmation to results
+    const c=document.getElementById('resultsContent');
+    c.insertAdjacentHTML('beforeend',`<div class="answer-box fade-in" style="border-color:var(--green-d);background:rgba(118,185,0,0.04)"><div style="font-weight:600;color:var(--green);font-size:14px;margin-bottom:6px">&#9989; Ride confirmed!</div><div style="font-size:13px;color:var(--t1)">Your <b>${sponsorName}</b>-sponsored car arrives in <b>${etaMin} minutes</b>.</div><div style="font-size:12px;color:var(--t2);margin-top:6px">Look for a dark sedan at your location. The driver has your destination.</div></div>`);
+    return;
+  }
+  el.innerHTML=`<div style="text-align:center;padding:8px"><div style="font-size:20px;margin-bottom:8px">&#9989;</div><div style="font-weight:600;color:var(--green);font-size:15px">Ride confirmed!</div><div style="font-size:13px;color:var(--t1);margin-top:6px">Your <b>${sponsorName}</b>-sponsored car arrives in <b>${etaMin} minutes</b>.</div><div style="font-size:12px;color:var(--t2);margin-top:6px">Look for a dark sedan at your location. The driver has your destination.</div><div style="margin-top:10px;font-size:11px;color:var(--t3);font-family:var(--mono)">Ride ID: ${Date.now().toString(36).toUpperCase()}</div></div>`;
+}
+
 // ── Directions ─────────────────────────────────────────────
 let _pendingDir=null;
 
@@ -669,29 +681,35 @@ async function fetchDirections(budget){
     }
     // Filter options based on what user selected
     let options=data.options||[];
-    const sponsors=['NVIDIA','Acer','Uber','Lyft'];
-    const sponsor=sponsors[Math.floor(Math.random()*sponsors.length)];
+    const sponsorData=[
+      {name:'NVIDIA',logo:'https://upload.wikimedia.org/wikipedia/sco/thumb/2/21/Nvidia_logo.svg/351px-Nvidia_logo.svg.png'},
+      {name:'Acer',logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Acer_2011.svg/300px-Acer_2011.svg.png'},
+      {name:'Uber',logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/Uber_logo_2018.svg/300px-Uber_logo_2018.svg.png'},
+      {name:'Lyft',logo:'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Lyft_logo.svg/300px-Lyft_logo.svg.png'},
+    ];
+    const sponsor=sponsorData[Math.floor(Math.random()*sponsorData.length)];
+    const rideId='ride-'+Date.now();
 
     if(budget==='sponsored'){
-      // Show sponsored ride option
       const dist=data.distance_miles||0;
       const rideMin=Math.max(Math.round(dist*3+5),5);
-      html+=`<div style="background:linear-gradient(135deg,rgba(118,185,0,0.08),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:8px;padding:14px;margin:8px 0">`;
-      html+=`<div style="font-weight:600;font-size:14px">&#128663; Sponsored Ride &mdash; ${rideMin} min &mdash; Free</div>`;
-      html+=`<div style="font-size:12px;color:var(--t2);margin-top:6px">Courtesy of <b style="color:var(--green)">${sponsor}</b></div>`;
-      html+=`<div style="font-size:12px;color:var(--t2);margin-top:4px">A car will pick you up at your location and drop you off at ${name}.</div>`;
-      html+=`<div style="margin-top:10px;display:flex;gap:8px">`;
-      html+=`<button class="btn-primary" style="padding:10px 20px;font-size:12px" onclick="alert('Ride requested! ${sponsor} will send a car to your location.')">Request Ride</button>`;
-      html+=`<span style="font-size:10px;color:var(--t3);align-self:center;font-family:var(--mono)">EST. ${dist} mi &middot; ${rideMin} min</span>`;
-      html+=`</div></div>`;
-      options=[];// don't show walk/transit below
+      const etaMin=Math.floor(Math.random()*4)+3; // 3-6 min ETA
+      html+=`<div style="background:linear-gradient(135deg,rgba(118,185,0,0.08),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:10px;padding:16px;margin:8px 0" id="${rideId}">`;
+      html+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><img src="${sponsor.logo}" style="height:20px;filter:brightness(0) invert(1);opacity:0.8" onerror="this.style.display='none'"><span style="font-weight:600;font-size:15px">Sponsored Ride</span><span style="font-size:12px;color:var(--green);font-family:var(--mono);margin-left:auto">FREE</span></div>`;
+      html+=`<div style="font-size:13px;color:var(--t1);margin-bottom:6px">A car will pick you up and take you to ${name}.</div>`;
+      html+=`<div style="display:flex;gap:16px;font-size:12px;color:var(--t2);margin-bottom:12px;font-family:var(--mono)"><span>&#128663; ${dist} mi</span><span>&#9201; ~${rideMin} min ride</span><span>&#128205; ETA: ${etaMin} min</span></div>`;
+      html+=`<div style="font-size:11px;color:var(--t3);margin-bottom:10px">Courtesy of <b>${sponsor.name}</b></div>`;
+      html+=`<button class="btn-primary" style="padding:12px 24px;font-size:13px;width:100%" onclick="requestRide('${rideId}','${sponsor.name}',${etaMin})">Request Ride</button>`;
+      html+=`</div>`;
+      options=[];
     } else if(budget===0){options=options.filter(o=>o.mode==='walk')}
     else if(budget===2.9){options=options.filter(o=>o.mode==='transit')}
-    // budget===null means show all — also show sponsored as bonus
     if(budget===null){
-      html+=`<div style="background:linear-gradient(135deg,rgba(118,185,0,0.08),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:8px;padding:12px;margin:8px 0">`;
-      html+=`<div style="font-weight:600;font-size:13px">&#128663; Sponsored Ride &mdash; Free</div>`;
-      html+=`<div style="font-size:11px;color:var(--t2);margin-top:4px">Courtesy of <b style="color:var(--green)">${sponsor}</b> &middot; Request a free car pickup</div>`;
+      const dist=data.distance_miles||0;
+      const etaMin=Math.floor(Math.random()*4)+3;
+      html+=`<div style="background:linear-gradient(135deg,rgba(118,185,0,0.08),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:8px;padding:12px;margin:8px 0;cursor:pointer" onclick="this.querySelector('button').click()">`;
+      html+=`<div style="display:flex;align-items:center;gap:8px"><img src="${sponsor.logo}" style="height:16px;filter:brightness(0) invert(1);opacity:0.7" onerror="this.style.display='none'"><span style="font-weight:600;font-size:13px">&#128663; Sponsored Ride &mdash; Free</span><span style="font-size:11px;color:var(--t2);margin-left:auto">ETA: ${etaMin} min</span></div>`;
+      html+=`<button style="display:none" onclick="event.stopPropagation();requestRide('sr-${Date.now()}','${sponsor.name}',${etaMin})"></button>`;
       html+=`</div>`;
     }
     for(const opt of options){
