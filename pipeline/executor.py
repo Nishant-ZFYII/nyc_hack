@@ -30,6 +30,13 @@ except ImportError:
     import networkx as nx
     USE_CUGRAPH = False
 
+try:
+    from cuopt import routing as cuopt_routing
+    import cudf as _cudf_opt
+    USE_CUOPT = True
+except ImportError:
+    USE_CUOPT = False
+
 DATA = Path(__file__).resolve().parent.parent / "data"
 
 # ── Cached state ──────────────────────────────────────────────────────────────
@@ -162,6 +169,93 @@ def _to_pd(df):
     return df
 
 
+def _cuopt_allocate(sites_df, people, centroid_lat, centroid_lon):
+    """Use cuOpt VRP to optimally allocate people across sites minimizing travel time."""
+    try:
+        LAT_M, LON_M = 111_320, 85_390
+        n_sites = len(sites_df)
+        if n_sites == 0:
+            return []
+
+        # Build cost matrix: distances between centroid (depot) and all sites
+        lats = sites_df["latitude"].values
+        lons = sites_df["longitude"].values
+        # Node 0 = depot (crisis epicenter), nodes 1..n = shelter sites
+        all_lats = np.array([centroid_lat] + list(lats))
+        all_lons = np.array([centroid_lon] + list(lons))
+        n = len(all_lats)
+
+        # Pairwise distance matrix in minutes (walk speed 80m/min)
+        cost = np.zeros((n, n), dtype=np.float32)
+        for i in range(n):
+            for j in range(n):
+                d = np.sqrt(((all_lats[i] - all_lats[j]) * LAT_M)**2 +
+                            ((all_lons[i] - all_lons[j]) * LON_M)**2)
+                cost[i][j] = d / 80.0  # minutes walking
+
+        cost_df = _cudf_opt.DataFrame(cost)
+
+        # Set up VRP: 1 "vehicle" per site, capacity = site capacity or people/n_sites
+        capacities = []
+        for _, row in sites_df.iterrows():
+            cap = row.get("capacity", None)
+            if pd.isna(cap) or cap is None or cap == 0:
+                cap = max(people // n_sites, 20)
+            capacities.append(int(cap))
+
+        data_model = cuopt_routing.DataModel(n, n_sites)
+        data_model.add_cost_matrix(cost_df)
+
+        # Demands: depot=0, each site gets proportional demand
+        demands = [0]  # depot
+        per_site = people // n_sites
+        remainder = people % n_sites
+        for i in range(n_sites):
+            demands.append(per_site + (1 if i < remainder else 0))
+        data_model.set_order_demands(demands)
+
+        # Vehicle capacities
+        data_model.set_vehicle_capacities(capacities)
+
+        solver = cuopt_routing.SolverSettings()
+        solver.set_time_limit(2.0)
+        result = cuopt_routing.Solve(data_model, solver)
+
+        if result.get_status() == 0:
+            routes = result.get_routes()
+            allocation = []
+            for i, (_, row) in enumerate(sites_df.iterrows()):
+                allocation.append({
+                    "name": row.get("name", "?"),
+                    "address": row.get("address", ""),
+                    "borough": row.get("borough", ""),
+                    "assigned_people": demands[i + 1],
+                    "travel_min": round(cost[0][i + 1], 1),
+                    "optimized_by": "cuOpt VRP",
+                })
+            return allocation
+    except Exception as e:
+        pass  # Fall through to greedy
+    return None
+
+
+def _greedy_allocate(sites_df, people):
+    """Greedy fallback: allocate people proportionally across sites."""
+    n_sites = max(len(sites_df), 1)
+    per_site = people // n_sites
+    remainder = people % n_sites
+    allocation = []
+    for i, (_, row) in enumerate(sites_df.iterrows()):
+        allocation.append({
+            "name": row.get("name", "?"),
+            "address": row.get("address", ""),
+            "borough": row.get("borough", ""),
+            "assigned_people": per_site + (1 if i < remainder else 0),
+            "optimized_by": "greedy",
+        })
+    return allocation
+
+
 def simulate_cold_emergency(params: dict) -> dict:
     mart, payload = load_state()
     mart = _to_pd(mart)
@@ -171,7 +265,6 @@ def simulate_cold_emergency(params: dict) -> dict:
     people  = params.get("people_displaced", 200)
     temp_f  = params.get("temperature_f", 15)
 
-    # Find available shelters — sort by distance from borough centroid (GPU-accelerated on DGX)
     BOROUGH_CENTROIDS = {
         "BK": (40.6501, -73.9496), "MN": (40.7831, -73.9712),
         "QN": (40.7282, -73.7949), "BX": (40.8448, -73.8648), "SI": (40.5795, -74.1502),
@@ -181,8 +274,8 @@ def simulate_cold_emergency(params: dict) -> dict:
         shelters = shelters[shelters["borough"] == borough]
 
     # Distance sort: nearest to the affected borough centroid
-    if "latitude" in shelters.columns and "longitude" in shelters.columns and borough in BOROUGH_CENTROIDS:
-        clat, clon = BOROUGH_CENTROIDS[borough]
+    clat, clon = BOROUGH_CENTROIDS.get(borough, (40.7128, -74.0060))
+    if "latitude" in shelters.columns and "longitude" in shelters.columns:
         LAT_M, LON_M = 111_320, 85_390
         shelters = shelters.dropna(subset=["latitude", "longitude"])
         shelters["_dist_m"] = (
@@ -191,7 +284,17 @@ def simulate_cold_emergency(params: dict) -> dict:
         ) ** 0.5
         shelters = shelters.sort_values("_dist_m")
 
-    available = shelters.head(5)
+    available = shelters.head(8)
+
+    # cuOpt VRP allocation or greedy fallback
+    allocation = None
+    optimizer_used = "greedy"
+    if USE_CUOPT and len(available) > 0:
+        allocation = _cuopt_allocate(available, people, clat, clon)
+        if allocation:
+            optimizer_used = "cuOpt VRP"
+    if allocation is None:
+        allocation = _greedy_allocate(available, people)
 
     # Find PLUTO overflow sites
     overflow = pluto[pluto["is_overflow_candidate"] == True].copy()
@@ -210,10 +313,13 @@ def simulate_cold_emergency(params: dict) -> dict:
         "scenario": "cold_emergency",
         "people_displaced": people,
         "temperature_f": temp_f,
+        "optimizer": optimizer_used,
+        "allocation": allocation,
         "available_shelters": available.assign(resource_type="shelter")[[c for c in ["name", "address", "borough", "capacity", "latitude", "longitude", "resource_type"] if c in available.columns or c == "resource_type"]].to_dict("records"),
         "overflow_sites": overflow[["address", "ownername", "landuse"]].to_dict("records"),
         "food_distribution": food[["name", "address"]].to_dict("records"),
-        "recommendation": f"Activate {len(overflow)} overflow sites and {len(available)} shelters. "
+        "recommendation": f"[{optimizer_used}] Allocate {people} people across {len(allocation)} shelter sites. "
+                          f"Activate {len(overflow)} overflow sites. "
                           f"Deploy {len(food)} food distribution points nearby."
     }
 
@@ -296,20 +402,36 @@ def simulate_migrant_allocation(params: dict) -> dict:
             df = df.sort_values("safety_score", ascending=False)
         results_by_need[need] = df.head(5).reset_index(drop=True)
 
-    # Build allocation plan: assign people across shelter sites
+    # Build allocation plan: cuOpt VRP or greedy fallback
     shelter_df = results_by_need.get("shelter", pd.DataFrame())
-    allocation = []
-    if not shelter_df.empty:
-        per_site = people // max(len(shelter_df), 1)
-        remainder = people % max(len(shelter_df), 1)
+    allocation = None
+    optimizer_used = "greedy"
+
+    if USE_CUOPT and not shelter_df.empty and "latitude" in shelter_df.columns:
+        # Use NYC midpoint as depot (arrival point)
+        depot_lat = shelter_df["latitude"].mean()
+        depot_lon = shelter_df["longitude"].mean()
+        allocation = _cuopt_allocate(shelter_df, people, depot_lat, depot_lon)
+        if allocation:
+            optimizer_used = "cuOpt VRP"
+            # Add language info to cuOpt results
+            for i, (_, row) in enumerate(shelter_df.iterrows()):
+                if i < len(allocation):
+                    allocation[i]["languages"] = row.get("languages_spoken", "—")
+
+    if allocation is None:
+        allocation = []
+        n = max(len(shelter_df), 1)
+        per_site = people // n
+        remainder = people % n
         for i, (_, row) in enumerate(shelter_df.iterrows()):
-            assigned = per_site + (1 if i < remainder else 0)
             allocation.append({
-                "shelter": row.get("name", "?"),
+                "name": row.get("name", "?"),
                 "address": row.get("address", ""),
                 "borough": row.get("borough", ""),
-                "assigned_people": assigned,
+                "assigned_people": per_site + (1 if i < remainder else 0),
                 "languages": row.get("languages_spoken", "—"),
+                "optimized_by": "greedy",
             })
 
     return {
@@ -317,13 +439,14 @@ def simulate_migrant_allocation(params: dict) -> dict:
         "scenario": "migrant_allocation",
         "people": people,
         "languages": languages,
+        "optimizer": optimizer_used,
         "allocation": allocation,
         "resources_by_need": {k: v[["name","address","borough"]].to_dict("records")
                                for k, v in results_by_need.items() if not v.empty},
         "recommendation": (
-            f"Distribute {people} people across {len(allocation)} shelter sites. "
+            f"[{optimizer_used}] Distribute {people} people across {len(allocation)} shelter sites. "
             f"Language services available at "
-            f"{sum(1 for a in allocation if a['languages'] != '—')} sites."
+            f"{sum(1 for a in allocation if a.get('languages', '—') != '—')} sites."
         ),
     }
 
