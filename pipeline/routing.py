@@ -63,31 +63,90 @@ def get_walking_route(from_lat, from_lon, to_lat, to_lon) -> dict | None:
             return None
 
         route = data["routes"][0]
+        dist_miles = route["distance"] / 1609.34
+        # Sanity check: walking is ~3 mph = 20 min/mile. OSRM foot profile
+        # can return unrealistically fast times, so use max(osrm, distance-based).
+        osrm_min = route["duration"] / 60
+        distance_based_min = dist_miles * 20  # 3 mph
+        duration_min = max(osrm_min, distance_based_min)
+
         legs = route.get("legs", [{}])
-        steps = []
+        raw_steps = []
         for leg in legs:
             for step in leg.get("steps", []):
-                instruction = step.get("maneuver", {}).get("type", "")
+                maneuver_type = step.get("maneuver", {}).get("type", "")
                 name = step.get("name", "")
                 dist_m = step.get("distance", 0)
                 dur_s = step.get("duration", 0)
-                if name or instruction:
-                    steps.append({
-                        "instruction": f"{instruction} on {name}" if name else instruction,
-                        "distance_ft": round(dist_m * 3.281),
-                        "duration_min": round(dur_s / 60, 1),
-                    })
+                raw_steps.append({
+                    "type": maneuver_type,
+                    "name": name,
+                    "distance_m": dist_m,
+                    "duration_s": dur_s,
+                })
+
+        # Consolidate steps: merge tiny steps, filter noise, humanize instructions
+        steps = _consolidate_walk_steps(raw_steps)
 
         return {
             "mode": "walk",
-            "distance_miles": round(route["distance"] / 1609.34, 2),
-            "duration_min": round(route["duration"] / 60),
+            "distance_miles": round(dist_miles, 2),
+            "duration_min": round(duration_min),
             "cost": 0.0,
             "steps": steps,
             "geometry": route.get("geometry"),
         }
     except Exception:
         return None
+
+
+def _consolidate_walk_steps(raw_steps: list) -> list:
+    """Merge small walk steps into meaningful directions. Filter highway noise."""
+    SKIP_NAMES = {"", "ramp", "off ramp", "on ramp", "link"}
+    SKIP_KEYWORDS = {"expressway", "interstate", "highway", "turnpike", "parkway ramp"}
+    MANEUVER_MAP = {
+        "depart": "Head", "turn": "Turn onto", "new name": "Continue on",
+        "arrive": "Arrive at", "merge": "Continue on", "end of road": "At end of road, go to",
+        "fork": "Keep on", "roundabout": "Take roundabout to",
+    }
+
+    consolidated = []
+    for s in raw_steps:
+        name = s["name"].strip()
+        mtype = s["type"]
+        dist_m = s["distance_m"]
+        dur_s = s["duration_s"]
+
+        # Skip tiny steps (<50m) unless arrive
+        if dist_m < 50 and mtype != "arrive":
+            continue
+        # Skip highway/ramp names
+        name_lower = name.lower()
+        if name_lower in SKIP_NAMES or any(kw in name_lower for kw in SKIP_KEYWORDS):
+            # Accumulate distance into previous step
+            if consolidated:
+                consolidated[-1]["distance_ft"] += round(dist_m * 3.281)
+                consolidated[-1]["duration_min"] += round(dur_s / 60, 1)
+            continue
+
+        verb = MANEUVER_MAP.get(mtype, "Continue on")
+        instruction = f"{verb} {name}" if name else verb
+        # Recalculate duration based on 3mph walk speed
+        walk_min = round((dist_m / 1609.34) * 20, 1)
+
+        consolidated.append({
+            "instruction": instruction,
+            "distance_ft": round(dist_m * 3.281),
+            "duration_min": walk_min,
+        })
+
+    # Cap at 8 most significant steps (by distance)
+    if len(consolidated) > 8:
+        consolidated.sort(key=lambda s: s["distance_ft"], reverse=True)
+        consolidated = consolidated[:8]
+        consolidated.sort(key=lambda s: s["duration_min"])  # re-sort by time
+
+    return consolidated
 
 
 def get_transit_estimate(from_lat, from_lon, to_lat, to_lon) -> dict:
@@ -129,30 +188,47 @@ def get_transit_estimate(from_lat, from_lon, to_lat, to_lon) -> dict:
         direct_dist = haversine_miles(
             float(origin_station["latitude"]), float(origin_station["longitude"]),
             float(dest_station["latitude"]), float(dest_station["longitude"]))
-        subway_time = max(direct_dist * 2, 3)  # ~30mph avg subway, min 3 min
+        # More realistic subway speed: ~17mph avg including stops
+        subway_time = max(direct_dist / 17 * 60, 3)  # min 3 min
 
         total_time = walk_to_station + subway_time + walk_from_station
         origin_lines = str(origin_station.get("subway_lines", ""))
         dest_lines = str(dest_station.get("subway_lines", ""))
+        origin_name = str(origin_station.get("name", "station"))
+        dest_name = str(dest_station.get("name", "station"))
 
         steps = [
-            {"instruction": f"Walk to {origin_station.get('name', 'station')} ({origin_lines})",
-             "duration_min": round(walk_to_station, 1), "mode": "walk"},
-            {"instruction": f"Take subway toward {dest_station.get('name', 'station')} ({dest_lines})",
-             "duration_min": round(subway_time, 1), "mode": "transit"},
-            {"instruction": f"Walk to destination from {dest_station.get('name', 'station')}",
+            {"instruction": f"Walk to {origin_name}",
+             "duration_min": round(walk_to_station, 1), "mode": "walk",
+             "detail": f"Lines: {origin_lines}" if origin_lines else ""},
+            {"instruction": f"Take subway to {dest_name}",
+             "duration_min": round(subway_time, 1), "mode": "transit",
+             "detail": f"Lines at destination: {dest_lines}" if dest_lines else "",
+             "lines": dest_lines},
+            {"instruction": f"Walk to destination from {dest_name}",
              "duration_min": round(walk_from_station, 1), "mode": "walk"},
         ]
+
+        # Find 2 nearest stations to give alternatives
+        alt_origins = transit_df.nsmallest(3, "_d_from")
+        nearby_stations = []
+        for _, st in alt_origins.iterrows():
+            sn = str(st.get("name", ""))
+            sl = str(st.get("subway_lines", ""))
+            sd = round(float(st["_d_from"]) * 20, 1)  # walk min
+            if sn and sn != origin_name:
+                nearby_stations.append({"name": sn, "lines": sl, "walk_min": sd})
 
         return {
             "mode": "transit",
             "distance_miles": round(haversine_miles(from_lat, from_lon, to_lat, to_lon), 2),
             "duration_min": round(total_time),
             "cost": MTA_FARE,
-            "origin_station": origin_station.get("name", ""),
-            "dest_station": dest_station.get("name", ""),
+            "origin_station": origin_name,
+            "dest_station": dest_name,
             "subway_lines_origin": origin_lines,
             "subway_lines_dest": dest_lines,
+            "nearby_stations": nearby_stations[:2],
             "steps": steps,
         }
     except Exception:

@@ -835,16 +835,30 @@ async function fetchDirections(budget) {
           const stepMode = s.mode || opt.mode;
           const si = stepMode === 'transit' ? '&#128647;' : '&#128694;';
           const stepClass = stepMode === 'transit' ? ' transit' : '';
-          // Extract station/line info for badges
           let instr = s.instruction || '';
-          const lineMatch = instr.match(/\(([A-Z0-9,\s]+)\)\s*$/);
+          // Extract line badges from instruction or lines field
           let badge = '';
-          if (lineMatch) {
-            const lines = lineMatch[1].split(/[,\s]+/).filter(l=>l.length<=2);
-            badge = lines.map(l=>`<span class="dir-station-badge">${l}</span>`).join(' ');
+          const lines = s.lines || '';
+          if (lines) {
+            badge = lines.split(/[,\s]+/).filter(l=>l.length<=3&&l.length>0).map(l=>`<span class="dir-station-badge">${l}</span>`).join(' ');
+          }
+          const lineMatch = instr.match(/\(([A-Z0-9,\s]+)\)\s*$/);
+          if (lineMatch && !badge) {
+            badge = lineMatch[1].split(/[,\s]+/).filter(l=>l.length<=3).map(l=>`<span class="dir-station-badge">${l}</span>`).join(' ');
             instr = instr.replace(lineMatch[0], '');
           }
-          html += `<div class="dir-step${stepClass}"><span class="dir-step-icon">${si}</span><span class="dir-step-text">${instr} ${badge}</span><span class="dir-step-time">${s.duration_min} min</span></div>`;
+          const detail = s.detail ? `<div style="font-size:10px;color:var(--text-muted);margin-top:1px">${s.detail}</div>` : '';
+          html += `<div class="dir-step${stepClass}"><span class="dir-step-icon">${si}</span><span class="dir-step-text">${instr} ${badge}${detail}</span><span class="dir-step-time">${s.duration_min} min</span></div>`;
+        }
+        html += '</div>';
+      }
+      // Nearby alternative stations
+      if (opt.nearby_stations && opt.nearby_stations.length) {
+        html += '<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted)">';
+        html += '<span style="font-family:var(--font-mono);font-size:9px;text-transform:uppercase;letter-spacing:0.5px">Nearby stations:</span>';
+        for (const ns of opt.nearby_stations) {
+          const nsBadges = ns.lines ? ns.lines.split(/[,\s]+/).filter(l=>l.length<=3&&l.length>0).map(l=>`<span class="dir-station-badge">${l}</span>`).join(' ') : '';
+          html += `<div style="margin-top:3px">${ns.name} ${nsBadges} <span style="color:var(--text-muted)">&middot; ${ns.walk_min} min walk</span></div>`;
         }
         html += '</div>';
       }
