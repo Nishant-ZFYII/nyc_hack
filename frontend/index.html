@@ -675,7 +675,7 @@ function showBoroughView(){
     // Dim background dots
     new deck.ScatterplotLayer({id:'bg',data:bgData,getPosition:d=>[d.longitude,d.latitude],getRadius:30,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),20],radiusMinPixels:1,radiusMaxPixels:3,pickable:false}),
     // Borough labels
-    new deck.TextLayer({id:'borough-labels',data:boroughData,getPosition:d=>d.center,getText:d=>`${d.name}\n${(d.count||0).toLocaleString()} resources`,getSize:18,getColor:[230,230,240,200],getTextAnchor:'middle',getAlignmentBaseline:'center',fontFamily:'DM Sans',fontWeight:'600',pickable:true,onClick:({object})=>{if(object)zoomToBorough(object)},outlineWidth:2,outlineColor:[6,6,11,200],sizeMinPixels:14,sizeMaxPixels:22}),
+    new deck.TextLayer({id:'borough-labels',data:boroughData,getPosition:d=>d.center,getText:d=>`${d.name}\n${(d.count||0).toLocaleString()} resources`,getSize:18,getColor:[230,230,240,200],getTextAnchor:'middle',getAlignmentBaseline:'center',fontFamily:'DM Sans',fontWeight:'600',pickable:true,onClick:({object})=>{if(object)zoomToBorough(object)},sizeMinPixels:14,sizeMaxPixels:22,background:true,getBackgroundColor:[6,6,11,180],backgroundPadding:[8,4]}),
   ];
   if(deckOverlay)deckOverlay.setProps({layers});else{deckOverlay=new deck.MapboxOverlay({layers});map.addControl(deckOverlay)}
   map.flyTo({center:NYC,zoom:10.3,pitch:30,bearing:-10,duration:1200});
