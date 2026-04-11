@@ -227,9 +227,9 @@ def _cuopt_allocate(sites_df, people, centroid_lat, centroid_lon):
             _cudf_opt.Series([0] * n_sites),  # return to depot
         )
 
-        # Order locations: order i is at location i+1
+        # Order locations: order i is at location i (all n locations including depot)
         data_model.set_order_locations(
-            _cudf_opt.Series(list(range(1, n)))
+            _cudf_opt.Series(list(range(n)))
         )
 
         solver = cuopt_routing.SolverSettings()

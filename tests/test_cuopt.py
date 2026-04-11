@@ -78,9 +78,9 @@ def test_cuopt_simple_vrp():
             cudf.Series([0] * n_vehicles),
         )
 
-        # Orders at locations 1-5
+        # Orders at locations 0-5 (all locations including depot)
         data_model.set_order_locations(
-            cudf.Series(list(range(1, n)))
+            cudf.Series(list(range(n)))
         )
 
         # Solve
