@@ -356,33 +356,7 @@ body {
 <body>
 <div class="app">
   <div class="sidebar">
-    <div class="onboarding" id="onboarding">
-      <div class="onboarding-title">How can we help you?</div>
-      <div class="onboarding-sub">Tap what you need &mdash; we'll find the right services across NYC.</div>
-      <div class="mood-cards">
-        <div class="mood-card" onclick="moodSelect('I need a shelter tonight. I have nowhere to sleep.')">
-          <div class="mood-icon">&#127769;</div>
-          <div class="mood-text"><div class="mood-label">I have nowhere to sleep tonight</div><div class="mood-hint">Emergency shelters, transitional housing</div></div>
-        </div>
-        <div class="mood-card" onclick="moodSelect('Where can I get free food near me? I need to eat.')">
-          <div class="mood-icon">&#127858;</div>
-          <div class="mood-text"><div class="mood-label">I need food</div><div class="mood-hint">Food pantries, soup kitchens, SNAP</div></div>
-        </div>
-        <div class="mood-card" onclick="moodSelect('I don\'t feel safe at home. I have a child and need help now.')">
-          <div class="mood-icon">&#128737;&#65039;</div>
-          <div class="mood-text"><div class="mood-label">I don't feel safe</div><div class="mood-hint">Domestic violence, crime victim services</div></div>
-        </div>
-        <div class="mood-card" onclick="moodSelect('I have a family and we need help with housing, food, healthcare, and benefits.')">
-          <div class="mood-icon">&#128106;</div>
-          <div class="mood-text"><div class="mood-label">I need help for my family</div><div class="mood-hint">Full needs assessment across all services</div></div>
-        </div>
-        <div class="mood-card" onclick="moodSelectOps()">
-          <div class="mood-icon">&#128225;</div>
-          <div class="mood-text"><div class="mood-label">I'm a city coordinator</div><div class="mood-hint">Operations mode &mdash; simulations, gap analysis</div></div>
-        </div>
-      </div>
-      <div class="onboarding-skip"><a href="#" onclick="dismissOnboarding();return false;">Skip to chat &rarr;</a></div>
-    </div>
+    <!-- Mood cards moved into chat area as initial view -->
 
     <div class="sidebar-header">
       <h1>NYC Services Engine</h1>
@@ -408,7 +382,16 @@ body {
         <button class="cat-btn" data-q="I don't feel safe at home, I have a child"><span class="cat-icon">&#128737;&#65039;</span> Safety</button>
         <button class="cat-btn" data-q="I just arrived in NYC and need help"><span class="cat-icon">&#127758;</span> New to NYC</button>
       </div>
-      <div class="chat-area" id="chat"><div class="msg system">Describe what's going on &mdash; or tap a category above.</div></div>
+      <div class="chat-area" id="chat">
+        <div class="msg system">Click a borough on the map to browse, or tell me what you need:</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin:4px 0;">
+          <div class="mood-card" onclick="moodSelect('I need a shelter tonight. I have nowhere to sleep.')"><div class="mood-icon">&#127769;</div><div class="mood-text"><div class="mood-label">I have nowhere to sleep</div><div class="mood-hint">Shelters, transitional housing</div></div></div>
+          <div class="mood-card" onclick="moodSelect('Where can I get free food near me?')"><div class="mood-icon">&#127858;</div><div class="mood-text"><div class="mood-label">I need food</div><div class="mood-hint">Food pantries, soup kitchens</div></div></div>
+          <div class="mood-card" onclick="moodSelect('I don\'t feel safe at home. I have a child.')"><div class="mood-icon">&#128737;&#65039;</div><div class="mood-text"><div class="mood-label">I don't feel safe</div><div class="mood-hint">DV services, crime victim help</div></div></div>
+          <div class="mood-card" onclick="moodSelect('I have a family and need help with housing, food, healthcare, and benefits.')"><div class="mood-icon">&#128106;</div><div class="mood-text"><div class="mood-label">Help for my family</div><div class="mood-hint">Full needs assessment</div></div></div>
+          <div class="mood-card" onclick="moodSelectOps()"><div class="mood-icon">&#128225;</div><div class="mood-text"><div class="mood-label">City coordinator</div><div class="mood-hint">Simulations, gap analysis</div></div></div>
+        </div>
+      </div>
       <div class="loading" id="loading"><div class="spinner"></div><span class="loading-text">Analyzing your situation...</span></div>
       <div class="quick-actions" id="quickActions">
         <button class="quick-btn" data-q="I'm Tina, 4 kids, income $28K, losing housing in Flatbush next week">Family losing housing</button>
@@ -507,15 +490,9 @@ function animateCounter(el,target,dur=1500){
   requestAnimationFrame(tick);
 }
 
-// Onboarding
-function dismissOnboarding(){
-  const el=document.getElementById('onboarding');
-  el.classList.add('hidden');
-  setTimeout(()=>el.style.display='none',500);
-}
-function moodSelect(query){dismissOnboarding();setTimeout(()=>{document.getElementById('queryInput').value=query;sendQuery();},300)}
+function moodSelect(query){document.getElementById('queryInput').value=query;sendQuery();}
 function moodSelectOps(){
-  opsMode=true;dismissOnboarding();
+  opsMode=true;
   const qa=document.getElementById('quickActions');
   qa.innerHTML='<button class="quick-btn" data-q="A cold emergency — 200 people outside, 15 degrees, Brooklyn shelters full">Cold emergency</button><button class="quick-btn" data-q="Which neighborhoods are more than 30 minutes from the nearest shelter?">Resource gaps</button><button class="quick-btn" data-q="What if we add 500 shelter beds in the Bronx?">Capacity sim</button><button class="quick-btn" data-q="80 people just arrived speaking Spanish and Mandarin, need shelter food and schools">Migrant bus</button>';
   qa.querySelectorAll('.quick-btn').forEach(b=>b.addEventListener('click',()=>{document.getElementById('queryInput').value=b.dataset.q;sendQuery();}));
@@ -762,7 +739,6 @@ function handleResponse(data){
 
 async function sendQuery(){
   const input=document.getElementById('queryInput'),q=input.value.trim();if(!q)return;
-  if(!document.getElementById('onboarding').classList.contains('hidden'))dismissOnboarding();
   lastQuery=q;isEmergency=detectEmergency(q);addMsg(q,'user');input.value='';
   showTyping();document.getElementById('sendBtn').disabled=true;
   try{const resp=await fetch('/api/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,demo_mode:false})});hideTyping();handleResponse(await resp.json());}
