@@ -9,7 +9,7 @@
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+/* ── Reset & Variables ────────────────────────────────────────────────────── */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 :root {
   --bg-deep: #06060b;
@@ -53,10 +53,8 @@ body {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  position: relative;
 }
 
-/* Header */
 .sidebar-header {
   padding: 20px 20px 16px;
   border-bottom: 1px solid var(--border);
@@ -66,9 +64,7 @@ body {
 .sidebar-header::after {
   content: '';
   position: absolute;
-  bottom: -1px;
-  left: 20px;
-  right: 20px;
+  bottom: -1px; left: 20px; right: 20px;
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--green-dim), transparent);
 }
@@ -87,8 +83,6 @@ body {
   color: var(--text-secondary);
   font-size: 12px;
   margin-top: 4px;
-  font-weight: 400;
-  letter-spacing: 0.2px;
 }
 .header-stats {
   display: flex;
@@ -102,25 +96,15 @@ body {
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
-.header-stat span {
-  color: var(--green);
-  font-weight: 600;
-}
+.header-stat span { color: var(--green); font-weight: 600; }
 
 /* ── Tabs ─────────────────────────────────────────────────────────────────── */
 .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .tab {
-  flex: 1;
-  padding: 10px;
-  text-align: center;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  flex: 1; padding: 10px; text-align: center;
+  font-size: 12px; font-weight: 500; color: var(--text-muted);
+  cursor: pointer; border-bottom: 2px solid transparent;
+  transition: all 0.2s; letter-spacing: 0.5px; text-transform: uppercase;
 }
 .tab:hover { color: var(--text-secondary); }
 .tab.active { color: var(--green); border-bottom-color: var(--green); }
@@ -130,9 +114,7 @@ body {
 /* ── Category Pills ───────────────────────────────────────────────────────── */
 .categories {
   padding: 10px 16px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  display: flex; flex-wrap: wrap; gap: 5px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -142,91 +124,134 @@ body {
   border-radius: 6px;
   padding: 6px 11px;
   color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  font-size: 11px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s;
+  display: flex; align-items: center; gap: 5px;
   font-family: var(--font-ui);
 }
 .cat-btn:hover, .cat-btn.active {
-  border-color: var(--green);
-  color: var(--green);
+  border-color: var(--green); color: var(--green);
   background: rgba(118,185,0,0.06);
-  box-shadow: 0 0 12px rgba(118,185,0,0.08);
 }
-.cat-icon { font-size: 13px; }
+.cat-icon { font-size: 18px; }
 
 /* ── Chat Area ────────────────────────────────────────────────────────────── */
 .chat-area {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
+  flex: 1; overflow-y: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 10px; min-height: 0;
 }
 .msg {
-  max-width: 95%;
-  padding: 12px 16px;
-  border-radius: 12px;
-  font-size: 13.5px;
-  line-height: 1.7;
-  animation: msgIn 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  max-width: 95%; padding: 12px 16px; border-radius: 12px;
+  font-size: 13.5px; line-height: 1.7;
+  animation: msgIn 0.35s cubic-bezier(0.22,1,0.36,1);
 }
 @keyframes msgIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity:0; transform:translateY(8px); }
+  to { opacity:1; transform:translateY(0); }
 }
 .msg.user {
   background: linear-gradient(135deg, #1a3200, #243d00);
   border: 1px solid var(--green-dim);
-  align-self: flex-end;
-  border-radius: 12px 12px 3px 12px;
+  align-self: flex-end; border-radius: 12px 12px 3px 12px;
 }
 .msg.assistant {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  align-self: flex-start;
-  border-radius: 12px 12px 12px 3px;
+  align-self: flex-start; border-radius: 12px 12px 12px 3px;
 }
 .msg.system {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 12.5px;
-  text-align: center;
-  align-self: center;
-  padding: 8px;
-  max-width: 85%;
+  background: transparent; border: none;
+  color: var(--text-muted); font-size: 12.5px;
+  text-align: center; align-self: center; padding: 8px;
 }
+
+/* ── Verification Banner ──────────────────────────────────────────────────── */
+.verify-banner {
+  padding: 8px 14px; border-radius: 6px;
+  font-size: 11px; font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+  text-align: center;
+  margin-top: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.verify-banner.high {
+  background: rgba(0,200,83,0.08); border: 1px solid rgba(0,200,83,0.2);
+  color: #4caf50;
+}
+.verify-banner.medium {
+  background: rgba(33,150,243,0.08); border: 1px solid rgba(33,150,243,0.2);
+  color: var(--blue);
+}
+.verify-banner.low {
+  background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.2);
+  color: var(--orange);
+}
+.verify-banner.skipped {
+  background: rgba(171,71,188,0.08); border: 1px solid rgba(171,71,188,0.2);
+  color: var(--purple);
+}
+
+/* ── Claims List ──────────────────────────────────────────────────────────── */
+.claims-toggle {
+  font-size: 11px; color: var(--text-muted); cursor: pointer;
+  margin-top: 6px; font-family: var(--font-mono);
+  transition: color 0.2s;
+}
+.claims-toggle:hover { color: var(--green); }
+.claims-list {
+  display: none; margin-top: 6px;
+  padding: 8px; background: var(--bg-deep);
+  border-radius: 6px; border: 1px solid var(--border);
+}
+.claims-list.open { display: block; }
+.claim-item {
+  font-size: 11px; padding: 4px 8px; margin: 3px 0;
+  border-radius: 4px; line-height: 1.5;
+}
+.claim-item.verified { background: rgba(0,200,83,0.06); color: #81c784; }
+.claim-item.unverified { background: rgba(255,152,0,0.06); color: var(--orange); }
+
+/* ── Reasoning Path ───────────────────────────────────────────────────────── */
+.reasoning-toggle {
+  font-size: 11px; color: var(--text-muted); cursor: pointer;
+  margin-top: 4px; font-family: var(--font-mono);
+  transition: color 0.2s;
+}
+.reasoning-toggle:hover { color: var(--green); }
+.reasoning-panel {
+  display: none; margin-top: 6px;
+  padding: 10px; background: var(--bg-deep);
+  border-radius: 6px; border: 1px solid var(--border);
+}
+.reasoning-panel.open { display: block; }
+.reasoning-summary {
+  font-size: 12px; color: var(--text-secondary);
+  line-height: 1.6; margin-bottom: 8px;
+}
+.reasoning-hop {
+  font-size: 11px; font-family: var(--font-mono);
+  padding: 3px 0; color: var(--text-muted);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.reasoning-hop .hop-conf { font-size: 10px; }
 
 /* ── Resource Cards ───────────────────────────────────────────────────────── */
 .results-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 
 .resource-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 14px;
-  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 14px;
+  transition: all 0.25s cubic-bezier(0.22,1,0.36,1);
+  cursor: pointer; position: relative; overflow: hidden;
 }
 .resource-card:hover {
-  border-color: var(--border-hover);
-  transform: translateX(2px);
+  border-color: var(--border-hover); transform: translateX(2px);
   box-shadow: 0 4px 20px rgba(0,0,0,0.3);
 }
 .resource-card::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 3px;
+  content: ''; position: absolute;
+  left: 0; top: 0; bottom: 0; width: 3px;
   border-radius: 3px 0 0 3px;
 }
 .resource-card.type-shelter::before { background: var(--green); }
@@ -237,54 +262,30 @@ body {
 .resource-card.type-domestic_violence::before { background: var(--coral); }
 .resource-card.type-dropin_center::before { background: var(--teal); }
 
-.resource-card .rc-name {
-  color: var(--text-primary);
-  font-weight: 600;
-  font-size: 13.5px;
-  line-height: 1.3;
-}
-.resource-card .rc-addr {
-  color: var(--text-muted);
-  font-size: 11.5px;
-  margin-top: 3px;
-  font-family: var(--font-mono);
-  font-weight: 400;
-  letter-spacing: 0.2px;
+.rc-name { color: var(--text-primary); font-weight: 600; font-size: 13.5px; line-height: 1.3; }
+.rc-addr {
+  color: var(--text-muted); font-size: 11.5px; margin-top: 3px;
+  font-family: var(--font-mono); letter-spacing: 0.2px;
 }
 
-/* Why-it-matches line */
+/* Why-it-matches */
 .rc-match {
-  margin-top: 6px;
-  padding: 5px 8px;
-  background: rgba(118,185,0,0.05);
-  border-radius: 4px;
+  margin-top: 6px; padding: 5px 8px;
+  background: rgba(118,185,0,0.05); border-radius: 4px;
   border-left: 2px solid var(--green-dim);
 }
 .rc-match-label {
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--green);
-  font-family: var(--font-mono);
+  font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--green); font-family: var(--font-mono);
 }
-.rc-match-text {
-  font-size: 11.5px;
-  color: var(--text-secondary);
-  margin-top: 1px;
-  line-height: 1.4;
-}
+.rc-match-text { font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; }
 
 /* Tags */
 .rc-tags { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
 .rc-tag {
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
+  padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 600;
+  font-family: var(--font-mono); letter-spacing: 0.3px; text-transform: uppercase;
 }
 .rc-tag.type { background: rgba(118,185,0,0.1); color: var(--green); border: 1px solid var(--green-dim); }
 .rc-tag.borough { background: rgba(66,165,245,0.08); color: var(--blue); border: 1px solid rgba(66,165,245,0.2); }
@@ -295,306 +296,244 @@ body {
 
 /* Urgency badge */
 .rc-urgency {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 9px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  background: rgba(239,83,80,0.12);
-  color: var(--red);
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 9px; font-weight: 700;
+  font-family: var(--font-mono); letter-spacing: 0.8px; text-transform: uppercase;
+  background: rgba(239,83,80,0.12); color: var(--red);
   border: 1px solid rgba(239,83,80,0.25);
-  animation: urgencyBadgePulse 2.5s ease-in-out infinite;
 }
 .rc-urgency::before {
-  content: '';
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--red);
+  content: ''; width: 5px; height: 5px;
+  border-radius: 50%; background: var(--red);
   animation: urgencyDot 1.5s ease-in-out infinite;
 }
-@keyframes urgencyBadgePulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239,83,80,0); }
-  50% { box-shadow: 0 0 8px 0 rgba(239,83,80,0.15); }
-}
-@keyframes urgencyDot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
+@keyframes urgencyDot { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
 /* Card actions */
 .rc-actions { display: flex; gap: 5px; margin-top: 8px; }
 .rc-action {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 3px 8px;
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: var(--font-ui);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 8px;
+  font-size: 10px; font-weight: 500; color: var(--text-muted);
+  cursor: pointer; transition: all 0.2s; font-family: var(--font-ui);
 }
 .rc-action:hover { border-color: var(--green); color: var(--green); }
 
-/* ── Emergency / Urgency Styles ───────────────────────────────────────────── */
+/* ── Emergency Styles ─────────────────────────────────────────────────────── */
 .urgency-banner {
   background: linear-gradient(135deg, #2a0a0a, #1a0505);
   border: 1px solid rgba(239,83,80,0.3);
-  color: var(--red);
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  text-align: center;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+  color: var(--red); padding: 10px 14px; border-radius: 8px;
+  font-size: 12px; font-weight: 600; text-align: center;
+  margin-bottom: 8px; display: flex; align-items: center;
+  justify-content: center; gap: 8px;
   animation: criticalFlash 3s ease-in-out infinite;
-  font-family: var(--font-mono);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  font-family: var(--font-mono); letter-spacing: 0.5px; text-transform: uppercase;
 }
 .urgency-banner::before {
-  content: '';
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--red);
-  animation: urgencyDot 1s ease-in-out infinite;
-  flex-shrink: 0;
+  content: ''; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--red);
+  animation: urgencyDot 1s ease-in-out infinite; flex-shrink: 0;
 }
 @keyframes criticalFlash {
-  0%, 100% { box-shadow: 0 0 15px rgba(239,83,80,0.1); }
+  0%,100% { box-shadow: 0 0 15px rgba(239,83,80,0.1); }
   50% { box-shadow: 0 0 30px rgba(239,83,80,0.25); }
 }
-
 .resource-card.emergency {
   border-color: rgba(239,83,80,0.2);
   animation: cardEmergencyPulse 4s ease-in-out infinite;
 }
 @keyframes cardEmergencyPulse {
-  0%, 100% { box-shadow: inset 0 0 0 0 rgba(239,83,80,0); }
+  0%,100% { box-shadow: inset 0 0 0 0 rgba(239,83,80,0); }
   50% { box-shadow: inset 0 0 20px rgba(239,83,80,0.04); }
 }
 
+/* ── Clarification Box ────────────────────────────────────────────────────── */
+.clarify-box {
+  margin-top: 10px; padding: 12px;
+  background: rgba(66,165,245,0.04);
+  border: 1px solid rgba(66,165,245,0.15);
+  border-radius: 8px;
+  animation: msgIn 0.4s cubic-bezier(0.22,1,0.36,1) 0.2s both;
+}
+.clarify-label {
+  font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.8px; color: var(--blue);
+  font-family: var(--font-mono); margin-bottom: 6px;
+}
+.clarify-question {
+  font-size: 13px; color: var(--text-primary);
+  margin-bottom: 8px; line-height: 1.5;
+}
+.clarify-row { display: flex; gap: 6px; }
+.clarify-input {
+  flex: 1; background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 12px;
+  color: var(--text-primary); font-size: 12.5px;
+  font-family: var(--font-ui); outline: none;
+}
+.clarify-input:focus { border-color: var(--blue); }
+.clarify-input::placeholder { color: var(--text-muted); }
+.clarify-send {
+  background: var(--blue); border: none; color: #fff;
+  border-radius: 4px; padding: 6px 12px;
+  font-size: 10px; font-weight: 700;
+  font-family: var(--font-mono); cursor: pointer;
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.clarify-send:hover { background: #64b5f6; }
+
 /* ── Follow-up Prompt ─────────────────────────────────────────────────────── */
 .followup-prompt {
-  margin-top: 10px;
-  padding: 10px 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  animation: msgIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
+  margin-top: 10px; padding: 10px 12px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 8px; display: flex; gap: 8px; align-items: center;
+  animation: msgIn 0.4s cubic-bezier(0.22,1,0.36,1) 0.3s both;
 }
 .followup-prompt input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: var(--text-primary);
-  font-size: 12.5px;
-  font-family: var(--font-ui);
-  outline: none;
+  flex: 1; background: transparent; border: none;
+  color: var(--text-primary); font-size: 12.5px;
+  font-family: var(--font-ui); outline: none;
 }
 .followup-prompt input::placeholder { color: var(--text-muted); }
 .followup-send {
-  background: var(--green);
-  border: none;
-  color: #000;
-  border-radius: 4px;
-  padding: 5px 10px;
-  font-size: 10px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  cursor: pointer;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  transition: all 0.2s;
+  background: var(--green); border: none; color: #000;
+  border-radius: 4px; padding: 5px 10px;
+  font-size: 10px; font-weight: 700;
+  font-family: var(--font-mono); cursor: pointer;
+  letter-spacing: 0.5px; text-transform: uppercase;
 }
-.followup-send:hover { background: #8cd600; box-shadow: 0 0 12px var(--green-glow); }
+.followup-send:hover { background: #8cd600; }
+
+/* ── Feedback Bar ─────────────────────────────────────────────────────────── */
+.feedback-bar {
+  margin-top: 8px; padding: 8px 10px;
+  background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: 6px; display: flex; gap: 6px; align-items: center;
+}
+.feedback-bar input {
+  flex: 1; background: transparent; border: none;
+  color: var(--text-primary); font-size: 11.5px;
+  font-family: var(--font-ui); outline: none;
+}
+.feedback-bar input::placeholder { color: var(--text-muted); }
+.feedback-send {
+  background: var(--coral); border: none; color: #fff;
+  border-radius: 4px; padding: 4px 8px;
+  font-size: 9px; font-weight: 700;
+  font-family: var(--font-mono); cursor: pointer;
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
 
 /* ── Input Area ───────────────────────────────────────────────────────────── */
 .input-area {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-panel);
-  flex-shrink: 0;
+  padding: 12px 16px; border-top: 1px solid var(--border);
+  background: var(--bg-panel); flex-shrink: 0;
 }
 .input-row { display: flex; gap: 8px; }
 .input-area textarea {
-  flex: 1;
-  background: var(--bg-deep);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-family: var(--font-ui);
-  resize: none;
-  outline: none;
+  flex: 1; background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px;
+  color: var(--text-primary); font-size: 13px;
+  font-family: var(--font-ui); resize: none; outline: none;
   transition: all 0.2s;
 }
 .input-area textarea:focus {
-  border-color: var(--green);
-  box-shadow: 0 0 0 3px rgba(118,185,0,0.08);
+  border-color: var(--green); box-shadow: 0 0 0 3px rgba(118,185,0,0.08);
 }
 .input-area textarea::placeholder { color: var(--text-muted); }
 .send-btn {
-  background: var(--green);
-  color: #000;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-weight: 700;
-  font-size: 12px;
-  font-family: var(--font-mono);
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  background: var(--green); color: #000; border: none;
+  border-radius: 8px; padding: 10px 20px;
+  font-weight: 700; font-size: 12px;
+  font-family: var(--font-mono); cursor: pointer;
+  transition: all 0.2s; white-space: nowrap;
+  letter-spacing: 0.5px; text-transform: uppercase;
 }
 .send-btn:hover {
-  background: #8cd600;
-  box-shadow: 0 4px 20px rgba(118,185,0,0.3);
+  background: #8cd600; box-shadow: 0 4px 20px rgba(118,185,0,0.3);
   transform: translateY(-1px);
 }
-.send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+.send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
 
 /* ── Quick Actions ────────────────────────────────────────────────────────── */
 .quick-actions {
-  padding: 8px 16px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  flex-shrink: 0;
-  border-top: 1px solid var(--border);
+  padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 4px;
+  flex-shrink: 0; border-top: 1px solid var(--border);
 }
 .quick-btn {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 4px 9px;
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: var(--font-ui);
+  background: none; border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 9px;
+  color: var(--text-muted); font-size: 10px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s; font-family: var(--font-ui);
 }
 .quick-btn:hover { border-color: var(--green); color: var(--green); }
 
 /* ── Powered-By Footer ────────────────────────────────────────────────────── */
 .powered-footer {
-  padding: 8px 16px;
-  border-top: 1px solid var(--border);
+  padding: 8px 16px; border-top: 1px solid var(--border);
   background: var(--bg-deep);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
+  display: flex; align-items: center; gap: 6px;
+  flex-shrink: 0; flex-wrap: wrap;
 }
 .powered-label {
-  font-size: 8px;
-  font-weight: 600;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  margin-right: 2px;
+  font-size: 8px; font-weight: 600; color: var(--text-muted);
+  font-family: var(--font-mono); letter-spacing: 1px;
+  text-transform: uppercase; margin-right: 2px;
 }
 .powered-badge {
-  padding: 2px 7px;
-  border-radius: 3px;
-  font-size: 9px;
-  font-weight: 600;
+  padding: 2px 7px; border-radius: 3px;
+  font-size: 9px; font-weight: 600;
   font-family: var(--font-mono);
-  letter-spacing: 0.3px;
-  background: rgba(118,185,0,0.06);
-  color: rgba(118,185,0,0.6);
+  background: rgba(118,185,0,0.06); color: rgba(118,185,0,0.6);
   border: 1px solid rgba(118,185,0,0.1);
   transition: all 0.3s;
 }
 .powered-badge:hover {
-  color: var(--green);
-  border-color: var(--green-dim);
+  color: var(--green); border-color: var(--green-dim);
   background: rgba(118,185,0,0.1);
-  box-shadow: 0 0 8px rgba(118,185,0,0.1);
 }
 
 /* ── Map ──────────────────────────────────────────────────────────────────── */
 .map-container { position: relative; }
 #map { width: 100%; height: 100%; }
 
-/* Map overlays */
 .map-overlay {
-  position: absolute;
-  z-index: 10;
-  background: rgba(12,12,20,0.92);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  position: absolute; z-index: 10;
+  background: rgba(12,12,20,0.92); backdrop-filter: blur(12px);
+  border: 1px solid var(--border); border-radius: 8px;
 }
 .status-pill {
-  top: 16px; right: 16px;
-  padding: 7px 12px;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  top: 16px; right: 16px; padding: 7px 12px;
+  font-size: 11px; font-family: var(--font-mono);
+  display: flex; align-items: center; gap: 6px;
 }
 .dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 6px var(--green-glow);
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green); box-shadow: 0 0 6px var(--green-glow);
   animation: dotPulse 2s infinite;
 }
 @keyframes dotPulse {
-  0%, 100% { box-shadow: 0 0 4px var(--green-glow); }
+  0%,100% { box-shadow: 0 0 4px var(--green-glow); }
   50% { box-shadow: 0 0 10px var(--green-glow); }
 }
 
-.legend {
-  bottom: 16px; right: 16px;
-  padding: 10px 14px;
-}
+.legend { bottom: 16px; right: 16px; padding: 10px 14px; }
 .legend-title {
-  font-size: 9px;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  margin-bottom: 6px;
+  font-size: 9px; font-family: var(--font-mono); color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px;
 }
 .legend-item {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin: 3px 0;
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px; color: var(--text-secondary); margin: 3px 0;
 }
 .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
 
 .timing-bar {
-  bottom: 16px; left: 16px;
-  padding: 6px 12px;
-  font-size: 10px;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  display: none;
+  bottom: 16px; left: 16px; padding: 6px 12px;
+  font-size: 10px; font-family: var(--font-mono);
+  color: var(--text-muted); display: none;
 }
 
 /* ── Loading ──────────────────────────────────────────────────────────────── */
@@ -602,76 +541,40 @@ body {
 .loading.active { display: flex; align-items: center; justify-content: center; gap: 10px; }
 .spinner {
   width: 16px; height: 16px;
-  border: 2px solid var(--border);
-  border-top-color: var(--green);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  border: 2px solid var(--border); border-top-color: var(--green);
+  border-radius: 50%; animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.loading-text {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-family: var(--font-mono);
-  letter-spacing: 0.3px;
-}
+.loading-text { color: var(--text-muted); font-size: 12px; font-family: var(--font-mono); }
 
 /* ── Guided Search ────────────────────────────────────────────────────────── */
 .guided-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px;
-  margin-bottom: 6px;
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; margin-bottom: 6px;
+  cursor: pointer; transition: all 0.25s cubic-bezier(0.22,1,0.36,1);
 }
-.guided-card:hover {
-  border-color: var(--border-hover);
-  transform: translateX(2px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-}
-.guided-card.selected {
-  border-color: var(--green);
-  background: rgba(118,185,0,0.04);
-  box-shadow: 0 0 16px rgba(118,185,0,0.06);
-}
-.guided-card .gc-icon { font-size: 22px; margin-bottom: 4px; }
-.guided-card .gc-title { font-weight: 600; font-size: 14px; }
-.guided-card .gc-desc { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; }
+.guided-card:hover { border-color: var(--border-hover); transform: translateX(2px); }
+.guided-card.selected { border-color: var(--green); background: rgba(118,185,0,0.04); }
+.gc-icon { font-size: 22px; margin-bottom: 4px; }
+.gc-title { font-weight: 600; font-size: 14px; }
+.gc-desc { color: var(--text-muted); font-size: 11.5px; margin-top: 2px; }
 
-/* Guided form inputs */
-.guided-form-group { margin-bottom: 10px; }
 .guided-label {
-  color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  display: block;
-  margin-bottom: 4px;
+  color: var(--text-muted); font-size: 10px; font-weight: 600;
+  font-family: var(--font-mono); letter-spacing: 0.5px;
+  text-transform: uppercase; display: block; margin-bottom: 4px;
 }
 .guided-select, .guided-input {
-  width: 100%;
-  background: var(--bg-deep);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 12px;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-family: var(--font-ui);
-  outline: none;
-  transition: border-color 0.2s;
+  width: 100%; background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 12px;
+  color: var(--text-primary); font-size: 13px;
+  font-family: var(--font-ui); outline: none;
 }
 .guided-select:focus, .guided-input:focus { border-color: var(--green); }
 .guided-checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
 .guided-checkbox-label {
-  color: var(--text-secondary);
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
+  color: var(--text-secondary); font-size: 12px;
+  display: flex; align-items: center; gap: 4px; cursor: pointer;
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────────────────── */
@@ -700,7 +603,6 @@ body {
       </div>
     </div>
 
-    <!-- Tabs -->
     <div class="tabs">
       <div class="tab active" onclick="switchTab('chat')">Chat</div>
       <div class="tab" onclick="switchTab('guided')">Guided Search</div>
@@ -708,12 +610,12 @@ body {
 
     <!-- Chat Tab -->
     <div class="tab-content active" id="tab-chat">
-      <div class="categories" id="categories">
+      <div class="categories">
         <button class="cat-btn" data-q="I need a shelter tonight in Brooklyn"><span class="cat-icon">&#127968;</span> Shelter</button>
         <button class="cat-btn" data-q="Where can I get free food near me?"><span class="cat-icon">&#127822;</span> Food</button>
         <button class="cat-btn" data-q="I need to see a doctor, no insurance"><span class="cat-icon">&#127973;</span> Healthcare</button>
         <button class="cat-btn" data-q="How do I apply for SNAP and Medicaid?"><span class="cat-icon">&#128203;</span> Benefits</button>
-        <button class="cat-btn" data-q="I don't feel safe at home, I have a child"><span class="cat-icon">&#128737;</span> Safety</button>
+        <button class="cat-btn" data-q="I don't feel safe at home, I have a child"><span class="cat-icon">&#128737;&#65039;</span> Safety</button>
         <button class="cat-btn" data-q="I just arrived in NYC and need help"><span class="cat-icon">&#127758;</span> New to NYC</button>
       </div>
 
@@ -748,8 +650,7 @@ body {
     <div class="tab-content" id="tab-guided">
       <div style="padding:16px;flex:1;overflow-y:auto;">
         <div style="font-family:var(--font-mono);color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Select a need</div>
-
-        <div class="guided-options" id="guidedOptions">
+        <div id="guidedOptions">
           <div class="guided-card" onclick="guidedSelect('housing')">
             <div class="gc-icon">&#127968;</div>
             <div class="gc-title">Housing & Shelter</div>
@@ -766,7 +667,7 @@ body {
             <div class="gc-desc">Hospitals, clinics, mental health, Medicaid</div>
           </div>
           <div class="guided-card" onclick="guidedSelect('safety')">
-            <div class="gc-icon">&#128737;</div>
+            <div class="gc-icon">&#128737;&#65039;</div>
             <div class="gc-title">Safety & DV</div>
             <div class="gc-desc">Domestic violence, crime victim services</div>
           </div>
@@ -784,7 +685,7 @@ body {
 
         <div id="guidedForm" style="display:none;margin-top:14px;">
           <div style="font-family:var(--font-mono);color:var(--green);font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Tell us more</div>
-          <div class="guided-form-group">
+          <div style="margin-bottom:10px;">
             <label class="guided-label">Borough</label>
             <select id="guidedBorough" class="guided-select">
               <option value="">Any borough</option>
@@ -795,11 +696,11 @@ body {
               <option value="Staten Island">Staten Island</option>
             </select>
           </div>
-          <div class="guided-form-group">
+          <div style="margin-bottom:10px;">
             <label class="guided-label">Household Size</label>
             <input id="guidedHousehold" type="number" value="1" min="1" max="20" class="guided-input">
           </div>
-          <div class="guided-form-group">
+          <div style="margin-bottom:10px;">
             <label class="guided-label">Special Needs</label>
             <div class="guided-checkbox-group">
               <label class="guided-checkbox-label"><input type="checkbox" id="guidedADA"> Wheelchair accessible</label>
@@ -807,13 +708,12 @@ body {
               <label class="guided-checkbox-label"><input type="checkbox" id="guidedUrgent"> Urgent / tonight</label>
             </div>
           </div>
-          <div class="guided-form-group">
+          <div style="margin-bottom:10px;">
             <label class="guided-label">Language (optional)</label>
             <select id="guidedLanguage" class="guided-select">
               <option value="">English</option>
               <option value="Spanish">Spanish</option>
               <option value="Mandarin">Mandarin</option>
-              <option value="Cantonese">Cantonese</option>
               <option value="Haitian Creole">Haitian Creole</option>
               <option value="Russian">Russian</option>
               <option value="Arabic">Arabic</option>
@@ -825,7 +725,6 @@ body {
       </div>
     </div>
 
-    <!-- Powered-by Footer -->
     <div class="powered-footer">
       <span class="powered-label">Powered by</span>
       <span class="powered-badge">Nemotron</span>
@@ -862,12 +761,13 @@ body {
 let guidedNeed = '';
 let lastQuery = '';
 let isEmergency = false;
+let lastResources = [];  // for feedback matching
 
 const EMERGENCY_KEYWORDS = [
-  'emergency', 'urgent', 'tonight', 'right now', 'immediately', 'cold emergency',
-  'hit capacity', 'outside', 'don\'t feel safe', 'not safe', 'broke in', 'break in',
-  'domestic violence', 'dv', 'fleeing', 'danger', 'crisis', '15 degrees',
-  'freezing', 'hypothermia', 'overdose'
+  'emergency','urgent','tonight','right now','immediately','cold emergency',
+  'hit capacity','outside','don\'t feel safe','not safe','broke in',
+  'domestic violence','dv','fleeing','danger','crisis','15 degrees',
+  'freezing','hypothermia','overdose'
 ];
 
 function detectEmergency(query) {
@@ -875,18 +775,17 @@ function detectEmergency(query) {
   return EMERGENCY_KEYWORDS.some(kw => q.includes(kw));
 }
 
-// Generate "why this matches" text from need field and resource type
-function getMatchReason(resource, query) {
+function getMatchReason(resource) {
   const parts = [];
   if (resource.need) {
-    const needs = resource.need.split('+').map(n => n.trim().replace(/_/g, ' '));
-    needs.forEach(n => {
-      const capitalized = n.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-      parts.push(capitalized);
+    resource.need.split('+').forEach(n => {
+      const words = n.trim().replace(/_/g,' ').split(' ');
+      parts.push(words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
     });
   }
-  if (parts.length === 0 && resource.type) {
-    parts.push(resource.type.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+  if (!parts.length && resource.type) {
+    const words = resource.type.replace(/_/g,' ').split(' ');
+    parts.push(words.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
   }
   return parts.join(' + ');
 }
@@ -896,7 +795,7 @@ function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelector(`.tab-content#tab-${tab}`).classList.add('active');
-  document.querySelectorAll('.tab')[tab === 'chat' ? 0 : 1].classList.add('active');
+  document.querySelectorAll('.tab')[tab==='chat'?0:1].classList.add('active');
 }
 
 // ── Guided Search ───────────────────────────────────────────────────────────
@@ -916,39 +815,37 @@ function sendGuidedQuery() {
   const language = document.getElementById('guidedLanguage').value;
 
   const needMap = {
-    housing: 'emergency shelter and housing assistance',
-    food: 'food — a food pantry or soup kitchen',
-    health: 'medical care at a hospital or clinic',
-    safety: 'help with a domestic violence or safety situation',
-    benefits: 'benefits enrollment — SNAP, Medicaid, and cash assistance',
-    children: 'childcare and schools for my children',
+    housing:'emergency shelter and housing assistance',
+    food:'food — a food pantry or soup kitchen',
+    health:'medical care at a hospital or clinic',
+    safety:'help with a domestic violence or safety situation',
+    benefits:'benefits enrollment — SNAP, Medicaid, and cash assistance',
+    children:'childcare and schools for my children',
   };
 
-  // Build a natural-sounding query
   const parts = [];
   if (household > 1) {
-    parts.push(`I have a family of ${household}${children ? ' with children' : ''}`);
-    parts.push(`and we need ${needMap[guidedNeed] || 'help'}`);
+    parts.push(`I have a family of ${household}${children?' with children':''}`);
+    parts.push(`and we need ${needMap[guidedNeed]||'help'}`);
   } else {
-    parts.push(`I need ${needMap[guidedNeed] || 'help'}`);
+    parts.push(`I need ${needMap[guidedNeed]||'help'}`);
   }
   if (borough) parts.push(`in ${borough}`);
   if (ada) parts.push('I need wheelchair accessible facilities');
   if (language) parts.push(`We speak ${language}`);
   if (urgent) parts.push('This is urgent — we need help tonight');
 
-  const q = parts.join('. ') + '.';
   switchTab('chat');
-  document.getElementById('queryInput').value = q;
+  document.getElementById('queryInput').value = parts.join('. ')+'.';
   sendQuery();
 }
 
 // ── Map Setup ───────────────────────────────────────────────────────────────
 const NYC = [-73.98, 40.74];
 const map = new maplibregl.Map({
-  container: 'map',
-  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-  center: NYC, zoom: 11, pitch: 45, bearing: -10,
+  container:'map',
+  style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  center:NYC, zoom:11, pitch:45, bearing:-10,
 });
 map.addControl(new maplibregl.NavigationControl(), 'top-left');
 
@@ -956,61 +853,57 @@ let deckOverlay = null;
 let allResources = [];
 
 const TYPE_COLORS = {
-  shelter: [118,185,0], food_bank: [255,183,77], hospital: [239,83,80],
-  school: [66,165,245], benefits_center: [171,71,188],
-  domestic_violence: [255,112,67], transit_station: [60,60,70],
-  community_center: [90,90,100], senior_services: [77,182,172],
-  childcare: [129,199,132], mental_health: [149,117,205],
-  dropin_center: [77,182,172], police_precinct: [100,100,120],
+  shelter:[118,185,0], food_bank:[255,183,77], hospital:[239,83,80],
+  school:[66,165,245], benefits_center:[171,71,188],
+  domestic_violence:[255,112,67], transit_station:[60,60,70],
+  community_center:[90,90,100], senior_services:[77,182,172],
+  childcare:[129,199,132], mental_health:[149,117,205],
+  dropin_center:[77,182,172], police_precinct:[100,100,120],
 };
 
-fetch('/api/resources').then(r => r.json()).then(data => {
-  allResources = data;
-  updateMap(data);
-}).catch(() => {});
+fetch('/api/resources').then(r=>r.json()).then(data=>{
+  allResources=data; updateMap(data);
+}).catch(()=>{});
 
-fetch('/api/status').then(r => r.json()).then(data => {
-  const count = (data.resources || 0);
-  const edges = (data.edges || 0);
-  document.getElementById('statusText').textContent = `${count.toLocaleString()} resources | ${data.llm || '...'}`;
-  document.getElementById('statResources').textContent = count.toLocaleString();
-  document.getElementById('statEdges').textContent = edges.toLocaleString();
-  document.getElementById('statLLM').textContent = data.llm || '...';
-}).catch(() => {
-  document.getElementById('statusText').textContent = 'Offline';
+fetch('/api/status').then(r=>r.json()).then(data=>{
+  const c=(data.resources||0), e=(data.edges||0);
+  document.getElementById('statusText').textContent=`${c.toLocaleString()} resources | ${data.llm||'...'}`;
+  document.getElementById('statResources').textContent=c.toLocaleString();
+  document.getElementById('statEdges').textContent=e.toLocaleString();
+  document.getElementById('statLLM').textContent=data.llm||'...';
+}).catch(()=>{
+  document.getElementById('statusText').textContent='Offline';
 });
 
-function updateMap(bg, results = []) {
-  const resultNames = new Set(results.map(r => r.name));
-  const bgFiltered = (bg || []).filter(r => r.latitude && r.longitude && !resultNames.has(r.name));
-  const fg = results.filter(r => r.lat && r.lon);
+function updateMap(bg, results=[]) {
+  const resultNames = new Set(results.map(r=>r.name));
+  const bgF = (bg||[]).filter(r=>r.latitude&&r.longitude&&!resultNames.has(r.name));
+  const fg = results.filter(r=>r.lat&&r.lon);
 
   const layers = [
     new deck.ScatterplotLayer({
-      id: 'bg', data: bgFiltered,
-      getPosition: d => [d.longitude, d.latitude],
-      getRadius: 25,
-      getFillColor: d => [...(TYPE_COLORS[d.resource_type] || [80,80,80]), 30],
-      radiusMinPixels: 1.5, radiusMaxPixels: 5, pickable: true,
-      onHover: ({object}) => { document.getElementById('map').title = object ? `${object.name} (${object.resource_type})` : ''; },
+      id:'bg', data:bgF,
+      getPosition:d=>[d.longitude,d.latitude],
+      getRadius:25, getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[80,80,80]),30],
+      radiusMinPixels:1.5, radiusMaxPixels:5, pickable:true,
+      onHover:({object})=>{document.getElementById('map').title=object?`${object.name} (${object.resource_type})`:'';}
     }),
     new deck.ScatterplotLayer({
-      id: 'results', data: fg,
-      getPosition: d => [d.lon, d.lat],
-      getRadius: 100,
-      getFillColor: d => [...(TYPE_COLORS[d.type] || [118,185,0]), 220],
-      radiusMinPixels: 8, radiusMaxPixels: 25, pickable: true,
-      stroked: true, getLineColor: [255,255,255,180], lineWidthMinPixels: 2,
+      id:'results', data:fg,
+      getPosition:d=>[d.lon,d.lat],
+      getRadius:100, getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],
+      radiusMinPixels:8, radiusMaxPixels:25, pickable:true,
+      stroked:true, getLineColor:[255,255,255,180], lineWidthMinPixels:2,
     }),
   ];
 
-  if (deckOverlay) { deckOverlay.setProps({layers}); }
-  else { deckOverlay = new deck.MapboxOverlay({layers}); map.addControl(deckOverlay); }
+  if(deckOverlay){deckOverlay.setProps({layers});}
+  else{deckOverlay=new deck.MapboxOverlay({layers});map.addControl(deckOverlay);}
 
-  if (fg.length > 0) {
-    const aLat = fg.reduce((s,d) => s + d.lat, 0) / fg.length;
-    const aLon = fg.reduce((s,d) => s + d.lon, 0) / fg.length;
-    map.flyTo({center: [aLon, aLat], zoom: 13, pitch: 50, duration: 1500});
+  if(fg.length>0){
+    const aLat=fg.reduce((s,d)=>s+d.lat,0)/fg.length;
+    const aLon=fg.reduce((s,d)=>s+d.lon,0)/fg.length;
+    map.flyTo({center:[aLon,aLat],zoom:13,pitch:50,duration:1500});
   }
 }
 
@@ -1025,84 +918,260 @@ function addMsg(html, role) {
 }
 
 function makeCards(resources, emergency) {
-  if (!resources || !resources.length) return '';
+  if(!resources||!resources.length) return '';
   let html = '';
 
-  if (emergency) {
+  if(emergency) {
     html += '<div class="urgency-banner">Emergency &mdash; Priority resources shown first</div>';
   }
 
   html += '<div class="results-grid">';
-  for (const r of resources) {
-    const safetyPct = r.safety ? Math.round(r.safety * 100) : null;
-    const safetyClass = safetyPct >= 70 ? 'high' : safetyPct >= 40 ? 'med' : 'low';
-    const matchReason = getMatchReason(r, lastQuery);
-    const emergencyClass = emergency ? ' emergency' : '';
-    const escapedName = (r.name || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+  for(const r of resources) {
+    const safetyPct = r.safety ? Math.round(r.safety*100) : null;
+    const safetyClass = safetyPct>=70?'high':safetyPct>=40?'med':'low';
+    const matchReason = getMatchReason(r);
+    const emergencyClass = emergency?' emergency':'';
+    const eName = (r.name||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
 
     html += `
-    <div class="resource-card type-${r.type || 'shelter'}${emergencyClass}" onclick="flyTo(${r.lat},${r.lon})">
+    <div class="resource-card type-${r.type||'shelter'}${emergencyClass}" onclick="flyTo(${r.lat},${r.lon})">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div class="rc-name">${r.name || 'Unknown'}</div>
-        ${emergency ? '<span class="rc-urgency">Urgent</span>' : ''}
+        <div class="rc-name">${r.name||'Unknown'}</div>
+        ${emergency?'<span class="rc-urgency">Urgent</span>':''}
       </div>
-      <div class="rc-addr">${r.address || 'Address not listed'}</div>
-      ${matchReason ? `
+      <div class="rc-addr">${r.address||'Address not listed'}</div>
+      ${matchReason?`
       <div class="rc-match">
         <div class="rc-match-label">Why this matches</div>
         <div class="rc-match-text">${matchReason}</div>
-      </div>` : ''}
+      </div>`:''}
       <div class="rc-tags">
-        <span class="rc-tag type">${(r.type || '').replace(/_/g, ' ')}</span>
-        ${r.borough ? `<span class="rc-tag borough">${r.borough}</span>` : ''}
-        ${safetyPct !== null ? `<span class="rc-tag safety ${safetyClass}">Safety ${safetyPct}%</span>` : ''}
+        <span class="rc-tag type">${(r.type||'').replace(/_/g,' ')}</span>
+        ${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}
+        ${safetyPct!==null?`<span class="rc-tag safety ${safetyClass}">Safety ${safetyPct}%</span>`:''}
       </div>
       <div class="rc-actions">
         <span class="rc-action" onclick="event.stopPropagation();flyTo(${r.lat},${r.lon})">Map</span>
-        <span class="rc-action" onclick="event.stopPropagation();reportIssue('${escapedName}')">Report Issue</span>
+        <span class="rc-action" onclick="event.stopPropagation();reportIssue('${eName}')">Report Issue</span>
       </div>
     </div>`;
   }
   html += '</div>';
+  return html;
+}
 
-  // Follow-up prompt
-  html += `
-  <div class="followup-prompt">
-    <input type="text" placeholder="Tell me more about your situation..." onkeydown="if(event.key==='Enter'){sendFollowup(this)}">
-    <button class="followup-send" onclick="sendFollowup(this.previousElementSibling)">Send</button>
-  </div>`;
+// ── Verification Banner ─────────────────────────────────────────────────────
+function makeVerificationHtml(verification) {
+  if(!verification) return '<div class="verify-banner skipped">&#9889; Demo Mode &mdash; Verification skipped for speed</div>';
+
+  const conf = verification.confidence || 'LOW';
+  const verified = verification.verified;
+  const claims = verification.claims || [];
+  const vCount = verification.verified_count || 0;
+  const tCount = verification.total_count || 0;
+
+  let cls, label;
+  if(!verified) {
+    cls='low'; label=`&#9888;&#65039; Needs Review &mdash; Some claims may exceed available evidence`;
+  } else if(conf==='HIGH') {
+    cls='high'; label=`&#9989; Verified &mdash; High confidence, claims backed by data (${vCount}/${tCount})`;
+  } else {
+    cls='medium'; label=`&#9989; Verified &mdash; Medium confidence (${vCount}/${tCount} claims)`;
+  }
+
+  let html = `<div class="verify-banner ${cls}">${label}</div>`;
+
+  // Claims detail (collapsible)
+  if(claims.length) {
+    const id = 'claims-' + Date.now();
+    html += `<div class="claims-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">&#9660; ${tCount} claims checked</div>`;
+    html += `<div class="claims-list" id="${id}">`;
+    for(const c of claims) {
+      const isV = c.verdict === 'VERIFIED';
+      html += `<div class="claim-item ${isV?'verified':'unverified'}">${isV?'&#9989;':'&#9888;&#65039;'} ${c.claim}</div>`;
+    }
+    html += '</div>';
+  }
 
   return html;
 }
 
+// ── Reasoning Path ──────────────────────────────────────────────────────────
+function makeReasoningHtml(reasoning, summary) {
+  if(!reasoning || !reasoning.length) return '';
+
+  const id = 'reasoning-' + Date.now();
+  let html = `<div class="reasoning-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">&#129504; Show reasoning path (${reasoning.length} hops)</div>`;
+  html += `<div class="reasoning-panel" id="${id}">`;
+
+  if(summary) {
+    html += `<div class="reasoning-summary">${summary}</div>`;
+  }
+
+  for(const hop of reasoning) {
+    const cum = hop.cumulative || 0;
+    const dot = cum >= 0.7 ? '&#128994;' : cum >= 0.5 ? '&#128993;' : '&#128308;';
+    html += `<div class="reasoning-hop">${dot} Hop ${hop.hop||'?'}: ${hop.fact||''} <span class="hop-conf">(conf: ${hop.confidence||0}, cumul: ${cum})</span></div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── Clarification Box ───────────────────────────────────────────────────────
+function makeClarifyHtml(question) {
+  if(!question) return '';
+  return `
+  <div class="clarify-box">
+    <div class="clarify-label">Follow-up question</div>
+    <div class="clarify-question">${question}</div>
+    <div class="clarify-row">
+      <input class="clarify-input" type="text" placeholder="Type your answer..." onkeydown="if(event.key==='Enter')sendClarify(this,'${encodeURIComponent(question)}')">
+      <button class="clarify-send" onclick="sendClarify(this.previousElementSibling,'${encodeURIComponent(question)}')">Answer</button>
+    </div>
+  </div>`;
+}
+
+// ── Feedback Bar ────────────────────────────────────────────────────────────
+function makeFeedbackHtml() {
+  return `
+  <div class="feedback-bar">
+    <input type="text" placeholder="Report an issue: e.g. 'The shelter at 66 Boerum is full'" onkeydown="if(event.key==='Enter')sendFeedback(this)">
+    <button class="feedback-send" onclick="sendFeedback(this.previousElementSibling)">Report</button>
+  </div>`;
+}
+
+// ── Follow-up Prompt ────────────────────────────────────────────────────────
+function makeFollowupHtml() {
+  return `
+  <div class="followup-prompt">
+    <input type="text" placeholder="Tell me more about your situation..." onkeydown="if(event.key==='Enter')sendFollowup(this)">
+    <button class="followup-send" onclick="sendFollowup(this.previousElementSibling)">Send</button>
+  </div>`;
+}
+
+async function sendClarify(input, encodedQuestion) {
+  const ans = input.value.trim();
+  if(!ans) return;
+  const question = decodeURIComponent(encodedQuestion);
+
+  addMsg(ans, 'user');
+  input.closest('.clarify-box').remove();
+
+  document.getElementById('loading').classList.add('active');
+  document.getElementById('sendBtn').disabled = true;
+
+  try {
+    const resp = await fetch('/api/clarify', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({original_query:lastQuery, question:question, answer:ans}),
+    });
+    const data = await resp.json();
+    handleResponse(data);
+  } catch(err) {
+    addMsg(`Error: ${err.message}`, 'system');
+  }
+
+  document.getElementById('loading').classList.remove('active');
+  document.getElementById('sendBtn').disabled = false;
+}
+
 function sendFollowup(input) {
   const text = input.value.trim();
-  if (!text) return;
+  if(!text) return;
   document.getElementById('queryInput').value = text;
   input.value = '';
   sendQuery();
 }
 
-function flyTo(lat, lon) {
-  if (lat && lon) map.flyTo({center: [lon, lat], zoom: 15, pitch: 55, duration: 1000});
+async function sendFeedback(input) {
+  const text = input.value.trim();
+  if(!text) return;
+  input.value = '';
+
+  // Try to match resource name from last results
+  let matchedName = '';
+  for(const r of lastResources) {
+    if(text.toLowerCase().includes((r.name||'').toLowerCase().slice(0,15))) {
+      matchedName = r.name;
+      break;
+    }
+  }
+
+  if(matchedName) {
+    await fetch('/api/feedback', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({resource_name:matchedName, issue:text, detail:text}),
+    });
+    addMsg(`Noted &mdash; <b>${matchedName}</b> flagged. Searching for alternatives...`, 'assistant');
+    // Re-run query without excluded resource
+    document.getElementById('queryInput').value = lastQuery;
+    sendQuery();
+  } else {
+    addMsg(`I couldn't identify which resource you mean. Try mentioning the name specifically.`, 'system');
+  }
 }
+
+function flyTo(lat,lon){if(lat&&lon)map.flyTo({center:[lon,lat],zoom:15,pitch:55,duration:1000});}
 
 function reportIssue(name) {
   const issue = prompt(`What's wrong with ${name}?\n(e.g. "full", "closed", "wrong address")`);
-  if (issue) {
-    fetch('/api/feedback', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({resource_name: name, issue: issue, detail: issue})
-    }).then(r => r.json()).then(() => {
-      addMsg(`Noted &mdash; <b>${name}</b> flagged and excluded from future results.`, 'assistant');
+  if(issue){
+    fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({resource_name:name,issue:issue,detail:issue})
+    }).then(r=>r.json()).then(()=>{
+      addMsg(`Noted &mdash; <b>${name}</b> excluded. Searching for alternatives...`,'assistant');
+      document.getElementById('queryInput').value = lastQuery;
+      sendQuery();
     });
   }
 }
 
+// ── Handle API Response ─────────────────────────────────────────────────────
+function handleResponse(data) {
+  let html = (data.answer||'No response').replace(/\n/g,'<br>');
+
+  // Verification
+  html += makeVerificationHtml(data.verification);
+
+  // Reasoning path
+  html += makeReasoningHtml(data.reasoning, data.reasoning_summary);
+
+  // Resource cards
+  if(data.resources && data.resources.length > 0) {
+    lastResources = data.resources;
+    html += makeCards(data.resources, isEmergency);
+  }
+
+  // Feedback bar
+  html += makeFeedbackHtml();
+
+  // Clarification question from AI
+  if(data.clarify_question) {
+    html += makeClarifyHtml(data.clarify_question);
+  } else {
+    html += makeFollowupHtml();
+  }
+
+  addMsg(html, 'assistant');
+
+  if(data.resources && data.resources.length>0) updateMap(allResources, data.resources);
+
+  if(data.timing) {
+    const t = data.timing;
+    const el = document.getElementById('timing');
+    let text = `${t.total}s total | Plan ${t.plan}s | Exec ${t.execute}s | Synth ${t.synth}s`;
+    if(t.verify) text += ` | Verify ${t.verify}s`;
+    text += ` | ${data.llm||''}`;
+    el.textContent = text;
+    el.style.display = 'block';
+  }
+}
+
+// ── Send Query ──────────────────────────────────────────────────────────────
 async function sendQuery() {
   const input = document.getElementById('queryInput');
   const q = input.value.trim();
-  if (!q) return;
+  if(!q) return;
 
   lastQuery = q;
   isEmergency = detectEmergency(q);
@@ -1114,25 +1183,11 @@ async function sendQuery() {
 
   try {
     const resp = await fetch('/api/query', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({query: q, demo_mode: true}),
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:q, demo_mode:false}),
     });
     const data = await resp.json();
-
-    let answerHtml = (data.answer || 'No response').replace(/\n/g, '<br>');
-    if (data.resources && data.resources.length > 0) {
-      answerHtml += makeCards(data.resources, isEmergency);
-    }
-    addMsg(answerHtml, 'assistant');
-
-    if (data.resources && data.resources.length > 0) updateMap(allResources, data.resources);
-
-    if (data.timing) {
-      const t = data.timing;
-      const el = document.getElementById('timing');
-      el.textContent = `${t.total}s total | Plan ${t.plan}s | Execute ${t.execute}s | Synth ${t.synth}s | ${data.llm || ''}`;
-      el.style.display = 'block';
-    }
+    handleResponse(data);
   } catch(err) {
     addMsg(`Connection error: ${err.message}. Is the backend running?`, 'system');
   }
@@ -1142,12 +1197,12 @@ async function sendQuery() {
 }
 
 // ── Event Listeners ─────────────────────────────────────────────────────────
-document.getElementById('queryInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
+document.getElementById('queryInput').addEventListener('keydown', e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendQuery();}
 });
-document.querySelectorAll('.cat-btn,.quick-btn').forEach(b => {
-  b.addEventListener('click', () => {
-    document.getElementById('queryInput').value = b.dataset.q;
+document.querySelectorAll('.cat-btn,.quick-btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.getElementById('queryInput').value=b.dataset.q;
     sendQuery();
   });
 });
