@@ -127,15 +127,38 @@ def mark_resource_visited(case_id: str, resource_name: str, feedback: str = None
 
 def resolve_need(case_id: str, category: str) -> dict:
     """Mark a need as resolved."""
+    return update_need_status(case_id, category, "resolved")
+
+
+def update_need_status(case_id: str, category: str, status: str) -> dict:
+    """Update a need's status. Accepts 'open', 'in_progress', or 'resolved'."""
     case = load_case(case_id)
     if not case:
         return {"error": "Case not found"}
 
     for need in case["needs"]:
         if need["category"] == category:
-            need["status"] = "resolved"
-            need["resolved_at"] = datetime.now().isoformat()
+            need["status"] = status
+            if status == "resolved":
+                need["resolved_at"] = datetime.now().isoformat()
 
+    _save_case(case)
+    return case
+
+
+def sync_needs_from_plan(case: dict, plan: dict) -> dict:
+    """Merge identified_needs from plan into case, deduplicating by category."""
+    existing_cats = {n["category"] for n in case.get("needs", [])}
+    for need in plan.get("identified_needs", []):
+        cat = need.get("category", "")
+        if cat and cat not in existing_cats:
+            case.setdefault("needs", []).append({
+                "category": cat,
+                "priority": need.get("priority", 99),
+                "status": "open",
+                "identified_at": datetime.now().isoformat(),
+            })
+            existing_cats.add(cat)
     _save_case(case)
     return case
 
@@ -207,6 +230,68 @@ def list_cases() -> list:
         except Exception:
             pass
     return sorted(cases, key=lambda x: x.get("last_visit", ""), reverse=True)
+
+
+def add_destination_intent(case_id: str, resource: dict,
+                           state: str = "intent_confirmed") -> dict:
+    """Record that the user confirmed intent to visit a resource."""
+    case = load_case(case_id)
+    if not case:
+        case = create_case(case_id)
+
+    intent = {
+        "resource_name": resource.get("name", ""),
+        "resource_type": resource.get("resource_type", resource.get("type", "")),
+        "address": resource.get("address", ""),
+        "borough": resource.get("borough", ""),
+        "category": resource.get("category", ""),
+        "state": state,
+        "intent_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        "thread_id": None,
+        "thread_url": None,
+        "acknowledged": False,
+    }
+
+    intents = case.setdefault("destination_intents", [])
+    today = datetime.now().date().isoformat()
+    # Same resource + same day → update in place instead of appending
+    for ex in intents:
+        if (ex.get("resource_name") == intent["resource_name"] and
+                ex.get("intent_at", "")[:10] == today):
+            ex["state"] = state
+            ex["updated_at"] = intent["updated_at"]
+            _save_case(case)
+            return case
+    intents.append(intent)
+    _save_case(case)
+    return case
+
+
+def update_destination_state(case_id: str, resource_name: str,
+                              new_state: str) -> dict:
+    """Advance lifecycle state for a destination intent."""
+    case = load_case(case_id)
+    if not case:
+        return {"error": "Case not found"}
+    for intent in case.get("destination_intents", []):
+        if intent.get("resource_name") == resource_name:
+            intent["state"] = new_state
+            intent["updated_at"] = datetime.now().isoformat()
+            if new_state in ("arrived", "resolved"):
+                intent[f"{new_state}_at"] = datetime.now().isoformat()
+    _save_case(case)
+    return case
+
+
+def get_active_destinations(case_id: str) -> list:
+    """Return destination intents not yet resolved or cancelled."""
+    case = load_case(case_id)
+    if not case:
+        return []
+    terminal = {"resolved", "cancelled"}
+    return [i for i in case.get("destination_intents", [])
+            if i.get("state") not in terminal]
 
 
 def _save_case(case: dict):

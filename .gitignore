@@ -1,3 +1,7 @@
+# Secrets — never commit
+.streamlit/secrets.toml
+.env
+
 # Raw data (too large, pulled from NYC Open Data)
 raw/
 
