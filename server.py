@@ -252,6 +252,25 @@ async def similar(req: SimilarRequest):
         return {"similar": [], "error": str(e)}
 
 
+class DirectionsRequest(BaseModel):
+    from_lat: float
+    from_lon: float
+    to_lat: float
+    to_lon: float
+    budget: float | None = None  # None = show all, 0 = walk only
+
+
+@app.post("/api/directions")
+async def directions(req: DirectionsRequest):
+    """Get multi-modal directions from user location to a resource."""
+    try:
+        from pipeline.routing import get_directions
+        result = get_directions(req.from_lat, req.from_lon, req.to_lat, req.to_lon, req.budget)
+        return result
+    except Exception as e:
+        return {"error": str(e), "options": []}
+
+
 @app.get("/api/resources")
 async def all_resources():
     """Get all resources with coordinates for initial map load."""
