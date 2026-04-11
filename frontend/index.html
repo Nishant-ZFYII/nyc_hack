@@ -49,6 +49,7 @@ body {
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
   height: 100vh; overflow: hidden; position: relative;
+  grid-column: 1; grid-row: 1;
 }
 .sidebar-header {
   padding: 16px 20px 14px;
@@ -320,8 +321,8 @@ body {
 .powered-badge:hover{color:var(--green);border-color:var(--green-dim);background:rgba(118,185,0,0.1)}
 
 /* Map */
-.map-container{position:relative;height:100vh;min-height:100vh}
-#map{width:100%;height:100%;min-height:100vh}
+.map-container{position:relative;overflow:hidden;grid-column:2;grid-row:1}
+#map{width:100%;height:100vh}
 .map-overlay{position:absolute;z-index:10;background:rgba(12,12,20,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:8px}
 .status-pill{top:16px;right:16px;padding:7px 12px;font-size:11px;font-family:var(--font-mono);display:flex;align-items:center;gap:6px}
 .dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green-glow);animation:dotPulse 2s infinite}
