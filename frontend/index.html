@@ -337,7 +337,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   <div id="explore-map" style="display:none;flex:1;position:relative">
     <div id="exploreMapEl" style="width:100%;height:100%"></div>
     <!-- Resource info popup -->
-    <div class="map-overlay" id="explorePopup" style="bottom:16px;left:16px;right:16px;max-width:400px;padding:16px;display:none">
+    <div class="map-overlay" id="explorePopup" style="bottom:16px;left:190px;right:16px;max-width:400px;max-height:50vh;overflow-y:auto;padding:16px;display:none">
     </div>
     <div class="map-overlay filter-bar" id="exploreFilters">
       <!-- Location input -->
@@ -821,6 +821,8 @@ function refreshExploreIcons(){
 }
 
 function showExplorePopup(resource){
+  // Clear old route
+  if(exploreMap){try{if(exploreMap.getSource('explore-route'))exploreMap.getSource('explore-route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
   const popup=document.getElementById('explorePopup');
   const rtype=(resource.resource_type||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
   const eName=(resource.name||'').replace(/'/g,'&#39;');
