@@ -587,7 +587,7 @@ async function setManualLocation(){
   const input=document.getElementById('locationInput');
   const addr=input.value.trim();if(!addr)return;
   try{
-    const resp=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr+', NYC')}&format=json&limit=1&countrycodes=us`);
+    const resp=await fetch(`/api/geocode?q=${encodeURIComponent(addr)}`);
     const results=await resp.json();
     if(results&&results.length>0){
       userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};

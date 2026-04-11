@@ -277,6 +277,22 @@ async def similar(req: SimilarRequest):
         return {"similar": [], "error": str(e)}
 
 
+@app.get("/api/geocode")
+async def geocode(q: str):
+    """Proxy geocoding to avoid CORS issues with Nominatim."""
+    import requests
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": f"{q}, NYC", "format": "json", "limit": "1", "countrycodes": "us"},
+            headers={"User-Agent": "NYC-SocialServices-Engine/1.0"},
+            timeout=5,
+        )
+        return resp.json()
+    except Exception as e:
+        return []
+
+
 class DirectionsRequest(BaseModel):
     from_lat: float
     from_lon: float
