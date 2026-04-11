@@ -14,7 +14,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-DATA = Path(__file__).resolve().parent / "data"
+DATA = Path(__file__).resolve().parent.parent / "data"
 
 # ── Cached state ──────────────────────────────────────────────────────────────
 _mart: pd.DataFrame | None = None
