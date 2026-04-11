@@ -242,12 +242,11 @@ hr {
 """, unsafe_allow_html=True)
 
 st.markdown("""
-<div style="padding:8px 0;">
-    <span style="font-size:36px;font-weight:bold;color:#76b900;">NYC Social Services</span>
-    <span style="font-size:36px;font-weight:300;color:#e0e0e0;"> Intelligence Engine</span>
+<div style="text-align:center;padding:20px 0 10px 0;">
+    <div style="font-size:42px;font-weight:bold;color:#76b900;">Need Help?</div>
+    <div style="font-size:18px;color:#aaa;margin-top:4px;">Tell us what's going on. We'll find the right resources for you.</div>
 </div>
 """, unsafe_allow_html=True)
-st.caption("Powered by NVIDIA Nemotron · cuGraph · RAPIDS · cuOpt — DGX Spark")
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -259,30 +258,29 @@ with st.sidebar:
 
     st.markdown("""
     <div style="text-align:center;padding:16px 0 8px 0;">
-        <div style="font-size:28px;font-weight:bold;color:#76b900;">NYC DSS</div>
-        <div style="font-size:13px;color:#888;letter-spacing:1px;">CASEWORKER ASSISTANT</div>
+        <div style="font-size:24px;font-weight:bold;color:#76b900;">NYC Help Finder</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">Shelters · Food · Healthcare · Benefits</div>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
     <div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:10px;padding:14px;margin:8px 0;">
-        <div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">How can I help?</div>
-        <div style="color:#ccc;font-size:13px;line-height:1.6;">
-            Describe any situation — housing crisis, benefits questions, emergency response — and I'll find the right resources, screen for eligibility, and create an action plan.
+        <div style="color:#ccc;font-size:14px;line-height:1.7;">
+            Just describe what you need — in your own words. We'll find shelters, food, hospitals, benefits, schools, and more near you.
         </div>
     </div>
     """, unsafe_allow_html=True)
 
     st.divider()
-    st.markdown('<div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Common Situations</div>', unsafe_allow_html=True)
+    st.markdown('<div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;">I need help with...</div>', unsafe_allow_html=True)
 
     EXAMPLES = {
-        "Family losing housing": "I'm Tina, I have 4 kids ages 12-16, my income is $28K, and my sister is kicking us out of her Flatbush apartment next week. What do we do?",
-        "Crime victim with child": "Someone broke into my apartment last night. I don't feel safe going back. I have a 6 year old. What should I do?",
-        "Newly arrived migrant family": "I just arrived from Haiti with my two children. We speak Haitian Creole and need shelter tonight near Flatbush.",
-        "Find shelters in Brooklyn": "What shelters in Brooklyn have available beds right now?",
-        "Accessible hospitals in Queens": "Find wheelchair accessible hospitals near Jamaica Queens that accept Medicaid",
-        "Food banks in the Bronx": "How many food banks are open in the Bronx?",
+        "I'm about to lose my housing": "I'm Tina, I have 4 kids ages 12-16, my income is $28K, and my sister is kicking us out of her Flatbush apartment next week. What do we do?",
+        "I don't feel safe at home": "Someone broke into my apartment last night. I don't feel safe going back. I have a 6 year old. What should I do?",
+        "I just arrived in NYC": "I just arrived from Haiti with my two children. We speak Haitian Creole and need shelter tonight near Flatbush.",
+        "I need a shelter tonight": "What shelters in Brooklyn have available beds right now?",
+        "I need to see a doctor": "Find wheelchair accessible hospitals near Jamaica Queens that accept Medicaid",
+        "I need food for my family": "How many food banks are open in the Bronx?",
     }
 
     for label, eq in EXAMPLES.items():
@@ -290,13 +288,13 @@ with st.sidebar:
             st.session_state["query_input"] = eq
 
     st.divider()
-    st.markdown('<div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;">City Operations</div>', unsafe_allow_html=True)
+    st.markdown('<div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;">For coordinators</div>', unsafe_allow_html=True)
 
     OPS_EXAMPLES = {
-        "Cold emergency response": "A cold emergency is declared. 3 Brooklyn shelters just hit capacity. 200 people are still outside. It's 15°F. What do we do?",
-        "Underserved boroughs": "Which NYC boroughs are most underserved by social services?",
-        "Add 500 beds in the Bronx": "What happens if we add 500 shelter beds in the Bronx?",
-        "Migrant bus arrival": "A migrant bus just arrived with 80 people who speak Spanish and Mandarin. They need shelter, food, and schools for children.",
+        "Cold emergency — people outside": "A cold emergency is declared. 3 Brooklyn shelters just hit capacity. 200 people are still outside. It's 15°F. What do we do?",
+        "Which areas need more resources?": "Which NYC boroughs are most underserved by social services?",
+        "What if we add shelter beds?": "What happens if we add 500 shelter beds in the Bronx?",
+        "Migrant bus just arrived": "A migrant bus just arrived with 80 people who speak Spanish and Mandarin. They need shelter, food, and schools for children.",
     }
 
     for label, eq in OPS_EXAMPLES.items():
@@ -332,17 +330,15 @@ with st.sidebar:
 
 
 # ── Main query interface ──────────────────────────────────────────────────────
-st.markdown('<p style="color:#aaa;margin-bottom:4px;">Describe the situation or ask a question:</p>', unsafe_allow_html=True)
 query = st.text_area(
-    "query_label",
+    "What's going on?",
     value=st.session_state.get("query_input", ""),
-    height=100,
-    placeholder="e.g. 'Family of 4 losing housing next week in Brooklyn — kids ages 8 and 12, income $24K. What help is available?'",
+    height=120,
+    placeholder="Tell us in your own words... e.g. 'I have 4 kids and we're about to lose our apartment. I make $28K a year. What help is there?'",
     key="query_input",
-    label_visibility="collapsed",
 )
 
-run = st.button("Get Help", type="primary", use_container_width=True)
+run = st.button("Find Help For Me", type="primary", use_container_width=True)
 
 # ── Detect clarification answer submitted via Enter key ──────────────────────
 # Must happen BEFORE the pipeline block so the rerun flag is set first.
