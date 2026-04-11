@@ -89,19 +89,25 @@ def train(model_name="TransE", embedding_dim=128, epochs=100):
     print(f"  Training completed in {train_time:.1f}s")
 
     # Extract entity embeddings
+    import torch
     model = result.model
-    entity_embeddings = model.entity_representations[0]
-
-    # Build mapping: entity_label -> embedding vector
     entity_to_id = tf.entity_to_id
     embeddings_dict = {}
 
-    # Get all embeddings as numpy
-    import torch
+    # Get all entity embeddings as numpy — handle different PyKEEN versions
+    entity_rep = model.entity_representations[0]
     with torch.no_grad():
-        all_embeddings = entity_embeddings(
-            torch.arange(tf.num_entities, device=entity_embeddings.weight.device)
-        ).cpu().numpy()
+        indices = torch.arange(tf.num_entities)
+        try:
+            all_embeddings = entity_rep(indices).cpu().numpy()
+        except Exception:
+            # Fallback: try accessing the underlying embedding directly
+            if hasattr(entity_rep, '_embeddings'):
+                all_embeddings = entity_rep._embeddings.weight.data.cpu().numpy()
+            elif hasattr(entity_rep, 'base'):
+                all_embeddings = entity_rep.base(indices).cpu().numpy()
+            else:
+                all_embeddings = entity_rep(indices).detach().cpu().numpy()
 
     for label, idx in entity_to_id.items():
         embeddings_dict[label] = all_embeddings[idx]
@@ -110,11 +116,16 @@ def train(model_name="TransE", embedding_dim=128, epochs=100):
     relation_to_id = tf.relation_to_id
     relation_embeddings_dict = {}
     if hasattr(model, 'relation_representations') and len(model.relation_representations) > 0:
-        rel_emb = model.relation_representations[0]
+        rel_rep = model.relation_representations[0]
         with torch.no_grad():
-            all_rel_emb = rel_emb(
-                torch.arange(tf.num_relations, device=rel_emb.weight.device)
-            ).cpu().numpy()
+            rel_indices = torch.arange(tf.num_relations)
+            try:
+                all_rel_emb = rel_rep(rel_indices).cpu().numpy()
+            except Exception:
+                if hasattr(rel_rep, '_embeddings'):
+                    all_rel_emb = rel_rep._embeddings.weight.data.cpu().numpy()
+                else:
+                    all_rel_emb = rel_rep(rel_indices).detach().cpu().numpy()
         for label, idx in relation_to_id.items():
             relation_embeddings_dict[label] = all_rel_emb[idx]
 
