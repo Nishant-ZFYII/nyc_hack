@@ -665,17 +665,22 @@ let _pendingDir=null;
 function getDirections(toLat,toLon,name){
   if(!userLocation){
     // Show location prompt inline
+    document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt').forEach(el=>el.remove());
     const c=document.getElementById('resultsContent');
-    c.insertAdjacentHTML('beforeend',`<div class="clarify-box fade-in"><div class="clarify-label">Set your location first</div><div class="clarify-q">Enter your address below so we can calculate directions to ${name}.</div></div>`);
+    c.insertAdjacentHTML('beforeend',`<div class="clarify-box fade-in directions-locprompt"><div class="clarify-label">Set your location first</div><div class="clarify-q">Enter your address above so we can calculate directions to ${name}.</div></div>`);
     document.getElementById('locationInput').focus();
     _pendingDir={toLat,toLon,name};
     return;
   }
   _pendingDir={toLat,toLon,name};
+  // Remove any previous direction UI + route lines
+  document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt').forEach(el=>el.remove());
+  if(resultMap){try{if(resultMap.getSource('route'))resultMap.getSource('route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
+
   // Show budget picker inline
   const c=document.getElementById('resultsContent');
   c.insertAdjacentHTML('beforeend',`
-  <div class="clarify-box fade-in" id="budgetPicker">
+  <div class="clarify-box fade-in directions-picker" id="budgetPicker">
     <div class="clarify-label">Directions to ${name}</div>
     <div style="font-size:12px;color:var(--t2);margin-bottom:10px">How much can you spend on travel?</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -896,6 +901,8 @@ function getExploreDirections(toLat,toLon,name){
 async function fetchExploreDirections(budget,toLat,toLon,name){
   const popup=document.getElementById('explorePopup');
   popup.innerHTML='<div style="text-align:center;padding:12px"><div class="spinner" style="margin:0 auto"></div><div style="margin-top:8px;font-size:12px;color:var(--t3)">Getting directions...</div></div>';
+  // Clear old route
+  if(exploreMap){try{if(exploreMap.getSource('explore-route'))exploreMap.getSource('explore-route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
   try{
     const bVal=budget==='sponsored'?null:budget;
     const resp=await fetch('/api/directions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from_lat:exploreUserLoc.lat,from_lon:exploreUserLoc.lon,to_lat:toLat,to_lon:toLon,budget:bVal})});
