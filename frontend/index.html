@@ -1794,8 +1794,8 @@ function updateNatMapLayers(){
     }
   }
   const layers=[
-    new deck.ScatterplotLayer({id:'nat-alts',data:markers.filter(m=>!m.primary),getPosition:d=>[d.lon,d.lat],getRadius:60,getFillColor:d=>[...d.color,150],radiusMinPixels:6,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,200],lineWidthMinPixels:1,onHover:({object})=>{document.getElementById('natMapEl').title=object?`${object.name} (alt)`:''}}),
-    new deck.ScatterplotLayer({id:'nat-primary',data:markers.filter(m=>m.primary),getPosition:d=>[d.lon,d.lat],getRadius:120,getFillColor:d=>[...d.color,230],radiusMinPixels:10,radiusMaxPixels:22,pickable:true,stroked:true,getLineColor:[255,255,255,240],lineWidthMinPixels:3,onHover:({object})=>{document.getElementById('natMapEl').title=object?`${object.name} (${(object.timeframe||'').replace(/_/g,' ')})`:''}}),
+    new deck.IconLayer({id:'nat-alts',data:markers.filter(m=>!m.primary),getPosition:d=>[d.lon,d.lat],iconAtlas:_iconAtlasUrl,iconMapping:_iconMapping,getIcon:d=>_iconMapping[d.resource_type]?d.resource_type:'shelter',getSize:28,sizeMinPixels:20,sizeMaxPixels:36,pickable:true,getColor:d=>[...d.color,180],onHover:({object})=>{document.getElementById('natMapEl').title=object?`${object.name} (alt)`:''}}),
+    new deck.IconLayer({id:'nat-primary',data:markers.filter(m=>m.primary),getPosition:d=>[d.lon,d.lat],iconAtlas:_iconAtlasUrl,iconMapping:_iconMapping,getIcon:d=>_iconMapping[d.resource_type]?d.resource_type:'shelter',getSize:48,sizeMinPixels:32,sizeMaxPixels:64,pickable:true,onHover:({object})=>{document.getElementById('natMapEl').title=object?`${object.name} (${(object.timeframe||'').replace(/_/g,' ')})`:''}}),
   ];
   if(natDeck)natDeck.setProps({layers}); else {natDeck=new deck.MapboxOverlay({layers});natMap.addControl(natDeck)}
   const pts=markers.filter(m=>m.primary);
@@ -1827,23 +1827,25 @@ function initPlanMap(){
 
 function updatePlanMapLayers(){
   if(!planMap||!lastPlanData)return;
+  buildIconAtlas();
   const TF_COLORS={TONIGHT:[239,83,80],THIS_WEEK:[232,132,58],NEXT_2_WEEKS:[46,125,186]};
   const markers=[];
   for(const step of(lastPlanData.steps||[])){
     const tfColor=TF_COLORS[step.timeframe]||[118,185,0];
     const top=step.top_resource;
+    const rtype=step.category==='housing'?'shelter':step.category==='benefits'?'benefits_center':step.category==='medical'?'hospital':step.category==='school'?'school':step.category==='food'?'food_bank':step.category==='safety'?'domestic_violence':step.category==='legal'?'legal_aid':'shelter';
     if(top&&top.latitude&&top.longitude){
-      markers.push({lat:top.latitude,lon:top.longitude,name:top.name,timeframe:step.timeframe||'',category:step.category,color:tfColor,primary:true});
+      markers.push({lat:top.latitude,lon:top.longitude,name:top.name,timeframe:step.timeframe||'',category:step.category,color:tfColor,primary:true,resource_type:top.resource_type||rtype});
     }
     for(const alt of(step.alternatives||[])){
       if(alt.latitude&&alt.longitude){
-        markers.push({lat:alt.latitude,lon:alt.longitude,name:alt.name,timeframe:step.timeframe||'',category:step.category,color:tfColor,primary:false});
+        markers.push({lat:alt.latitude,lon:alt.longitude,name:alt.name,timeframe:step.timeframe||'',category:step.category,color:tfColor,primary:false,resource_type:alt.resource_type||rtype});
       }
     }
   }
   const layers=[
-    new deck.ScatterplotLayer({id:'plan-alts',data:markers.filter(m=>!m.primary),getPosition:d=>[d.lon,d.lat],getRadius:60,getFillColor:d=>[...d.color,150],radiusMinPixels:6,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,200],lineWidthMinPixels:1,onHover:({object})=>{document.getElementById('planMapEl').title=object?`${object.name} (alt)`:''}}),
-    new deck.ScatterplotLayer({id:'plan-primary',data:markers.filter(m=>m.primary),getPosition:d=>[d.lon,d.lat],getRadius:120,getFillColor:d=>[...d.color,230],radiusMinPixels:10,radiusMaxPixels:22,pickable:true,stroked:true,getLineColor:[255,255,255,240],lineWidthMinPixels:3,onHover:({object})=>{document.getElementById('planMapEl').title=object?`${object.name} (${(object.timeframe||'').replace(/_/g,' ')})`:''}}),
+    new deck.IconLayer({id:'plan-alts',data:markers.filter(m=>!m.primary),getPosition:d=>[d.lon,d.lat],iconAtlas:_iconAtlasUrl,iconMapping:_iconMapping,getIcon:d=>_iconMapping[d.resource_type]?d.resource_type:'shelter',getSize:28,sizeMinPixels:20,sizeMaxPixels:36,pickable:true,onHover:({object})=>{document.getElementById('planMapEl').title=object?`${object.name} (alt)`:''}}),
+    new deck.IconLayer({id:'plan-primary',data:markers.filter(m=>m.primary),getPosition:d=>[d.lon,d.lat],iconAtlas:_iconAtlasUrl,iconMapping:_iconMapping,getIcon:d=>_iconMapping[d.resource_type]?d.resource_type:'shelter',getSize:48,sizeMinPixels:32,sizeMaxPixels:64,pickable:true,onHover:({object})=>{document.getElementById('planMapEl').title=object?`${object.name} (${(object.timeframe||'').replace(/_/g,' ')})`:''}}),
   ];
   if(planDeck)planDeck.setProps({layers}); else {planDeck=new deck.MapboxOverlay({layers});planMap.addControl(planDeck)}
   // Fit bounds to primary markers
