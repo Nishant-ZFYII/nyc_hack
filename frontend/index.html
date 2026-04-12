@@ -634,7 +634,7 @@ async function sendFeedback(input){
 }
 
 // ── Result Map (toggle panel) ──────────────────────────────
-let mapOpen=false, userLocation=null, userMarker=null;
+let mapOpen=false, userLocation=null, userLocationLabel='', userMarker=null;
 
 function toggleMap(){
   const panel=document.getElementById('resultsMapPanel');
@@ -692,7 +692,7 @@ function updateResultsLocBar(){
   const text=document.getElementById('resultsLocText');
   const input=document.getElementById('resultsLocInput');
   if(userLocation){
-    text.textContent=`${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}`;
+    text.textContent=userLocationLabel||`${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}`;
     text.style.display='inline';
     input.style.display='none';
   } else {
@@ -717,7 +717,7 @@ async function setResultsLocation(){
     const resp=await fetch(`/api/geocode?q=${encodeURIComponent(addr)}`);
     const results=await resp.json();
     if(results&&results.length>0){
-      userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
+      userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};userLocationLabel=results[0].display_name.split(',').slice(0,2).join(',');
       updateResultsLocBar();
       showUserMarker();
     }
@@ -729,7 +729,7 @@ function getUserLocation(){
   if(!navigator.geolocation)return;
   const ls=document.getElementById('locStatus');if(ls)ls.textContent='Getting GPS...';
   navigator.geolocation.getCurrentPosition(pos=>{
-    userLocation={lat:pos.coords.latitude,lon:pos.coords.longitude};
+    userLocation={lat:pos.coords.latitude,lon:pos.coords.longitude};userLocationLabel='My GPS location';
     const gb=document.getElementById('gpsBtn');if(gb){gb.style.borderColor='var(--green)';gb.style.color='var(--green)'}
     if(ls)ls.textContent='Location set via GPS';ls.style.color='var(--green)';
     if(mapOpen&&resultMap){
@@ -747,7 +747,7 @@ async function setManualLocation(){
     const resp=await fetch(`/api/geocode?q=${encodeURIComponent(addr)}`);
     const results=await resp.json();
     if(results&&results.length>0){
-      userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
+      userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};userLocationLabel=results[0].display_name.split(',').slice(0,2).join(',');
       console.log('Location set:', userLocation);
       input.style.borderColor='var(--green)';
       const ls=document.getElementById('locStatus');
@@ -937,10 +937,19 @@ function buildNextStepsHtml(openNeeds){
   html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin:12px 0;box-shadow:var(--shadow)">`;
   html+=`<div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">&#128205; Your current location</div>`;
   if(userLocation){
-    html+=`<div style="color:var(--green);font-size:13px;font-weight:500" id="nxLocText">Location set</div>`;
+    const locLabel=userLocationLabel||`${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}`;
+    html+=`<div style="display:flex;align-items:center;gap:10px;justify-content:space-between">
+      <div style="color:var(--green);font-size:13px;font-weight:500;flex:1">&#9989; ${locLabel}</div>
+      <button class="btn-secondary" style="padding:6px 10px;font-size:10px;white-space:nowrap" onclick="this.style.display='none';document.getElementById('nxChangeBox').style.display='flex'">Change</button>
+    </div>
+    <div id="nxChangeBox" style="display:none;gap:6px;margin-top:8px">
+      <input type="text" id="nxLocInput" class="big-input" placeholder="New address..." style="font-size:12px;padding:8px 12px;flex:1" onkeydown="if(event.key==='Enter')setNxLoc()">
+      <button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="setNxLoc()">Set</button>
+      <button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="gpsNx()">&#128205; GPS</button>
+    </div>`;
   } else {
     html+=`<div style="font-size:12px;color:var(--orange);margin-bottom:6px">Set your location to find nearby resources</div>`;
-    html+=`<div style="display:flex;gap:6px"><input type="text" id="nxLocInput" class="big-input" placeholder="Your address..." style="font-size:12px;padding:8px 12px" onkeydown="if(event.key==='Enter')setNxLoc()"><button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="setNxLoc()">Set</button><button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="gpsNx()">&#128205; GPS</button></div>`;
+    html+=`<div style="display:flex;gap:6px"><input type="text" id="nxLocInput" class="big-input" placeholder="Your address..." style="font-size:12px;padding:8px 12px;flex:1" onkeydown="if(event.key==='Enter')setNxLoc()"><button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="setNxLoc()">Set</button><button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="gpsNx()">&#128205; GPS</button></div>`;
   }
   html+=`</div>`;
 
@@ -1171,7 +1180,7 @@ async function setNxLoc(){
     const resp=await fetch(`/api/geocode?q=${encodeURIComponent(addr)}`);
     const results=await resp.json();
     if(results&&results.length>0){
-      userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
+      userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};userLocationLabel=results[0].display_name.split(',').slice(0,2).join(',');
       const loc=results[0].display_name.split(',').slice(0,2).join(',');
       // Replace the entire location card with success
       const card=input.closest('div[style*="border-radius:10px"]');
@@ -1190,7 +1199,7 @@ async function setNxLoc(){
 function gpsNx(){
   if(!navigator.geolocation)return;
   navigator.geolocation.getCurrentPosition(pos=>{
-    userLocation={lat:pos.coords.latitude,lon:pos.coords.longitude};
+    userLocation={lat:pos.coords.latitude,lon:pos.coords.longitude};userLocationLabel='My GPS location';
     const text=document.getElementById('nxLocText');
     if(text){text.textContent='GPS location set';text.style.color='var(--green)'}
   },()=>{},{enableHighAccuracy:true,timeout:10000});
