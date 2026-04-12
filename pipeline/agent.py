@@ -27,6 +27,22 @@ from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
 from pipeline.cases import load_case, add_visit, get_progress
 
 import pandas as pd
+import math
+
+
+def _clean_nan(obj):
+    """Recursively replace NaN/Inf with None for JSON serialization."""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _clean_nan(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clean_nan(x) for x in obj]
+    if hasattr(obj, 'to_dict'):
+        return _clean_nan(obj.to_dict())
+    return obj
 
 
 # ── Extract household profile from query text ────────────────────────────────
@@ -294,7 +310,7 @@ def run_autonomous_agent(
     total_time = time.time() - t0
     action_plan_summary = _generate_summary(steps, eligibility, profile)
 
-    return {
+    response = {
         "query": query,
         "summary": action_plan_summary,
         "profile": profile,
@@ -307,6 +323,8 @@ def run_autonomous_agent(
         "total_time_s": round(total_time, 2),
         "created_at": datetime.now().isoformat(),
     }
+    # Clean NaN/Inf for JSON serialization
+    return _clean_nan(response)
 
 
 def _generate_summary(steps: list, eligibility: dict, profile: dict) -> str:
