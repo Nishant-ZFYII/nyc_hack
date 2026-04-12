@@ -30,6 +30,7 @@ from pipeline.cases import (load_case, create_case, add_visit, mark_resource_vis
                              resolve_need, get_case_summary, list_cases,
                              choose_resource, checkin, get_failed_resources, get_progress)
 from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
+from pipeline.agent import run_autonomous_agent, generate_plan_pdf
 from llm.client import get_active_provider
 import pandas as pd
 
@@ -495,6 +496,63 @@ async def stories(need: str = None, k: int = 3):
     situations. Used to build trust with new users.
     """
     return {"need": need, "stories": get_stories(need, k)}
+
+
+# ── Autonomous Agent ──────────────────────────────────────────────────────────
+
+class AgentPlanRequest(BaseModel):
+    query: str
+    location: LocationModel | None = None
+    case_id: str | None = None
+
+
+@app.post("/api/agent/plan")
+async def agent_plan(req: AgentPlanRequest):
+    """
+    Run the autonomous agent. Given a query, the agent chains multiple
+    skill calls (planner → executor → eligibility → directions → stories)
+    and returns a complete action plan.
+
+    Returns:
+      - summary: human-readable overview
+      - steps: ordered step-by-step plan with resources, directions, rights
+      - eligibility: qualifying benefits programs + monthly estimates
+      - stories: relevant success stories
+      - trace: log of skill calls the agent made (for judges/debugging)
+    """
+    loc = None
+    if req.location:
+        loc = {"lat": req.location.lat, "lon": req.location.lon}
+
+    try:
+        result = run_autonomous_agent(
+            query=req.query,
+            location=loc,
+            case_id=req.case_id,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(500, f"Agent error: {e}")
+
+
+@app.post("/api/agent/pdf")
+async def agent_pdf(req: AgentPlanRequest):
+    """
+    Run the autonomous agent and return the action plan as HTML
+    (suitable for printing/saving as PDF via browser Print-to-PDF).
+    """
+    loc = None
+    if req.location:
+        loc = {"lat": req.location.lat, "lon": req.location.lon}
+
+    try:
+        result = run_autonomous_agent(query=req.query, location=loc, case_id=req.case_id)
+        html = generate_plan_pdf(result)
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=html)
+    except Exception as e:
+        raise HTTPException(500, f"PDF generation error: {e}")
+
 
 
 @app.get("/api/resources")
