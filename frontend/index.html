@@ -437,18 +437,20 @@ async function doLogin(){
     const data=await resp.json();
     if(data.returning){
       currentUserName=data.case?.name||val;
-      // Show welcome back with summary before going to ask page
+      // Show welcome back with summary + progress
       const container=document.querySelector('#page-returning .centered');
-      container.innerHTML=`<div style="text-align:center">
+      let whtml=`<div style="text-align:center">
         <div style="font-size:28px;margin-bottom:8px">&#128075;</div>
         <div style="font-family:var(--display);font-size:22px;font-weight:300;margin-bottom:8px">Welcome back, ${currentUserName}!</div>
-        <div style="font-size:14px;color:var(--t2);margin-bottom:16px;line-height:1.6">${data.summary||'Your previous session has been loaded.'}</div>
-        <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:20px;display:inline-block">
-          <div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase">Case ID</div>
-          <div style="font-size:16px;font-weight:600;font-family:var(--mono);color:var(--green)">${currentCaseId}</div>
-        </div>
-        <br><button class="btn-primary" style="width:auto;padding:14px 32px;font-size:14px" onclick="goTo('page-ask')">Continue</button>
+        <div style="font-size:14px;color:var(--t2);margin-bottom:16px;line-height:1.6">${data.summary||'Your previous session has been loaded.'}</div>`;
+      // Load progress
+      try{
+        const prog=await(await fetch(`/api/case/progress/${currentCaseId}`)).json();
+        if(prog&&prog.total_needs>0)whtml+=`<div style="text-align:left;max-width:350px;margin:0 auto 20px">${renderProgress(prog)}</div>`;
+      }catch(e){}
+      whtml+=`<button class="btn-primary" style="width:auto;padding:14px 32px;font-size:14px" onclick="document.getElementById('userLabel').textContent='${currentUserName}';goTo('page-ask')">Continue</button>
       </div>`;
+      container.innerHTML=whtml;
       return;
     }
   }catch(e){}
@@ -552,8 +554,9 @@ function renderResults(data){
           ${mr?`<div class="rc-match"><div class="rc-match-label">Why this matches</div><div class="rc-match-text">${mr}</div></div>`:''}
           <div class="rc-tags"><span class="rc-tag type">${(r.type||'').replace(/_/g,' ')}</span>${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}</div>
           <div class="rc-actions">
-            <span class="rc-action primary" onclick="event.stopPropagation();getDirections(${r.lat},${r.lon},'${eName}')">Directions</span>
-            <span class="rc-action" onclick="event.stopPropagation();flyToResult(${r.lat},${r.lon})">Show on map</span>
+            ${currentCaseId?`<span class="rc-action primary" onclick="event.stopPropagation();chooseResource('${type}','${eName}','${addr}','${r.type||''}',${r.lat},${r.lon})" style="background:rgba(58,125,10,0.12)">&#9989; Choose this</span>`:''}
+            <span class="rc-action${currentCaseId?'':' primary'}" onclick="event.stopPropagation();getDirections(${r.lat},${r.lon},'${eName}')">Directions</span>
+            <span class="rc-action" onclick="event.stopPropagation();flyToResult(${r.lat},${r.lon})">Map</span>
           </div>
         </div>`;
       }
@@ -704,6 +707,112 @@ async function setManualLocation(){
       }
     } else {const ls=document.getElementById('locStatus');if(ls){ls.textContent='Address not found — try a more specific NYC address';ls.style.color='var(--orange)'}}
   }catch(e){console.error('Location error:',e);const ls=document.getElementById('locStatus');if(ls){ls.textContent='Error looking up address';ls.style.color='var(--red)'}}
+}
+
+// ── Case: Choose, Checkin, Progress ────────────────────────
+async function chooseResource(needCategory,resourceName,resourceAddr,resourceType,lat,lon){
+  if(!currentCaseId)return;
+  try{
+    const resp=await fetch('/api/case/choose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,need_category:needCategory,resource_name:resourceName,resource_address:resourceAddr,resource_type:resourceType})});
+    const data=await resp.json();
+    // Show confirmation + directions
+    document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt,.choose-confirm').forEach(el=>el.remove());
+    const c=document.getElementById('resultsContent');
+    c.insertAdjacentHTML('beforeend',`<div class="answer-box fade-in choose-confirm" style="border-color:var(--green-d);background:rgba(58,125,10,0.03)">
+      <div style="font-weight:700;font-size:16px;color:var(--green);margin-bottom:6px">&#9989; ${data.message||'Resource chosen!'}</div>
+      <div style="font-size:13px;color:var(--t2);margin-bottom:12px">Get directions to <b>${resourceName}</b> and check in when you arrive.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-primary" style="padding:10px 16px;font-size:12px;width:auto" onclick="getDirections(${lat},${lon},'${resourceName}')">&#128204; Get Directions</button>
+        <button class="btn-secondary" style="padding:10px 16px;font-size:12px" onclick="showCheckin('${resourceName}')">&#128205; I'm there now</button>
+      </div>
+    </div>`);
+    c.parentElement.scrollTop=c.parentElement.scrollHeight;
+  }catch(e){console.error('Choose error:',e)}
+}
+
+function showCheckin(resourceName){
+  document.querySelectorAll('.checkin-box').forEach(el=>el.remove());
+  const c=document.getElementById('resultsContent');
+  const eName=resourceName.replace(/'/g,'&#39;');
+  c.insertAdjacentHTML('beforeend',`<div class="clarify-box fade-in checkin-box">
+    <div class="clarify-label">Check In</div>
+    <div style="font-size:14px;margin-bottom:12px">Did you make it to <b>${resourceName}</b>?</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" style="padding:12px 20px;font-size:13px;width:auto;flex:1" onclick="doCheckin(true,'${eName}','')">&#9989; Yes, I'm here</button>
+      <button class="btn-secondary" style="padding:12px 20px;font-size:13px;flex:1" onclick="showCheckinFailed('${eName}')">&#10060; No</button>
+    </div>
+  </div>`);
+  c.parentElement.scrollTop=c.parentElement.scrollHeight;
+}
+
+function showCheckinFailed(resourceName){
+  document.querySelectorAll('.checkin-box').forEach(el=>el.remove());
+  const c=document.getElementById('resultsContent');
+  c.insertAdjacentHTML('beforeend',`<div class="clarify-box fade-in checkin-box">
+    <div class="clarify-label">What happened?</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn-secondary" style="padding:10px;font-size:13px;text-align:left" onclick="doCheckin(false,'${resourceName}','full')">It was full / no capacity</button>
+      <button class="btn-secondary" style="padding:10px;font-size:13px;text-align:left" onclick="doCheckin(false,'${resourceName}','closed')">It was closed</button>
+      <button class="btn-secondary" style="padding:10px;font-size:13px;text-align:left" onclick="doCheckin(false,'${resourceName}','unsafe')">I didn't feel safe</button>
+      <button class="btn-secondary" style="padding:10px;font-size:13px;text-align:left" onclick="doCheckin(false,'${resourceName}','other')">Other reason</button>
+    </div>
+  </div>`);
+  c.parentElement.scrollTop=c.parentElement.scrollHeight;
+}
+
+async function doCheckin(arrived,resourceName,feedback){
+  if(!currentCaseId)return;
+  document.querySelectorAll('.checkin-box,.choose-confirm').forEach(el=>el.remove());
+  try{
+    const resp=await fetch('/api/case/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,arrived:arrived,resource_name:resourceName,feedback:feedback,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null})});
+    const data=await resp.json();
+    const c=document.getElementById('resultsContent');
+    if(arrived){
+      // Show success + progress
+      let progHtml=`<div class="answer-box fade-in" style="border-color:var(--green-d);background:rgba(58,125,10,0.03)">`;
+      progHtml+=`<div style="font-size:20px;text-align:center;margin-bottom:8px">&#127881;</div>`;
+      progHtml+=`<div style="font-weight:700;font-size:16px;text-align:center;color:var(--green);margin-bottom:8px">${data.message||'Great!'}</div>`;
+      if(data.progress){
+        progHtml+=renderProgress(data.progress);
+      }
+      progHtml+=`</div>`;
+      c.insertAdjacentHTML('beforeend',progHtml);
+    } else {
+      // Show failure + offer to search again
+      c.insertAdjacentHTML('beforeend',`<div class="answer-box fade-in" style="border-color:var(--orange)">
+        <div style="font-weight:600;font-size:14px;color:var(--orange);margin-bottom:6px">${data.message||'Let me find alternatives.'}</div>
+        <button class="btn-primary" style="padding:10px 16px;font-size:12px;width:auto;margin-top:8px" onclick="document.getElementById('queryInput').value=lastQuery;sendQuery()">Find Alternatives</button>
+      </div>`);
+    }
+    c.parentElement.scrollTop=c.parentElement.scrollHeight;
+  }catch(e){console.error('Checkin error:',e)}
+}
+
+function renderProgress(progress){
+  let html=`<div style="margin-top:12px">`;
+  html+=`<div style="font-size:12px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Your Progress (${progress.resolved_count||0}/${progress.total_needs||0})</div>`;
+  // Progress bar
+  const pct=progress.total_needs?Math.round((progress.resolved_count/progress.total_needs)*100):0;
+  html+=`<div style="background:var(--bg4);border-radius:6px;height:8px;margin-bottom:12px;overflow:hidden"><div style="background:var(--green);height:100%;width:${pct}%;border-radius:6px;transition:width 0.5s ease"></div></div>`;
+  for(const need of(progress.needs||[])){
+    const icon=need.status==='resolved'?'&#9989;':need.status==='in_progress'?'&#9203;':'&#9898;';
+    const color=need.status==='resolved'?'var(--green)':need.status==='in_progress'?'var(--orange)':'var(--t3)';
+    html+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">`;
+    html+=`<span style="font-size:14px">${icon}</span>`;
+    html+=`<div style="flex:1"><div style="font-weight:600;font-size:13px;color:${color}">${(need.category||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</div>`;
+    if(need.chosen_resource)html+=`<div style="font-size:11px;color:var(--t3)">${need.chosen_resource}</div>`;
+    html+=`</div></div>`;
+  }
+  html+=`</div>`;
+  return html;
+}
+
+async function loadProgress(){
+  if(!currentCaseId)return;
+  try{
+    const resp=await fetch(`/api/case/progress/${currentCaseId}`);
+    return await resp.json();
+  }catch(e){return null}
 }
 
 // ── Result map dot click ───────────────────────────────────
