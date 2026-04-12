@@ -2005,13 +2005,23 @@ function requestRide(rideId,sponsorName,etaMin){
 // ── Directions ─────────────────────────────────────────────
 let _pendingDir=null;
 
+// Return the visible content container so inline UIs (directions, etc.)
+// attach to whichever page is active (results / openclaw / admin).
+function _activeContentContainer(){
+  for(const id of ['openclawContent','agentPlanContent','resultsContent']){
+    const el=document.getElementById(id);
+    if(el && el.offsetParent!==null) return el;  // visible
+  }
+  return document.getElementById('resultsContent');
+}
+
 function getDirections(toLat,toLon,name){
   if(!userLocation){
     // Show location prompt inline
     document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt').forEach(el=>el.remove());
-    const c=document.getElementById('resultsContent');
+    const c=_activeContentContainer();
     c.insertAdjacentHTML('beforeend',`<div class="clarify-box fade-in directions-locprompt"><div class="clarify-label">Set your location first</div><div class="clarify-q">Enter your address above so we can calculate directions to ${name}.</div></div>`);
-    document.getElementById('locationInput').focus();
+    const li=document.getElementById('locationInput');if(li)li.focus();
     _pendingDir={toLat,toLon,name};
     return;
   }
@@ -2021,7 +2031,7 @@ function getDirections(toLat,toLon,name){
   if(resultMap){try{if(resultMap.getSource('route'))resultMap.getSource('route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
 
   // Show budget picker inline
-  const c=document.getElementById('resultsContent');
+  const c=_activeContentContainer();
   c.insertAdjacentHTML('beforeend',`
   <div class="clarify-box fade-in directions-picker" id="budgetPicker">
     <div class="clarify-label">Directions to ${name}</div>
@@ -2099,9 +2109,10 @@ async function fetchDirections(budget){
       html+=`</div>`;
     }
     html+=`</div>`;
-    document.getElementById('resultsContent').insertAdjacentHTML('beforeend',html);
-    // Open map and show route
-    if(!mapOpen)toggleMap();
+    _activeContentContainer().insertAdjacentHTML('beforeend',html);
+    // Open map and show route (only if we're on the results page)
+    const onResultsPage=document.getElementById('resultsContent')&&document.getElementById('resultsContent').offsetParent!==null;
+    if(onResultsPage&&!mapOpen)toggleMap();
     setTimeout(()=>{
       if(resultMap){
         resultMap.resize();
@@ -2117,7 +2128,7 @@ async function fetchDirections(budget){
         resultMap.fitBounds(bounds,{padding:60,duration:1500});
       }
     },400);
-  }catch(err){document.getElementById('resultsContent').insertAdjacentHTML('beforeend',`<div style="color:var(--red);padding:12px">Directions error: ${err.message}</div>`)}
+  }catch(err){_activeContentContainer().insertAdjacentHTML('beforeend',`<div style="color:var(--red);padding:12px">Directions error: ${err.message}</div>`)}
   document.getElementById('loadingOverlay').classList.remove('active');
 }
 
