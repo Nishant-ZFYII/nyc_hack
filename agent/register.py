@@ -176,9 +176,9 @@ async def nyc_resource_tools(_config, _builder: Builder) -> AsyncGenerator[Funct
                    "borough": r.get("borough")} for r in resources]
         return json.dumps(_clean(simple), indent=2, default=str)
 
-    group.add_function(name="find_resources", fn=_traced("find_resources", _find_resources),
+    group.add_function(name="find_resources", fn=_find_resources,
                        description=_find_resources.__doc__)
-    group.add_function(name="find_resources_by_type", fn=_traced("find_resources_by_type", _find_resources_by_type),
+    group.add_function(name="find_resources_by_type", fn=_find_resources_by_type,
                        description=_find_resources_by_type.__doc__)
     yield group
 
@@ -232,11 +232,11 @@ async def nyc_eligibility_tools(_config, _builder: Builder) -> AsyncGenerator[Fu
                   for s in stories]
         return json.dumps(simple, indent=2)
 
-    group.add_function(name="calculate_eligibility", fn=_traced("calculate_eligibility", _calculate_eligibility),
+    group.add_function(name="calculate_eligibility", fn=_calculate_eligibility,
                        description=_calculate_eligibility.__doc__)
-    group.add_function(name="get_rights", fn=_traced("get_rights", _get_rights),
+    group.add_function(name="get_rights", fn=_get_rights,
                        description=_get_rights.__doc__)
-    group.add_function(name="get_stories", fn=_traced("get_stories", _get_stories),
+    group.add_function(name="get_stories", fn=_get_stories,
                        description=_get_stories.__doc__)
     yield group
 
@@ -270,7 +270,7 @@ async def nyc_directions_tools(_config, _builder: Builder) -> AsyncGenerator[Fun
             simple["free_metrocard"] = result["free_metrocard_location"]
         return json.dumps(_clean(simple), indent=2)
 
-    group.add_function(name="get_directions", fn=_traced("get_directions", _get_directions),
+    group.add_function(name="get_directions", fn=_get_directions,
                        description=_get_directions.__doc__)
     yield group
 
@@ -313,13 +313,13 @@ async def nyc_case_tools(_config, _builder: Builder) -> AsyncGenerator[FunctionG
         status = "Need resolved" if arrived else "Resource marked failed"
         return f"Checkin saved: arrived={arrived} at {resource_name}. {status}."
 
-    group.add_function(name="get_case_summary", fn=_traced("get_case_summary", _get_case_summary),
+    group.add_function(name="get_case_summary", fn=_get_case_summary,
                        description=_get_case_summary.__doc__)
-    group.add_function(name="get_progress", fn=_traced("get_progress", _get_progress),
+    group.add_function(name="get_progress", fn=_get_progress,
                        description=_get_progress.__doc__)
-    group.add_function(name="choose_resource", fn=_traced("choose_resource", _choose_resource),
+    group.add_function(name="choose_resource", fn=_choose_resource,
                        description=_choose_resource.__doc__)
-    group.add_function(name="checkin_resource", fn=_traced("checkin_resource", _checkin_resource),
+    group.add_function(name="checkin_resource", fn=_checkin_resource,
                        description=_checkin_resource.__doc__)
     yield group
 
@@ -463,20 +463,20 @@ async def nyc_admin_tools(_config, _builder: Builder) -> AsyncGenerator[Function
             return json.dumps(result)
         return f"Saved admin notes to case {case_id}."
 
-    group.add_function(name="list_all_cases", fn=_traced("list_all_cases", _list_all_cases),
+    group.add_function(name="list_all_cases", fn=_list_all_cases,
                        description=_list_all_cases.__doc__)
-    group.add_function(name="get_case_details", fn=_traced("get_case_details", _get_case_details),
+    group.add_function(name="get_case_details", fn=_get_case_details,
                        description=_get_case_details.__doc__)
-    group.add_function(name="get_city_stats", fn=_traced("get_city_stats", _get_city_stats),
+    group.add_function(name="get_city_stats", fn=_get_city_stats,
                        description=_get_city_stats.__doc__)
-    group.add_function(name="find_critical_cases", fn=_traced("find_critical_cases", _find_critical_cases),
+    group.add_function(name="find_critical_cases", fn=_find_critical_cases,
                        description=_find_critical_cases.__doc__)
-    group.add_function(name="generate_case_briefing", fn=_traced("generate_case_briefing", _generate_case_briefing),
+    group.add_function(name="generate_case_briefing", fn=_generate_case_briefing,
                        description=_generate_case_briefing.__doc__)
-    group.add_function(name="update_case_need_status", fn=_traced("update_case_need_status", _update_case_need_status),
+    group.add_function(name="update_case_need_status", fn=_update_case_need_status,
                        description=_update_case_need_status.__doc__)
-    group.add_function(name="advance_destination_state", fn=_traced("advance_destination_state", _advance_destination_state),
+    group.add_function(name="advance_destination_state", fn=_advance_destination_state,
                        description=_advance_destination_state.__doc__)
-    group.add_function(name="add_admin_note", fn=_traced("add_admin_note", _add_admin_note),
+    group.add_function(name="add_admin_note", fn=_add_admin_note,
                        description=_add_admin_note.__doc__)
     yield group
