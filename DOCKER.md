@@ -13,15 +13,19 @@ If you don't have a GPU, open `docker-compose.yml` and delete the `deploy.resour
 
 ## Start
 
+**Recommended** — use the smart launcher which auto-detects an existing host Ollama cache so you don't re-download 25 GB of models:
+
 ```bash
-# 1. Clone
 git clone https://github.com/Nishant-ZFYII/nyc_hack.git && cd nyc_hack
+./start.sh
+```
 
-# 2. Build + launch everything (models download on first run — takes 10–20 min)
+**Manual equivalent** if you prefer not to use the script:
+
+```bash
+git clone https://github.com/Nishant-ZFYII/nyc_hack.git && cd nyc_hack
 docker compose up -d
-
-# 3. Watch progress (optional; Ctrl-C to detach)
-docker compose logs -f ollama-init
+docker compose logs -f ollama-init       # Ctrl-C once "Models ready." appears
 ```
 
 When `ollama-init` prints `Models ready.` and exits, both portals are live.
@@ -30,7 +34,7 @@ When `ollama-init` prints `Models ready.` and exits, both portals are live.
 
 | Portal | URL | What to try |
 |---|---|---|
-| **Client / user** | [http://localhost:9000](http://localhost:9000) | Type a query like *"I need a shelter tonight in Brooklyn near Flatbush"* → click **🤖 NeMo ReAct** → wait ~60 s for the action plan → click **🎫 Raise a Ticket** to register a case |
+| **Client / user** | [http://localhost:9000](http://localhost:9000) | Set location to *"Flatbush Brooklyn"* → type *"I need a shelter tonight"* → click **🌟 Not Sure Where to Start?** → wait ~60 s for the action plan → click **🎫 Raise a Ticket** to register a case |
 | **Admin / caseworker** | [http://localhost:9001](http://localhost:9001) | See 8 pre-seeded cases by urgency → click a case → **📄 Fill Forms from ID** → upload `samples/sample_id.jpg` → download filled LDSS-4826 + DOH-4220 PDFs |
 
 ## Stop

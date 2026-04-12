@@ -6,21 +6,69 @@ The system performs comprehensive needs assessments across housing, food, health
 
 ---
 
-## 🏁 Quickstart for evaluators
+## 🏁 Quickstart for evaluators (judges read this)
 
-Pick ONE path. The Docker path is simpler; the bare-metal path is faster on a machine you already trust.
+Pick ONE path below. **Path A (Docker)** is the zero-assumption path — works on any machine with Docker + internet. **Path B (bare metal)** is for developers who want to run directly.
 
-### Path A — Docker (recommended)
+### Path A — Docker (recommended for judges)
 
-See **[DOCKER.md](./DOCKER.md)** for the full walkthrough. Three commands:
+**Prerequisites** (all standard on modern dev machines):
 
 ```bash
-git clone https://github.com/Nishant-ZFYII/nyc_hack.git && cd nyc_hack
+docker --version           # need v24+
+docker compose version     # need v2+
+```
+
+If either is missing:
+- **Ubuntu/Debian:** `sudo apt-get install -y docker.io docker-compose-plugin && sudo usermod -aG docker $USER && newgrp docker`
+- **Mac:** install [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)
+- **Windows:** install [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) + enable WSL2
+
+**Optional but recommended:** if you have an NVIDIA GPU, install [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Without a GPU, Ollama falls back to CPU (still works, just slower).
+
+Disk + RAM: **~30 GB free disk** (for the two models), **~10 GB free RAM** minimum.
+
+**Run it:**
+
+```bash
+# 1. Clone
+git clone https://github.com/Nishant-ZFYII/nyc_hack.git
+cd nyc_hack
+
+# 2. Launch (smart — reuses existing Ollama cache if present)
+./start.sh
+```
+
+The `start.sh` script does the full boot:
+- Auto-detects an existing host Ollama cache (`~/.ollama`) and bind-mounts it so you don't re-download 25 GB
+- If no cache, Docker downloads `llama3` + `llama3.2-vision:11b` on first run (10-20 min)
+- Boots the stack (user portal + admin portal + ollama)
+- Tails the init container until models are ready
+- Prints the two URLs when done
+
+**If you don't want the helper script**, the manual equivalent is:
+
+```bash
 docker compose up -d
 docker compose logs -f ollama-init       # wait for "Models ready."
 ```
 
-Then open [http://localhost:9000](http://localhost:9000) (user) and [http://localhost:9001](http://localhost:9001) (admin).
+**Open in your browser:**
+
+| Portal | URL | First thing to try |
+|---|---|---|
+| **Client / user** | [http://localhost:9000](http://localhost:9000) | Set location to *"Flatbush Brooklyn"* → type *"I have 4 kids and we're losing our housing next week"* → click **🌟 Not Sure Where to Start?** → wait ~60s → click **🎫 Raise a Ticket** to register the case |
+| **Admin / caseworker** | [http://localhost:9001](http://localhost:9001) | You'll see 8 pre-seeded cases → click any case → **📄 Fill Forms from ID** → upload `samples/sample_id.jpg` → download filled LDSS-4826 SNAP + DOH-4220 Medicaid PDFs |
+
+**Stop the stack:**
+```bash
+./start.sh stop              # or: docker compose down
+./start.sh reset             # wipe Docker volumes + regenerated override (keeps host Ollama cache)
+```
+
+See [DOCKER.md](./DOCKER.md) for container architecture details.
+
+---
 
 ### Path B — Bare metal (no Docker)
 
@@ -30,30 +78,31 @@ Works on Linux/macOS. Tested on Ubuntu 22.04 and the NVIDIA DGX Spark.
 
 ```bash
 # Python 3.10 or newer (3.12 recommended)
-python3 --version
+python3 --version                         # must print 3.10+
 
-# Tesseract — fallback OCR (primary OCR uses llama3.2-vision via Ollama)
-#   Ubuntu/Debian:
-sudo apt-get install -y tesseract-ocr
-#   macOS:
-brew install tesseract
+# Tesseract — fallback OCR (primary uses llama3.2-vision)
+sudo apt-get install -y tesseract-ocr     # Ubuntu/Debian
+# or: brew install tesseract              # macOS
+
+# curl (for health checks below)
+which curl || sudo apt-get install -y curl
 ```
 
 #### 2. Install Ollama + pull the two models
 
 ```bash
-# Install Ollama: https://ollama.com/download
+# Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Start Ollama with GPU enabled (required on DGX — defaults to CPU otherwise)
+# Start Ollama on GPU (omit env vars if you don't have a GPU)
 sudo systemctl stop ollama 2>/dev/null
 OLLAMA_NUM_GPU=999 OLLAMA_KEEP_ALIVE=2h ollama serve > /tmp/ollama.log 2>&1 &
 
-# Pull the two models the system uses (~25 GB, 10–20 min depending on bandwidth)
-ollama pull llama3              # drives the ReAct agent
-ollama pull llama3.2-vision:11b # reads ID photos for the form-fill feature
+# Pull the two models (~25 GB total, 10-20 min first run)
+ollama pull llama3                        # ReAct agent (~4.7 GB)
+ollama pull llama3.2-vision:11b           # ID reader (~7.9 GB)
 
-# Verify
+# Verify — should list both models
 curl -s http://localhost:11434/api/tags | python3 -m json.tool
 ```
 
@@ -68,7 +117,11 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> **Note:** `nvidia-nat-langchain` may error on `pip`'s dependency resolver. If it does, run `pip install uv && uv pip install nvidia-nat-langchain` instead (uv handles deep dependency trees pip can't).
+> **If `pip install` hits a dep resolver error on `nvidia-nat-langchain`**, use uv:
+> ```bash
+> pip install uv
+> uv pip install -r requirements.txt
+> ```
 
 #### 4. Seed demo data
 
@@ -76,42 +129,44 @@ pip install -r requirements.txt
 python3 seed_demo_cases.py
 ```
 
-This writes 8 curated cases (1 critical, 2 high, 3 medium, 2 resolved) into `data/cases/` so the admin dashboard has something to show on first open.
+Writes 8 curated cases (1 critical DV, 2 high, 3 medium, 2 resolved) into `data/cases/` so the admin dashboard has demo content. The resource mart, knowledge graph, and embeddings are already in `data/` (committed to git — no regeneration needed).
 
 #### 5. Launch both portals
 
-Open **two terminals** (or run both in the background):
+Open **two terminals**:
 
 ```bash
 # Terminal 1 — user portal
+source venv/bin/activate
 uvicorn server:app --host 0.0.0.0 --port 9000
 
 # Terminal 2 — admin portal
+source venv/bin/activate
 uvicorn admin_server:app --host 0.0.0.0 --port 9001
 ```
 
-#### 6. Open in your browser
+#### 6. Open in browser
 
-| Portal | URL | What to try |
-|---|---|---|
-| **Client / user** | [http://localhost:9000](http://localhost:9000) | Set location to *"Flatbush Brooklyn"* → type *"I have 4 kids and we're losing our housing next week"* → click **🌟 Not Sure Where to Start?** → wait ~60s for full plan → click **🎫 Raise a Ticket** to register the case |
-| **Admin / caseworker** | [http://localhost:9001](http://localhost:9001) | Click any case → **📄 Fill Forms from ID** → upload `samples/sample_id.jpg` → download filled LDSS-4826 SNAP + DOH-4220 Medicaid PDFs |
+Same URLs and flows as Path A above. Use `localhost` or your machine's IP.
 
-#### Troubleshooting
+#### Troubleshooting (bare metal)
 
 | Symptom | Fix |
 |---|---|
-| Agent request hangs | Check Ollama is running: `curl http://localhost:11434/api/tags`. Restart with `OLLAMA_NUM_GPU=999 ollama serve &` |
-| "tesseract not found" | Re-run step 1 — the fallback OCR needs the system binary even though we default to Ollama vision |
+| Agent request hangs forever | `curl http://localhost:11434/api/tags` — if no response, restart Ollama: `pkill ollama; OLLAMA_NUM_GPU=999 ollama serve &` |
+| `tesseract: command not found` | Re-run step 1 — fallback OCR needs the system binary |
 | `ModuleNotFoundError: No module named 'nat'` | `pip install nvidia-nat nvidia-nat-langchain` (use `uv pip install` if pip fails) |
-| Admin page shows 0 cases | `python3 seed_demo_cases.py` (you skipped step 4) |
-| Page shows only "Find Help" | Scroll down — the **🌟 Not Sure Where to Start?** button is the full-plan agent |
+| Admin page shows 0 cases | You skipped step 4 — run `python3 seed_demo_cases.py` |
+| Only `Find Help` button, no AI plan button | Scroll down — the `🌟 Not Sure Where to Start?` button is below it |
+| `data/resource_mart.parquet not found` | `git pull` — data files are committed to git |
+| Port 9000 or 9001 already in use | `lsof -ti:9000 \| xargs kill -9` or change the port flag |
+| Slow queries (>2 min) | You're on CPU — expected. Faster with GPU ollama |
 
 #### Stop everything
 
 ```bash
-pkill -f uvicorn     # stops both portals
-pkill ollama         # stops Ollama
+pkill -f uvicorn           # both portals
+pkill ollama               # Ollama
 ```
 
 ---
@@ -119,7 +174,7 @@ pkill ollama         # stops Ollama
 ## Architecture
 
 ```
-User query → LLM Planner (Nemotron) → JSON Plan
+User query → LLM Planner (llama3) → JSON Plan
   → Executor (cuDF/cuGraph/cuOpt on DGX)
   → Synthesizer (natural language answer)
   → Verifier (per-claim fact-checking)
@@ -127,200 +182,112 @@ User query → LLM Planner (Nemotron) → JSON Plan
   → User feedback loop (ground truth correction)
 ```
 
-**Key principle:** The LLM never touches the data directly. It translates natural language to a structured JSON plan; the executor queries real data; the synthesizer formats the answer; the verifier fact-checks each claim against the mart.
+**Key principle:** the LLM never touches the data directly. It translates natural language to a structured JSON plan; the executor queries real data; the synthesizer formats the answer; the verifier fact-checks each claim against the resource mart.
 
-## Current Status (April 12, 2026)
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full design.
 
-- ✅ FastAPI backend on port 9000 with custom HTML frontend (dark theme, deck.gl 3D map)
+## Current status (April 12, 2026)
+
+- ✅ FastAPI user portal on `:9000` + admin portal on `:9001`
+- ✅ **NVIDIA NeMo Agent Toolkit** — ReAct agent on llama3, 5 tool groups, 15+ tools (`agent/register.py`)
+- ✅ **NVIDIA NeMo Guardrails** — PII detection, jailbreak blocking, crisis keyword handling (`guardrails/`)
+- ✅ **OpenClaw skill** — `nyc-caseworker` capsule submitted to ClawHub (`skills/nyc-caseworker/`)
 - ✅ Resource mart: **7,759 resources** across 19 types
 - ✅ Knowledge graph: **3.6M edges** via cuGraph
 - ✅ SPO triples: **328K + 1.2M** txt2kg extractions
 - ✅ PyKEEN KGE: **83,618 entities × 64 dims** (TransE)
 - ✅ cuOpt VRP allocation (cold emergency, migrant allocation)
-- ✅ Location-aware search with GPS + manual address + Nominatim geocoding
-- ✅ Multi-modal routing: walk (OSRM) + transit with budget awareness
+- ✅ Location-aware search with GPS + address geocoding (Nominatim proxy + fallback table)
+- ✅ Multi-modal routing: walk (OSRM) + transit with budget awareness + sponsored ride
 - ✅ Case management: login, visit tracking, progress, choose/checkin/resolve
-- ✅ Eligibility screener (SNAP/Medicaid/WIC/Cash/Fair Fares)
+- ✅ Eligibility screener (SNAP/Medicaid/WIC/Cash/Fair Fares + auto-fill)
 - ✅ Rights database (per resource type)
-- ✅ Success stories (6 anonymized journeys)
-- ✅ Ollama nemotron-mini on GPU (90 tok/s)
+- ✅ llama3.2-vision multimodal OCR → auto-filled NYC benefits PDFs
+- ✅ Success stories (10+ anonymized journeys)
 
-## Requirements
+## API endpoints
 
-- Python 3.10+ (3.12 on DGX)
-- DGX Spark (for GPU features) OR laptop with an LLM API key
-
-### On DGX Spark (no API key needed)
-
-```bash
-# Start ollama on GPU (REQUIRED — default is CPU)
-sudo systemctl stop ollama
-OLLAMA_NUM_GPU=999 ollama serve &
-ollama pull nemotron-mini  # or nemotron-3-nano for larger model
-
-# Clone and install
-git clone https://github.com/Nishant-ZFYII/nyc_hack.git
-cd nyc_hack
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-
-# Install NVIDIA GPU stack (aarch64 wheels for DGX Spark GB10)
-pip install cudf-cu12 cugraph-cu12 cuml-cu12 cupy-cuda12x cuopt-cu12
-pip install torch --pre --index-url https://download.pytorch.org/whl/nightly/cu128 --no-deps
-pip install pykeen tensorrt-llm
-
-# Run
-uvicorn server:app --host 0.0.0.0 --port 9000
-# Open http://<dgx-ip>:9000
-```
-
-### On laptop (API key required)
-
-Full step-by-step for a fresh Linux/Mac laptop:
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/Nishant-ZFYII/nyc_hack.git
-cd nyc_hack
-
-# 2. Create a Python virtual environment
-python3 -m venv venv
-source venv/bin/activate      # Linux/Mac
-# .\venv\Scripts\activate     # Windows PowerShell
-
-# 3. Upgrade pip and install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# 4. Get an LLM API key
-#    Option A: Anthropic Claude Haiku (recommended — fast, cheap, reliable JSON)
-#      → https://console.anthropic.com/ → API keys → create key
-#      → Add $5 credit
-#    Option B: OpenAI
-#      → https://platform.openai.com/api-keys
-
-# 5. Run the server
-ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE uvicorn server:app --host 0.0.0.0 --port 9000
-
-# 6. Open in browser
-#    http://localhost:9000
-```
-
-**If port 9000 is busy:**
-```bash
-# Find what's using the port and kill it
-lsof -ti:9000 | xargs kill -9
-# Or run on a different port:
-ANTHROPIC_API_KEY=sk-... uvicorn server:app --host 0.0.0.0 --port 9001
-```
-
-**To stop the server:** `Ctrl+C`
-
-**To update code later:**
-```bash
-cd nyc_hack
-source venv/bin/activate
-git pull
-pip install -r requirements.txt   # in case new deps were added
-# restart uvicorn
-```
-
-**Persistent API key (don't type every time):**
-```bash
-# Linux/Mac — add to ~/.bashrc or ~/.zshrc
-echo 'export ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE' >> ~/.bashrc
-source ~/.bashrc
-# Then just run:
-uvicorn server:app --host 0.0.0.0 --port 9000
-```
-
-### Troubleshooting
-
-| Problem | Fix |
-|---------|-----|
-| `ModuleNotFoundError: No module named 'fastapi'` | `pip install -r requirements.txt` |
-| `Address already in use` | `lsof -ti:9000 \| xargs kill -9` |
-| `No LLM provider available` | Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` |
-| Port 9000 works on DGX but not locally | Use `http://localhost:9000` not the DGX IP |
-| `data/resource_mart.parquet not found` | `git pull` — data files are in the repo |
-| Slow queries (>60s) | You're on CPU — expected. Faster on DGX with ollama |
-| Permission errors on macOS | `sudo xcode-select --install` then retry pip install |
-
-Data (`data/`, `stage/`) is **included in the repo** — no need to regenerate.
-
-> **Alternate data source:** [Google Drive](https://drive.google.com/drive/folders/1gcCU1-kqGn64PfQ51Hw93J96nt-GI0br)
-
-## API Endpoints
-
-### Core Pipeline
-- `POST /api/query` — main query. Body: `{query, case_id?, location?: {lat,lon}, demo_mode?}`. Returns: `{answer, plan, resources[], timing, verification, reasoning, clarify_question}`
+### Core pipeline
+- `POST /api/query` — main query. Body: `{query, case_id?, location?: {lat,lon}, demo_mode?}`
+- `POST /api/agent/plan` — autonomous plan (timeline view with alternatives, eligibility, rights, stories)
+- `POST /api/agent/nat` — NeMo Agent Toolkit ReAct answer
+- `POST /api/agent/openclaw` — OpenClaw skill dispatch
 - `GET /api/resources` — all 7,759 resources with coords (for map)
 - `GET /api/status` — system health + resource counts
 
-### Location & Routing
-- `GET /api/geocode?q=<address>` — geocode an address via Nominatim proxy
+### Location & routing
+- `GET /api/geocode?q=<address>` — Nominatim proxy + NYC fallback table
 - `POST /api/directions` — multi-modal directions. Body: `{from_lat, from_lon, to_lat, to_lon, budget?}`
 
-### Case Management
-- `POST /api/case/login` — create/resume case. Body: `{case_id, name?}`
-- `GET /api/case/progress/{case_id}` — structured progress with ✅/🔄/⚪
-- `POST /api/case/choose` — user picks a resource for a need. Body: `{case_id, need_category, resource_name, resource_address, resource_type}`
-- `POST /api/case/checkin` — confirm arrival. Body: `{case_id, arrived: true/false, resource_name, feedback?}`
-- `POST /api/case/resolve` — mark a need as resolved manually. Body: `{case_id, category}`
-- `POST /api/case/visited` — log resource visit with feedback
-- `GET /api/cases` — list all cases (admin view)
+### Case management
+- `POST /api/case/login` — create/resume case
+- `GET /api/case/progress/{case_id}` — structured progress (✅ / 🔄 / ⚪)
+- `POST /api/case/choose` — user picks a resource for a need
+- `POST /api/case/checkin` — confirm arrival (or not)
+- `POST /api/case/resolve` — mark a need as resolved
+- `POST /api/ticket/raise` — register a formal NYC case ticket (NYC-XXXXXX)
 
-### Knowledge & Support
-- `POST /api/eligibility` — benefits calculator. Body: `{household_size, annual_income, has_children, ...}`. Returns qualifying programs + estimated amounts.
-- `GET /api/rights?resource_type=shelter` — legal rights at that resource type
-- `GET /api/stories?need=housing&k=3` — anonymized success stories
-- `POST /api/similar` — KGE similarity search. Body: `{resource_id, k}`
-- `POST /api/feedback` — report issue with a resource. Body: `{resource_name, issue, detail}`
+### Knowledge & support
+- `POST /api/eligibility` — benefits calculator
+- `GET /api/rights?resource_type=shelter` — legal rights
+- `GET /api/stories?need=housing&k=3` — success stories
+- `POST /api/refine` — checkbox-based refine panel (updates eligibility + rights + resources)
+- `POST /api/similar` — KGE similarity search
+- `POST /api/feedback` — report issue with a resource
 
-## Project Structure
+### Admin
+- `GET /api/admin/cases` — list all cases
+- `POST /api/admin/fill_forms` — auto-fill NYC benefits PDFs from ID upload
+- `POST /api/admin/ocr_id` — llama3.2-vision OCR on ID photo
+
+## Project structure
 
 ```
 nyc_hack/
-├── server.py                 # FastAPI backend (main entry point)
+├── server.py                     # user portal (:9000)
+├── admin_server.py               # admin portal (:9001)
 ├── frontend/
-│   └── index.html            # Single-page app (dark theme, deck.gl map)
-├── llm/
-│   └── client.py             # LLM fallback ladder (ollama → Claude → OpenRouter)
+│   ├── index.html                # user SPA (dark→light theme, deck.gl map, emoji icons)
+│   └── admin.html                # caseworker SPA
+├── agent/                        # NVIDIA NeMo Agent Toolkit integration
+│   ├── register.py               # tool groups + skills
+│   └── config.yml                # ReAct agent config
+├── skills/nyc-caseworker/        # OpenClaw skill capsule for ClawHub
+├── guardrails/                   # NeMo Guardrails (PII, jailbreak, crisis)
+├── llm/client.py                 # LLM fallback ladder
 ├── pipeline/
-│   ├── planner.py            # NL → JSON plan
-│   ├── executor.py           # Plan → cuDF/cuGraph queries (with location-aware sorting)
-│   ├── synth.py              # Results → natural language
-│   ├── verify.py             # Per-claim fact verification
-│   ├── feedback.py           # Ground truth correction
-│   ├── clarify.py            # Multi-turn follow-up
-│   ├── cases.py              # Case management (persistent user tracking)
-│   ├── geocode.py            # Nominatim + NYC landmark fallback
-│   ├── routing.py            # OSRM walking + MTA transit directions
-│   └── eligibility.py        # Benefits calculator + rights + stories
-├── engine/
-│   ├── confidence.py         # Confidence-scored reasoning paths
-│   ├── embeddings.py         # KGE embeddings (loads PyKEEN if available)
-│   ├── txt2kg.py             # 311 complaint → structured triples
-│   └── train_kge.py          # Train PyKEEN TransE on triples
-├── data/                     # INCLUDED: resource_mart, graph.pkl, triples, KGE embeddings
-├── stage/                    # INCLUDED: cleaned per-dataset parquet
-├── pull_all.py               # Download raw data from NYC Open Data
-├── clean_all.py              # Clean raw data
-├── build_mart.py             # Build unified resource mart
-├── build_graph.py            # Build cuGraph knowledge graph
-├── build_triples.py          # Build SPO triples
-├── ARCHITECTURE.md           # Detailed technical docs
-├── DEMO_SCRIPT.md            # Demo presentation
-└── DEVPOST.md                # Hackathon submission writeup
+│   ├── planner.py                # NL → JSON plan
+│   ├── executor.py               # plan → cuDF/cuGraph queries
+│   ├── synth.py                  # results → natural language
+│   ├── verify.py                 # per-claim fact check
+│   ├── cases.py                  # case management
+│   ├── geocode.py                # Nominatim + fallback table
+│   ├── routing.py                # OSRM walking + MTA transit
+│   ├── eligibility.py            # benefits calculator
+│   ├── form_filler.py            # llama3.2-vision OCR + PDF overlay
+│   └── briefing.py               # admin briefings
+├── engine/                       # KGE + cuGraph primitives
+├── data/                         # ✅ committed: mart, graph.pkl, triples, KGE
+├── samples/                      # sample ID image + blank NYC forms
+├── seed_demo_cases.py            # writes 8 demo cases to data/cases/
+├── docker-compose.yml            # full stack orchestration
+├── Dockerfile                    # app image
+├── start.sh                      # smart launcher (auto-detect ollama cache)
+├── ARCHITECTURE.md
+├── DOCKER.md
+├── DEMO_SCRIPT.md
+└── DEVPOST.md                    # hackathon submission
 ```
 
-## Example Queries
+## Example queries
 
-**Needs assessment (caseworker):**
+**Caseworker-style (rich needs assessment):**
 - *"I'm Tina, 4 kids ages 12-16, income $28K, my sister is kicking us out next week"*
+- *"Someone broke into my apartment, I have a 6-year-old, I don't feel safe going back"*
 
 **Simple lookup:**
 - *"What shelters in Brooklyn have available beds?"*
+- *"Free food pantries near Jamaica Queens"*
 
 **Location-aware:**
 - *"I need a shelter near 43rd street Manhattan"*
@@ -328,29 +295,31 @@ nyc_hack/
 **City-ops simulation:**
 - *"Cold emergency declared. 3 Brooklyn shelters hit capacity. 200 people outside at 15°F. What do we do?"*
 
-## LLM Provider Fallback (`llm/client.py`)
+## LLM provider fallback (`llm/client.py`)
 
-1. Ollama nemotron-mini at `localhost:11434` (primary on DGX)
-2. Claude Haiku via Anthropic API
-3. GPT-4o-mini via OpenAI API
-4. llama.cpp at `localhost:8080`
-5. OpenRouter (last resort)
+1. **Ollama llama3 on DGX** (primary, local)
+2. Ollama nemotron-mini (secondary, local)
+3. Claude Haiku via Anthropic API
+4. GPT-4o-mini via OpenAI API
+5. llama.cpp at `localhost:8080`
+6. OpenRouter (last resort)
 
-## NVIDIA Stack (11 components)
+## NVIDIA stack (11+ components)
 
 | Tool | Role |
 |------|------|
-| **Nemotron via Ollama** | LLM inference on GB10 GPU |
+| **Nemotron / llama3 via Ollama** | Local LLM inference on GB10 GPU |
+| **NeMo Agent Toolkit** | ReAct agent + tool dispatch |
+| **NeMo Guardrails** | PII / jailbreak / crisis detection |
+| **OpenClaw + ClawHub** | `nyc-caseworker` skill capsule |
 | **RAPIDS cuDF** | GPU DataFrame filtering |
 | **RAPIDS cuGraph** | 3.6M-edge knowledge graph |
 | **cuOpt** | VRP allocation for emergencies |
 | **cuPy** | GPU spatial scoring |
 | **RAPIDS cuML** | KNN / HDBSCAN |
-| **TensorRT-LLM** | Compiled inference |
 | **PyKEEN + PyTorch** | TransE KGE embeddings |
 | **txt2kg** | 311 complaint extraction |
-| **deck.gl** | GPU 3D map |
-| **CUDA 13.0** | DGX Spark GB10 compute |
+| **deck.gl** | GPU 3D map (IconLayer + ScatterplotLayer) |
 
 ## License
 
