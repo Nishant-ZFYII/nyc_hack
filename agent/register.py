@@ -396,8 +396,8 @@ async def nyc_admin_tools(_config, _builder: Builder) -> AsyncGenerator[Function
         }
         return json.dumps(_clean(trimmed), indent=2, default=str)
 
-    async def _get_city_stats() -> str:
-        """Get aggregate stats across all cases: urgency breakdown, need category counts, total visits, resolved vs open needs. Use for dashboard summaries and 'how is the city doing' questions."""
+    async def _get_city_stats(_unused: str = "") -> str:
+        """Get aggregate stats across all cases: urgency breakdown, need category counts, total visits, resolved vs open needs. Use for dashboard summaries and 'how is the city doing' questions. Pass an empty string for the argument."""
         urgency_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unknown": 0}
         need_counts: dict = {}
         resolved, open_ = 0, 0
