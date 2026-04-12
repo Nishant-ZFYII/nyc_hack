@@ -489,7 +489,7 @@ async function doLogin(){
 }
 
 // ── Query ──────────────────────────────────────────────────
-function quickAsk(q){document.getElementById('queryInput').value=q;sendQuery()}
+function quickAsk(q){const el=document.getElementById('queryInput');el.value=q;el.focus()}
 
 async function sendQuery(){
   const q=document.getElementById('queryInput').value.trim();if(!q)return;
