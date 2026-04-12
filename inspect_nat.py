@@ -2,12 +2,8 @@
 import sys, inspect
 sys.path.insert(0, ".")
 
-from nat.utils.type_utils import OutputArgsSchema
 from nat.builder.function_info import FunctionInfo
 
-print("=== OutputArgsSchema ===")
-print(OutputArgsSchema.model_json_schema())
-print()
 
 # Simulate a real tool with return type str
 async def tool_str(query: str, lat: float = 0) -> str:
