@@ -219,9 +219,18 @@ def _overlay_on_real_form(source_pdf: Path, answers: dict) -> bytes:
     from reportlab.pdfgen import canvas as rl_canvas
     from io import BytesIO
 
-    # Pass 1: find (page_idx, x, y) placement points for each answer
-    placements = []  # list of (page_idx, x, y, text)
-    used_labels = set()  # don't place a value multiple times per label
+    # Pass 1: find (page_idx, x, y) placement points for each answer.
+    # Strategy: place the value BELOW the label (on the underscore line the
+    # form provides for handwriting), one placement per distinct answer value.
+    placements = []           # list of (page_idx, x, y, text)
+    used_values = set()       # don't repeat the same value text twice
+    occupied_spots = []       # list of (page_idx, x, y) — avoid close-proximity double-fills
+
+    def _too_close(page_idx, x, y):
+        for p, xx, yy in occupied_spots:
+            if p == page_idx and abs(xx - x) < 40 and abs(yy - y) < 14:
+                return True
+        return False
 
     with pdfplumber.open(source_pdf) as pdf:
         n_pages = len(pdf.pages)
@@ -229,30 +238,40 @@ def _overlay_on_real_form(source_pdf: Path, answers: dict) -> bytes:
 
         for page_idx, page in enumerate(pdf.pages):
             words = page.extract_words()
-            # Build lower-cased text index for fuzzy label matching
             for label_key, value in answers.items():
-                if label_key in used_labels or not value:
+                if not value:
+                    continue
+                # Skip if we've already placed this exact value somewhere
+                value_str = str(value)
+                if value_str in used_values:
                     continue
                 label_tokens = label_key.lower().split()
-                # Find sequential tokens on the page
                 for i, w in enumerate(words):
-                    if w["text"].lower() == label_tokens[0]:
-                        # Check following tokens match
-                        ok = True
-                        last_w = w
-                        for j, t in enumerate(label_tokens[1:], 1):
-                            if i + j >= len(words) or words[i + j]["text"].lower() != t:
-                                ok = False
-                                break
-                            last_w = words[i + j]
-                        if ok:
-                            # Place text just right of the last matched token
-                            # pdfplumber "top" is from top; reportlab y from bottom
-                            x = last_w["x1"] + 6
-                            y = page_sizes[page_idx][1] - last_w["top"] - 10
-                            placements.append((page_idx, x, y, str(value)))
-                            used_labels.add(label_key)
+                    if w["text"].lower().rstrip(":") != label_tokens[0]:
+                        continue
+                    # Check following tokens match
+                    ok = True
+                    last_w = w
+                    first_w = w
+                    for j, t in enumerate(label_tokens[1:], 1):
+                        if (i + j >= len(words)
+                                or words[i + j]["text"].lower().rstrip(":") != t):
+                            ok = False
                             break
+                        last_w = words[i + j]
+                    if not ok:
+                        continue
+                    # Place value BELOW the label baseline, roughly aligned to label's left edge.
+                    # pdfplumber "top" is from top of page; reportlab y is from bottom.
+                    # Use label midpoint X so value lands on the write-line beneath.
+                    x = first_w["x0"]
+                    y_pdf = page_sizes[page_idx][1] - last_w["bottom"] - 14
+                    if _too_close(page_idx, x, y_pdf):
+                        break
+                    placements.append((page_idx, x, y_pdf, value_str))
+                    occupied_spots.append((page_idx, x, y_pdf))
+                    used_values.add(value_str)
+                    break
 
     # Pass 2: build overlay PDF with reportlab (one page per source page)
     overlay_buf = BytesIO()
@@ -261,7 +280,7 @@ def _overlay_on_real_form(source_pdf: Path, answers: dict) -> bytes:
         w, h = page_sizes[page_idx]
         c.setPageSize((w, h))
         c.setFont("Helvetica-Bold", 10)
-        c.setFillColorRGB(0.05, 0.35, 0.05)  # dark green to distinguish filled text
+        c.setFillColorRGB(0.75, 0.05, 0.05)  # dark red — distinguishes AI-filled text
         for pi, x, y, txt in placements:
             if pi == page_idx:
                 c.drawString(x, y, txt)
@@ -297,8 +316,8 @@ def _answers_from_case(id_fields: dict, case_data: dict) -> dict:
     household = case_data.get("household_size", "")
     income = case_data.get("annual_income", "")
 
-    # Keys use the label text as it appears in the form (lowercased). The
-    # overlay function does case-insensitive token matching.
+    # Canonical labels only — overlay is placed once per distinct value.
+    # Keys match label text as it appears in the form (case-insensitive).
     return {
         "last name": ln,
         "first name": fn,
@@ -306,17 +325,7 @@ def _answers_from_case(id_fields: dict, case_data: dict) -> dict:
         "sex": sex,
         "address": addr,
         "city": city,
-        "state": state,
         "zip": zipc,
-        "zip code": zipc,
-        "home address": addr,
-        "mailing address": addr,
-        "home phone": "",
-        "social security number": "",
-        "household size": str(household) if household else "",
-        "annual income": f"${income:,}" if isinstance(income, (int, float)) and income else "",
-        "name": full,
-        "full name": full,
     }
 
 
