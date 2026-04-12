@@ -94,7 +94,7 @@ uvicorn admin_server:app --host 0.0.0.0 --port 9001
 
 | Portal | URL | What to try |
 |---|---|---|
-| **Client / user** | [http://localhost:9000](http://localhost:9000) | *"I need a shelter tonight in Brooklyn near Flatbush"* → click **🤖 NeMo ReAct** → wait ~60 s → click **🎫 Raise a Ticket** to register a case |
+| **Client / user** | [http://localhost:9000](http://localhost:9000) | Set location to *"Flatbush Brooklyn"* → type *"I have 4 kids and we're losing our housing next week"* → click **🌟 Not Sure Where to Start?** → wait ~60s for full plan → click **🎫 Raise a Ticket** to register the case |
 | **Admin / caseworker** | [http://localhost:9001](http://localhost:9001) | Click any case → **📄 Fill Forms from ID** → upload `samples/sample_id.jpg` → download filled LDSS-4826 SNAP + DOH-4220 Medicaid PDFs |
 
 #### Troubleshooting
@@ -105,7 +105,7 @@ uvicorn admin_server:app --host 0.0.0.0 --port 9001
 | "tesseract not found" | Re-run step 1 — the fallback OCR needs the system binary even though we default to Ollama vision |
 | `ModuleNotFoundError: No module named 'nat'` | `pip install nvidia-nat nvidia-nat-langchain` (use `uv pip install` if pip fails) |
 | Admin page shows 0 cases | `python3 seed_demo_cases.py` (you skipped step 4) |
-| "Full Plan" button visible but doesn't work | Ignore — the primary agent button is **🤖 NeMo ReAct** |
+| Page shows only "Find Help" | Scroll down — the **🌟 Not Sure Where to Start?** button is the full-plan agent |
 
 #### Stop everything
 
