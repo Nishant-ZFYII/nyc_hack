@@ -875,35 +875,101 @@ async function buildReturnFlow(){
   const progress=await loadProgress();
   if(!progress||!progress.needs||!progress.needs.length){goTo('page-ask');return}
 
+  const resolved=progress.needs.filter(n=>n.status==='resolved');
   const inProgress=progress.needs.find(n=>n.status==='in_progress');
+  const open=progress.needs.filter(n=>n.status==='open');
+
   let html=`<div style="margin-top:20px">`;
 
-  // Greeting
-  html+=`<div style="font-family:var(--display);font-size:24px;font-weight:300;margin-bottom:16px">Welcome back, ${currentUserName}!</div>`;
+  // Warm greeting
+  html+=`<div style="font-family:var(--display);font-size:26px;font-weight:300;margin-bottom:8px">Hi ${currentUserName} &#128075;</div>`;
 
-  // If there's an in-progress need, ask about it first
+  // Empathy summary
+  html+=`<div style="font-size:14px;color:var(--t2);line-height:1.7;margin-bottom:20px">`;
+  if(resolved.length>0){
+    const resolvedNames=resolved.map(n=>`<b>${(n.category||'').replace(/_/g,' ')}</b>${n.chosen_resource?' at '+n.chosen_resource:''}`);
+    html+=`Last time we helped you with ${resolvedNames.join(', ')}. `;
+  }
+  if(open.length>0||inProgress){
+    const remaining=[...open.map(n=>n.category)];
+    if(inProgress)remaining.unshift(inProgress.category);
+    html+=`You still have <b>${remaining.length}</b> thing${remaining.length>1?'s':''} we can help with: ${remaining.map(c=>'<b>'+c.replace(/_/g,' ')+'</b>').join(', ')}.`;
+  }
+  if(resolved.length===0&&!inProgress&&open.length===0){
+    html+=`Good to see you again! How can we help today?`;
+  }
+  html+=`</div>`;
+
+  // Checkin question if in-progress
   if(inProgress&&inProgress.chosen_resource){
-    html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px;box-shadow:var(--shadow)" id="checkinCard">`;
-    html+=`<div style="font-size:13px;color:var(--t2);margin-bottom:6px">Last time you were heading to:</div>`;
-    html+=`<div style="font-weight:700;font-size:17px;margin-bottom:4px">${inProgress.chosen_resource}</div>`;
-    html+=`<div style="font-size:12px;color:var(--t3);font-family:var(--mono);margin-bottom:4px">for ${(inProgress.category||'').replace(/_/g,' ')}</div>`;
-    if(inProgress.chosen_address)html+=`<div style="font-size:12px;color:var(--t3);margin-bottom:12px">${inProgress.chosen_address}</div>`;
-    html+=`<div style="font-size:14px;font-weight:600;margin-bottom:12px">Did you make it there?</div>`;
+    const resName=inProgress.chosen_resource;
+    const resCat=(inProgress.category||'').replace(/_/g,' ');
+    html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)" id="checkinCard">`;
+    html+=`<div style="font-size:15px;line-height:1.6;margin-bottom:14px">We sent you to <b>${resName}</b> for <b>${resCat}</b>. Did you make it there?</div>`;
     html+=`<div style="display:flex;gap:10px">`;
-    html+=`<button class="btn-primary" style="padding:12px 20px;font-size:14px;width:auto;flex:1" onclick="handleCheckin(true,'${(inProgress.chosen_resource||'').replace(/'/g,'\\&#39;')}')">&#9989; Yes, I went</button>`;
-    html+=`<button class="btn-secondary" style="padding:12px 20px;font-size:14px;flex:1" onclick="handleCheckinNo('${(inProgress.chosen_resource||'').replace(/'/g,'\\&#39;')}')">&#10060; No</button>`;
+    html+=`<button class="btn-primary" style="padding:14px 24px;font-size:15px;width:auto;flex:1" onclick="handleCheckin(true,'${resName.replace(/'/g,'\\&#39;')}')">&#9989; Yes, I went</button>`;
+    html+=`<button class="btn-secondary" style="padding:14px 24px;font-size:15px;flex:1" onclick="handleCheckinNo('${resName.replace(/'/g,'\\&#39;')}')">&#10060; No</button>`;
     html+=`</div></div>`;
   }
 
-  // Progress + next steps will be added below dynamically
-  html+=`<div id="returnFlowContinuation"></div>`;
-  html+=`</div>`;
-  c.innerHTML=html;
+  // Progress checklist (always visible as context)
+  html+=`<div style="margin-bottom:16px">${renderProgress(progress)}</div>`;
 
-  // If no in-progress need, show progress + next steps immediately
+  // Continuation area (next steps load here after checkin)
+  html+=`<div id="returnFlowContinuation">`;
+
+  // If no pending checkin, show next steps immediately
   if(!inProgress||!inProgress.chosen_resource){
-    showReturnContinuation(progress);
+    html+=buildNextStepsHtml(open);
   }
+
+  html+=`</div></div>`;
+  c.innerHTML=html;
+}
+
+function buildNextStepsHtml(openNeeds){
+  let html='';
+
+  // Location
+  html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin:12px 0;box-shadow:var(--shadow)">`;
+  html+=`<div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">&#128205; Your current location</div>`;
+  if(userLocation){
+    html+=`<div style="color:var(--green);font-size:13px;font-weight:500" id="nxLocText">Location set</div>`;
+  } else {
+    html+=`<div style="font-size:12px;color:var(--orange);margin-bottom:6px">Set your location to find nearby resources</div>`;
+    html+=`<div style="display:flex;gap:6px"><input type="text" id="nxLocInput" class="big-input" placeholder="Your address..." style="font-size:12px;padding:8px 12px" onkeydown="if(event.key==='Enter')setNxLoc()"><button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="setNxLoc()">Set</button><button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="gpsNx()">&#128205; GPS</button></div>`;
+  }
+  html+=`</div>`;
+
+  // Need buttons
+  if(openNeeds.length>0){
+    html+=`<div style="font-size:16px;font-weight:600;margin:20px 0 12px">What would you like to work on?</div>`;
+    const needEmoji={housing:'&#127968;',shelter:'&#127968;',benefits:'&#128203;',school:'&#128218;',food:'&#127822;',medical:'&#127973;',legal:'&#9878;&#65039;',safety:'&#128737;&#65039;'};
+    for(const n of openNeeds){
+      const cat=n.category||'help';
+      const emoji=needEmoji[cat]||'&#128204;';
+      const label=cat.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+      html+=`<div class="choice-card" onclick="searchForNeed('${cat}')" style="margin-bottom:8px">
+        <div class="choice-icon" style="font-size:28px">${emoji}</div>
+        <div><div class="choice-title">Find ${label}</div><div class="choice-desc">Search for ${label.toLowerCase()} near you</div></div>
+      </div>`;
+    }
+  } else {
+    html+=`<div style="text-align:center;margin:24px 0;padding:20px;background:rgba(58,125,10,0.04);border-radius:12px">
+      <div style="font-size:28px;margin-bottom:8px">&#127881;</div>
+      <div style="font-weight:700;font-size:18px;color:var(--green);margin-bottom:6px">All done!</div>
+      <div style="font-size:13px;color:var(--t2)">You've addressed everything. Come back anytime.</div>
+    </div>`;
+  }
+
+  // Free text
+  html+=`<div style="margin-top:16px;padding:16px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow)">
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">Or tell me anything else:</div>
+    <textarea id="nextStepInput" class="big-input" rows="2" placeholder="e.g. My kid needs a doctor..." style="font-size:14px;padding:12px 16px;margin-bottom:8px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendNextStepQuery()}"></textarea>
+    <button class="btn-primary" style="font-size:13px;padding:12px" onclick="sendNextStepQuery()">Find Help</button>
+  </div>`;
+
+  return html;
 }
 
 async function handleCheckin(arrived,resourceName){
@@ -912,12 +978,14 @@ async function handleCheckin(arrived,resourceName){
   try{
     const resp=await fetch('/api/case/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,arrived:true,resource_name:resourceName,feedback:'',location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null})});
     const data=await resp.json();
-    card.innerHTML=`<div style="text-align:center;padding:8px"><div style="font-size:24px;margin-bottom:6px">&#127881;</div><div style="font-weight:600;font-size:15px;color:var(--green)">${data.message||'Great!'}</div></div>`;
-    // Show progress + next steps below
+    card.innerHTML=`<div style="text-align:center;padding:12px"><div style="font-size:28px;margin-bottom:8px">&#127881;</div><div style="font-weight:600;font-size:16px;color:var(--green);margin-bottom:4px">Great, glad you made it!</div><div style="font-size:13px;color:var(--t2)">${data.message||''}</div></div>`;
+    // Load next steps in place below
     setTimeout(async()=>{
       const prog=await loadProgress();
-      showReturnContinuation(prog);
-    },500);
+      const open=prog?.needs?.filter(n=>n.status==='open')||[];
+      const cont=document.getElementById('returnFlowContinuation');
+      if(cont)cont.innerHTML=buildNextStepsHtml(open);
+    },600);
   }catch(e){card.innerHTML='<div style="color:var(--red)">Error checking in</div>'}
 }
 
@@ -940,11 +1008,13 @@ async function doReturnCheckinNo(resourceName,feedback){
   try{
     const resp=await fetch('/api/case/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,arrived:false,resource_name:resourceName,feedback:feedback,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null})});
     const data=await resp.json();
-    card.innerHTML=`<div style="padding:8px"><div style="font-size:14px;color:var(--orange);margin-bottom:6px">${data.message||'Noted — finding alternatives.'}</div></div>`;
+    card.innerHTML=`<div style="padding:12px"><div style="font-size:14px;color:var(--orange);margin-bottom:4px">Sorry that didn't work out.</div><div style="font-size:13px;color:var(--t2)">${data.message||'Let me find alternatives.'}</div></div>`;
     setTimeout(async()=>{
       const prog=await loadProgress();
-      showReturnContinuation(prog);
-    },500);
+      const open=prog?.needs?.filter(n=>n.status==='open')||[];
+      const cont=document.getElementById('returnFlowContinuation');
+      if(cont)cont.innerHTML=buildNextStepsHtml(open);
+    },600);
   }catch(e){card.innerHTML='<div style="color:var(--red)">Error</div>'}
 }
 
