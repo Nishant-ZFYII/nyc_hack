@@ -113,15 +113,13 @@ git clone https://github.com/Nishant-ZFYII/nyc_hack.git
 cd nyc_hack
 python3 -m venv venv
 source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+pip install --upgrade pip uv        # uv handles our deep dep graph (nvidia-nat + langchain + cuda stack)
+uv pip install -r requirements.txt
 ```
 
-> **If `pip install` hits a dep resolver error on `nvidia-nat-langchain`**, use uv:
-> ```bash
-> pip install uv
-> uv pip install -r requirements.txt
-> ```
+> **Why `uv` not plain `pip`?** `nvidia-nat-langchain` + the cuda/torch stack pulls ~200 transitive deps. Plain pip will error with `resolution-too-deep`. `uv` is a drop-in pip replacement that handles it in ~60 seconds.
+>
+> If you must use pip: `pip install --use-deprecated=legacy-resolver -r requirements.txt` (slower, may have version conflicts).
 
 #### 4. Seed demo data
 
