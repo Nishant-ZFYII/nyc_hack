@@ -176,6 +176,69 @@ pkill ollama               # Ollama
 
 ---
 
+## 🟩 NVIDIA Stack at a Glance
+
+Everything below runs **locally** on the DGX Spark GB10. No cloud.
+
+| Layer | Component | Where it's used |
+|---|---|---|
+| **Agent framework** | [NVIDIA NeMo Agent Toolkit](https://docs.nvidia.com/nemo/agent-toolkit/) (`nvidia-nat` + `nvidia-nat-langchain`) | ReAct loop driving llama3 — 5 tool groups, 15+ Python tools. See `agent/register.py`, `agent/config.yml`, `agent/config_admin.yml`. |
+| **Safety** | [NVIDIA NeMo Guardrails](https://github.com/NVIDIA/NeMo-Guardrails) (`nemoguardrails`) | PII redaction, jailbreak detection, crisis-keyword routing (988 / DV hotline). Gates every LLM call on both user and admin portals. See `guardrails/`. |
+| **Local inference** | llama3 (8B) + llama3.2-vision (11B) via **Ollama** on GPU | Reasoning agent + ID-photo OCR. Same model family on both sides of the stack. |
+| **Community** | **OpenClaw + ClawHub** | `nyc-caseworker` skill capsule (`skills/nyc-caseworker/`) + subprocess dispatch (`/api/agent/openclaw`). |
+| **GPU dataframes** | **RAPIDS cuDF** | 870K PLUTO lots + 7,759 resources ingested and filtered on GPU. |
+| **GPU graph** | **RAPIDS cuGraph** | 3.6M-edge knowledge graph with SSSP, BFS, connected-components for service accessibility. |
+| **GPU ML** | **RAPIDS cuML** | k-NN + HDBSCAN for resource similarity and neighborhood clustering. |
+| **Optimization** | **NVIDIA cuOpt** | VRP allocation for cold-emergency and migrant-bus scenarios. |
+| **Array compute** | **CuPy** | GPU spatial scoring + capacity-change heatmaps. |
+| **KGE embeddings** | **PyKEEN + PyTorch** | TransE training on 328K SPO triples → 83,618 entity vectors × 64 dims. |
+| **Knowledge extraction** | **txt2kg** | Structured extraction from 311 complaint free-text. |
+| **Hardware** | **NVIDIA DGX Spark GB10** (128 GB unified memory) | All ~35 GB of active state — models, graph, mart, embeddings — co-resident in one memory space. |
+
+See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for the full technical deep-dive (system architecture, pipeline flow, memory layout, anti-hallucination design, rubric alignment).
+
+---
+
+## Architecture (quick reference)
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ User portal  │     │ Admin portal │     │ Ollama GPU   │
+│ :9000        │◀───▶│ :9001        │◀───▶│ llama3 +     │
+│ FastAPI      │     │ FastAPI      │     │ llama3.2-    │
+│ NeMo ReAct   │     │ NeMo ReAct   │     │ vision       │
+│ agent        │     │ agent        │     │              │
+└──────┬───────┘     └──────┬───────┘     └──────┬───────┘
+       │                    │                    │
+       │        NeMo Guardrails (every call)     │
+       │                    │                    │
+       └────────────────────┼────────────────────┘
+                            │
+                    ┌───────┴────────┐
+                    │ Shared state   │
+                    │ data/cases/    │  ← JSON case files
+                    │ data/ (mart,   │  ← 7,759 resources
+                    │  graph, KGE)   │  ← 3.6M edges, 83K vectors
+                    └────────────────┘
+```
+
+User queries go through: guardrails → NeMo ReAct (llama3) → tool dispatch (find_resources, calculate_eligibility, get_rights, get_directions, …) → synthesis → response. The agent never touches raw data — all tool calls run bounded Python on real NYC Open Data.
+
+Admin queries (supervisor mode) use a separate config with 8 admin-tier tools (list_all_cases, get_city_stats, generate_case_briefing, …). Form-fill feature sends ID photos to llama3.2-vision for structured extraction, then overlays the fields onto real NYC LDSS-4826 SNAP + DOH-4220 Medicaid PDFs using pdfplumber + pypdf + reportlab.
+
+Full walkthrough in **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
+---
+
+#### (Archived) legacy stop command
+
+```bash
+pkill -f uvicorn           # both portals
+pkill ollama               # Ollama
+```
+
+---
+
 ## Architecture
 
 ```
