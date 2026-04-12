@@ -70,18 +70,83 @@ def detect_crisis(text: str) -> str:
 
 # ── Jailbreak Detection ──────────────────────────────────────────────────────
 JAILBREAK_PATTERNS = [
-    r'ignore\s+(?:all\s+)?(?:your\s+)?(?:previous\s+|prior\s+|above\s+|the\s+)?instructions',
-    r'forget\s+(?:your|the|all)\s+(?:previous\s+)?instructions',
-    r'you\s+are\s+(?:now|actually)\s+(?:a|an)\s+\w+\s+(?:ai|assistant|bot)',
-    r'(?:dan|developer|god)\s+mode',
-    r'pretend\s+(?:you|to)\s+(?:are|be)\s+(?:not|something)',
-    r'disregard\s+(?:all|your|the)',
+    # Ignore instructions — catch all variations
+    r'ignore\s+(?:all\s+|your\s+|the\s+|any\s+|every\s+)*(?:previous\s+|prior\s+|above\s+)*(?:your\s+|the\s+)*instructions?',
+    r'forget\s+(?:all\s+)?(?:your|the|everything)\s*(?:previous\s+)?(?:instructions?|rules?|prompts?)',
+    r'disregard\s+(?:all\s+)?(?:your|the|any)\s+(?:instructions?|rules?|prompts?)',
+    # Role hijacking
+    r'you\s+are\s+(?:now|actually)\s+(?:a|an)\s+\w+',
+    r'(?:dan|developer|god|admin|jailbreak)\s+mode',
+    r'pretend\s+(?:you|to)\s+(?:are|be)',
+    r'act\s+as\s+(?:if\s+)?(?:a|an)\s+\w+',
     r'override\s+(?:your|the)\s+(?:instructions|rules|system)',
+    # System prompt extraction
     r'reveal\s+(?:your|the)\s+(?:system\s+)?prompt',
-    r'what\s+are\s+your\s+(?:system\s+)?instructions',
+    r'what\s+(?:are|were)\s+your\s+(?:system\s+)?instructions',
+    r'repeat\s+(?:your|the)\s+(?:system\s+)?prompt',
+    r'print\s+(?:your|the)\s+(?:system\s+)?prompt',
+    # Harmful intent
     r'(?:help|tell)\s+me\s+(?:how\s+to\s+)?commit\s+(?:fraud|crime)',
     r'how\s+to\s+(?:commit\s+fraud|evade|hide\s+from)',
+    # Just "give me" patterns that aren't about resources
+    r'just\s+(?:give|tell)\s+me\s+(?:your|the)\s+(?:top|best|favorite)\s+(?:picks?|choices?)',
 ]
+
+
+# ── Topical Rail: Is this query on-topic? ─────────────────────────────────────
+# Off-topic queries (books, coding, trivia, etc.) should be redirected, not answered.
+ON_TOPIC_KEYWORDS = [
+    # Needs
+    "shelter", "housing", "homeless", "evict", "apartment",
+    "food", "pantry", "hungry", "meal", "snap", "wic",
+    "hospital", "clinic", "medical", "doctor", "health", "medicaid",
+    "mental health", "counseling", "therapy", "suicide", "crisis",
+    "domestic violence", "dv", "abuse", "safety",
+    "school", "childcare", "daycare", "education",
+    "benefits", "cash assistance", "hra", "metrocard",
+    "legal", "lawyer", "rights", "immigration",
+    "help", "need", "emergency", "resource", "service",
+    # Common phrasing
+    "i'm", "i am", "my", "me", "family", "kids", "children",
+    "pregnant", "disabled", "veteran", "senior", "elderly",
+    # NYC locations
+    "brooklyn", "manhattan", "queens", "bronx", "staten island",
+    "nyc", "new york", "harlem", "flatbush", "jamaica",
+]
+
+OFF_TOPIC_MARKERS = [
+    # Books, authors, entertainment
+    r'\b(?:book|novel|author|kafka|shakespeare|tolstoy|hemingway)\b',
+    r'\b(?:movie|film|actor|actress|netflix|hollywood)\b',
+    r'\b(?:song|music|album|artist|spotify|band)\b',
+    # Coding
+    r'\b(?:python|javascript|code|programming|function|algorithm|api|regex)\b',
+    r'\b(?:write|build|debug|fix)\s+(?:a|the|my)\s+(?:function|script|program|code)\b',
+    # Generic trivia
+    r'\bwho\s+(?:is|was|wrote|invented|discovered)\b',
+    r'\bwhat\s+is\s+the\s+(?:capital|population|history)\s+of\b',
+    # Homework/essay
+    r'\b(?:essay|homework|assignment|paper|thesis)\b',
+    # Recipe/cooking (off topic unless about food banks)
+    r'\b(?:recipe|cook|bake)\s+(?:a|the|for)\b',
+]
+
+
+def detect_off_topic(text: str) -> bool:
+    """Return True if query is clearly off-topic for NYC social services."""
+    t = (text or "").lower()
+
+    # Short queries pass through (too short to judge)
+    if len(t.split()) < 3:
+        return False
+
+    # If any off-topic marker is present, check if on-topic signal also present
+    for pattern in OFF_TOPIC_MARKERS:
+        if re.search(pattern, t):
+            # Allow if the query ALSO contains a social services keyword
+            if not any(kw in t for kw in ON_TOPIC_KEYWORDS):
+                return True
+    return False
 
 
 def detect_jailbreak(text: str) -> bool:
@@ -196,7 +261,20 @@ def apply_guardrails(user_input: str, bot_output: str = None) -> dict:
             "crisis_type": None,
             "replacement_response": (
                 "I'm here to help you find NYC social services. "
-                "I can't change my role. What do you need help with?"
+                "I can't change my role. What do you need help with — "
+                "shelter, food, healthcare, benefits, or something else?"
+            ),
+        }
+
+    if detect_off_topic(user_input):
+        return {
+            "allow": False,
+            "reason": "off_topic",
+            "crisis_type": None,
+            "replacement_response": (
+                "I'm a NYC Social Services assistant — I help with shelter, food, "
+                "healthcare, benefits, school, and safety. I can't help with other topics. "
+                "Is there something I can help you with in NYC?"
             ),
         }
 
