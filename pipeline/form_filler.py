@@ -178,32 +178,165 @@ def extract_id_fields(image_path: str | Path) -> dict:
     return fields
 
 
-# ── Form generation via reportlab ────────────────────────────────────────────
+# ── Real-form overlay using official NYC HRA / NYS DOH PDFs ────────────────────
+# These are the actual government forms a caseworker would hand a client.
+# We find label positions with pdfplumber, then overlay filled values using
+# reportlab and merge with pypdf — producing a "filled" version of the real form.
+
+FORMS_DIR = Path(__file__).resolve().parent.parent / "samples" / "forms"
+SNAP_PDF = FORMS_DIR / "ldss_4826_snap.pdf"
+MEDICAID_PDF = FORMS_DIR / "doh_4220_medicaid.pdf"
+
+
+def _overlay_on_real_form(source_pdf: Path, answers: dict) -> bytes:
+    """
+    Overlay filled answers onto the source PDF.
+
+    `answers` is a dict of {label_substring: value}. For each label match
+    found via pdfplumber text extraction, the value is drawn a bit to the
+    right of the label's bounding box.
+
+    Returns the merged PDF as bytes.
+    """
+    import pdfplumber
+    from pypdf import PdfReader, PdfWriter
+    from reportlab.pdfgen import canvas as rl_canvas
+    from io import BytesIO
+
+    # Pass 1: find (page_idx, x, y) placement points for each answer
+    placements = []  # list of (page_idx, x, y, text)
+    used_labels = set()  # don't place a value multiple times per label
+
+    with pdfplumber.open(source_pdf) as pdf:
+        n_pages = len(pdf.pages)
+        page_sizes = [(p.width, p.height) for p in pdf.pages]
+
+        for page_idx, page in enumerate(pdf.pages):
+            words = page.extract_words()
+            # Build lower-cased text index for fuzzy label matching
+            for label_key, value in answers.items():
+                if label_key in used_labels or not value:
+                    continue
+                label_tokens = label_key.lower().split()
+                # Find sequential tokens on the page
+                for i, w in enumerate(words):
+                    if w["text"].lower() == label_tokens[0]:
+                        # Check following tokens match
+                        ok = True
+                        last_w = w
+                        for j, t in enumerate(label_tokens[1:], 1):
+                            if i + j >= len(words) or words[i + j]["text"].lower() != t:
+                                ok = False
+                                break
+                            last_w = words[i + j]
+                        if ok:
+                            # Place text just right of the last matched token
+                            # pdfplumber "top" is from top; reportlab y from bottom
+                            x = last_w["x1"] + 6
+                            y = page_sizes[page_idx][1] - last_w["top"] - 10
+                            placements.append((page_idx, x, y, str(value)))
+                            used_labels.add(label_key)
+                            break
+
+    # Pass 2: build overlay PDF with reportlab (one page per source page)
+    overlay_buf = BytesIO()
+    c = rl_canvas.Canvas(overlay_buf)
+    for page_idx in range(n_pages):
+        w, h = page_sizes[page_idx]
+        c.setPageSize((w, h))
+        c.setFont("Helvetica-Bold", 10)
+        c.setFillColorRGB(0.05, 0.35, 0.05)  # dark green to distinguish filled text
+        for pi, x, y, txt in placements:
+            if pi == page_idx:
+                c.drawString(x, y, txt)
+        c.showPage()
+    c.save()
+    overlay_buf.seek(0)
+
+    # Pass 3: merge overlay onto original
+    base = PdfReader(str(source_pdf))
+    overlay = PdfReader(overlay_buf)
+    writer = PdfWriter()
+    for i, page in enumerate(base.pages):
+        if i < len(overlay.pages):
+            page.merge_page(overlay.pages[i])
+        writer.add_page(page)
+
+    out = BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def _answers_from_case(id_fields: dict, case_data: dict) -> dict:
+    """Map extracted ID fields + case data to form-label-friendly answers."""
+    fn = id_fields.get("first_name", "") or ""
+    ln = id_fields.get("last_name", "") or ""
+    full = id_fields.get("full_name", "") or f"{fn} {ln}".strip()
+    addr = id_fields.get("address", "")
+    city = id_fields.get("city", "")
+    state = id_fields.get("state", "")
+    zipc = id_fields.get("zip", "")
+    dob = id_fields.get("dob", "")
+    sex = id_fields.get("sex", "")
+    household = case_data.get("household_size", "")
+    income = case_data.get("annual_income", "")
+
+    # Keys use the label text as it appears in the form (lowercased). The
+    # overlay function does case-insensitive token matching.
+    return {
+        "last name": ln,
+        "first name": fn,
+        "date of birth": dob,
+        "sex": sex,
+        "address": addr,
+        "city": city,
+        "state": state,
+        "zip": zipc,
+        "zip code": zipc,
+        "home address": addr,
+        "mailing address": addr,
+        "home phone": "",
+        "social security number": "",
+        "household size": str(household) if household else "",
+        "annual income": f"${income:,}" if isinstance(income, (int, float)) and income else "",
+        "name": full,
+        "full name": full,
+    }
+
 
 def generate_snap_form(id_fields: dict, case_data: dict = None) -> bytes:
-    """Generate a pre-filled SNAP (food stamps) application PDF."""
+    """Pre-fill the REAL NYC LDSS-4826 SNAP application PDF."""
+    case_data = case_data or {}
+    if SNAP_PDF.exists():
+        answers = _answers_from_case(id_fields, case_data)
+        return _overlay_on_real_form(SNAP_PDF, answers)
+    # Fallback to synthetic form if the real PDF isn't available
     return _generate_form(
         title="SNAP APPLICATION (Food Stamps)",
         subtitle="NY LDSS-4826 (Pre-filled)",
         form_type="snap",
         id_fields=id_fields,
-        case_data=case_data or {},
+        case_data=case_data,
     )
 
 
 def generate_medicaid_form(id_fields: dict, case_data: dict = None) -> bytes:
-    """Generate a pre-filled Medicaid application PDF."""
+    """Pre-fill the REAL NYS DOH-4220 Medicaid application PDF."""
+    case_data = case_data or {}
+    if MEDICAID_PDF.exists():
+        answers = _answers_from_case(id_fields, case_data)
+        return _overlay_on_real_form(MEDICAID_PDF, answers)
     return _generate_form(
         title="MEDICAID APPLICATION",
         subtitle="NY DOH-4220 (Pre-filled)",
         form_type="medicaid",
         id_fields=id_fields,
-        case_data=case_data or {},
+        case_data=case_data,
     )
 
 
 def generate_request_for_proof(id_fields: dict, case_data: dict = None) -> bytes:
-    """Generate HRA Request for Proof form (for applicants without full documents)."""
+    """HRA Request-for-Proof form — still synthetic (no single canonical PDF)."""
     return _generate_form(
         title="HRA REQUEST FOR PROOF",
         subtitle="Apply for benefits without full documents",
