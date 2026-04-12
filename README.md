@@ -64,15 +64,75 @@ uvicorn server:app --host 0.0.0.0 --port 9000
 
 ### On laptop (API key required)
 
+Full step-by-step for a fresh Linux/Mac laptop:
+
 ```bash
+# 1. Clone the repo
 git clone https://github.com/Nishant-ZFYII/nyc_hack.git
 cd nyc_hack
-python3 -m venv venv && source venv/bin/activate
+
+# 2. Create a Python virtual environment
+python3 -m venv venv
+source venv/bin/activate      # Linux/Mac
+# .\venv\Scripts\activate     # Windows PowerShell
+
+# 3. Upgrade pip and install dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
 
-ANTHROPIC_API_KEY=sk-ant-... uvicorn server:app --host 0.0.0.0 --port 9000
-# Or: OPENAI_API_KEY=sk-... uvicorn server:app --host 0.0.0.0 --port 9000
+# 4. Get an LLM API key
+#    Option A: Anthropic Claude Haiku (recommended — fast, cheap, reliable JSON)
+#      → https://console.anthropic.com/ → API keys → create key
+#      → Add $5 credit
+#    Option B: OpenAI
+#      → https://platform.openai.com/api-keys
+
+# 5. Run the server
+ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE uvicorn server:app --host 0.0.0.0 --port 9000
+
+# 6. Open in browser
+#    http://localhost:9000
 ```
+
+**If port 9000 is busy:**
+```bash
+# Find what's using the port and kill it
+lsof -ti:9000 | xargs kill -9
+# Or run on a different port:
+ANTHROPIC_API_KEY=sk-... uvicorn server:app --host 0.0.0.0 --port 9001
+```
+
+**To stop the server:** `Ctrl+C`
+
+**To update code later:**
+```bash
+cd nyc_hack
+source venv/bin/activate
+git pull
+pip install -r requirements.txt   # in case new deps were added
+# restart uvicorn
+```
+
+**Persistent API key (don't type every time):**
+```bash
+# Linux/Mac — add to ~/.bashrc or ~/.zshrc
+echo 'export ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE' >> ~/.bashrc
+source ~/.bashrc
+# Then just run:
+uvicorn server:app --host 0.0.0.0 --port 9000
+```
+
+### Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `ModuleNotFoundError: No module named 'fastapi'` | `pip install -r requirements.txt` |
+| `Address already in use` | `lsof -ti:9000 \| xargs kill -9` |
+| `No LLM provider available` | Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` |
+| Port 9000 works on DGX but not locally | Use `http://localhost:9000` not the DGX IP |
+| `data/resource_mart.parquet not found` | `git pull` — data files are in the repo |
+| Slow queries (>60s) | You're on CPU — expected. Faster on DGX with ollama |
+| Permission errors on macOS | `sudo xcode-select --install` then retry pip install |
 
 Data (`data/`, `stage/`) is **included in the repo** — no need to regenerate.
 
