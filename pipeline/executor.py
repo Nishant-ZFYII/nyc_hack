@@ -126,6 +126,39 @@ def set_excluded_resources(excluded: list[str]):
     _excluded_resources = excluded
 
 
+# Map planner categories to actual resource_type values in the mart
+TYPE_EXPANSION = {
+    "medical": ["hospital", "clinic", "mental_health"],
+    "healthcare": ["hospital", "clinic", "mental_health"],
+    "health": ["hospital", "clinic", "mental_health"],
+    "housing": ["shelter", "nycha", "dropin_center"],
+    "food": ["food_bank"],
+    "education": ["school", "childcare", "education"],
+    "safety": ["domestic_violence", "emergency_services"],
+    "legal": ["legal_aid"],
+    "benefits": ["benefits_center"],
+    "employment": ["community_center"],  # job training is often at community centers
+    "documents": ["benefits_center"],  # HRA offices handle ID/docs
+    "senior": ["senior_services"],
+    "childcare": ["childcare"],
+    "mental_health": ["mental_health"],
+    "substance": ["mental_health"],
+    "dv": ["domestic_violence"],
+}
+
+
+def _expand_types(resource_types: list[str]) -> list[str]:
+    """Expand planner categories to actual mart resource_type values."""
+    expanded = []
+    for rt in resource_types:
+        rt_lower = rt.lower().strip()
+        if rt_lower in TYPE_EXPANSION:
+            expanded.extend(TYPE_EXPANSION[rt_lower])
+        else:
+            expanded.append(rt)
+    return list(set(expanded))  # deduplicate
+
+
 def filter_resources(
     resource_types: list[str],
     filters: dict,
@@ -134,6 +167,9 @@ def filter_resources(
 ) -> pd.DataFrame:
     mart, _ = load_state()
     df = mart.copy()
+
+    # Expand planner categories to mart types
+    resource_types = _expand_types(resource_types)
 
     # Convert cuDF → pandas early for geocode compatibility
     if USE_GPU and hasattr(df, 'to_pandas'):
