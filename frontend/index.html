@@ -182,6 +182,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 .borough-card:last-child{grid-column:span 2}
 
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:var(--border2)}
+
 </style>
 </head>
 <body>
@@ -208,7 +209,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
         <div><div class="choice-title">Find Aid</div><div class="choice-desc">Browse resources on the map by borough</div></div>
       </div>
 
-      <div class="powered fade-in-d4">
+      <div class="powered fade-in-d4" style="animation:fadeIn 0.4s ease 0.5s both">
         <span class="powered-label">Powered by</span>
         <span class="powered-badge">Nemotron</span>
         <span class="powered-badge">cuDF</span>
@@ -1641,6 +1642,406 @@ fetch('/api/status').then(r=>r.json()).then(d=>{}).catch(()=>{});
 
 // ── Keyboard ───────────────────────────────────────────────
 document.getElementById('queryInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendQuery()}});
+
+
+</script>
+</body>
+</html>
+  try {
+    const resp = await fetch('/api/admin/cases');
+    const cases = await resp.json();
+    renderAdminCaseList(cases);
+    const label = document.getElementById('adminRefreshLabel');
+    if(label) label.textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    document.getElementById('adminCaseList').innerHTML =
+      `<div style="color:var(--red);padding:20px;font-size:13px">Error loading cases: ${e.message}</div>`;
+  }
+}
+
+function renderAdminCaseList(cases) {
+  const bar = document.getElementById('adminSummaryBar');
+  const list = document.getElementById('adminCaseList');
+  if(!bar || !list) return;
+
+  // Summary stats
+  const critical = cases.filter(c=>c.urgency==='critical').length;
+  const high = cases.filter(c=>c.urgency==='high').length;
+  const activeDest = cases.filter(c=>c.active_destination_count>0).length;
+  bar.innerHTML = `
+    <div class="admin-stat"><div class="admin-stat-num" style="color:var(--t1)">${cases.length}</div><div class="admin-stat-label">Total Cases</div></div>
+    <div class="admin-stat"><div class="admin-stat-num" style="color:var(--red)">${critical}</div><div class="admin-stat-label">Critical</div></div>
+    <div class="admin-stat"><div class="admin-stat-num" style="color:var(--orange)">${high}</div><div class="admin-stat-label">High</div></div>
+    <div class="admin-stat"><div class="admin-stat-num" style="color:var(--blue)">${activeDest}</div><div class="admin-stat-label">En Route</div></div>
+  `;
+
+  if(!cases.length){
+    list.innerHTML = `<div style="text-align:center;padding:40px;color:var(--t3);font-family:var(--mono);font-size:13px">No cases on record.</div>`;
+    return;
+  }
+
+  let html = '';
+  for(const c of cases){
+    const urgBadge = urgencyBadge(c.urgency);
+    const leftClass = c.urgency==='critical'?'urgency-critical-card':c.urgency==='high'?'urgency-high-card':c.urgency==='medium'?'urgency-medium-card':'';
+    const needTags = (c.open_needs_list||[]).slice(0,3).map(n=>
+      `<span class="rc-tag type" style="font-size:9px">${(n.category||'').replace(/_/g,' ')}</span>`
+    ).join('');
+    const lastVisit = c.last_visit ? c.last_visit.slice(0,16).replace('T',' ') : '—';
+    const ecIcon = c.ec_registered ? '&#128241;' : (c.emergency_contact?.name ? '&#9888;&#65038;' : '');
+
+    let destLine = '';
+    const dest = (c.active_destinations||[])[0];
+    if(dest){
+      const stateColors = {intent_confirmed:'var(--t3)',notified:'var(--blue)',acknowledged:'var(--blue)',en_route:'var(--orange)',arrived:'var(--green)'};
+      const stateColor = stateColors[dest.state]||'var(--t3)';
+      destLine = `<div style="margin-top:6px;font-size:11px"><span style="color:${stateColor};font-weight:600;font-family:var(--mono)">${(dest.state||'').replace(/_/g,' ').toUpperCase()}</span><span style="color:var(--t3)"> &rarr; ${dest.resource_name||''}</span></div>`;
+    }
+
+    const activeDest = (c.active_destinations||[])[0];
+    const rName = activeDest ? encodeURIComponent(activeDest.resource_name||'') : '';
+    const rType = activeDest ? encodeURIComponent(activeDest.resource_type||'') : '';
+    const rAddr = activeDest ? encodeURIComponent(activeDest.address||'') : '';
+
+    html += `<div class="admin-case-card ${leftClass}" onclick="openBriefing('${c.case_id}',decodeURIComponent('${rName}'),decodeURIComponent('${rType}'),decodeURIComponent('${rAddr}'))">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="font-weight:700;font-size:15px">${c.name||c.case_id}</span>
+            ${urgBadge}
+            ${ecIcon?`<span style="font-size:12px">${ecIcon}</span>`:''}
+          </div>
+          <div style="font-size:11px;color:var(--t3);font-family:var(--mono);margin-bottom:6px">${c.case_id} &middot; ${c.total_visits||0} visit(s) &middot; last: ${lastVisit}</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">${needTags}</div>
+          ${destLine}
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          ${c.failed_resource_count>0?`<div style="font-size:10px;color:var(--orange);font-family:var(--mono)">${c.failed_resource_count} failed</div>`:''}
+          <div style="font-size:18px;color:var(--t3);margin-top:4px">&#8250;</div>
+        </div>
+      </div>
+    </div>`;
+  }
+  list.innerHTML = html;
+}
+
+function urgencyBadge(u) {
+  const map = {critical:'urgency-critical',high:'urgency-high',medium:'urgency-medium',low:'urgency-low'};
+  const icons = {critical:'&#9888;&#65038;',high:'&#9650;',medium:'&#9679;',low:'&#9679;'};
+  return `<span class="urgency-badge ${map[u]||'urgency-low'}">${icons[u]||''} ${u||'low'}</span>`;
+}
+
+// ── Open briefing for a case ──────────────────────────────
+function openBriefing(caseId, resourceName, resourceType, resourceAddress) {
+  _activeBriefing = {caseId, resourceName, resourceType, resourceAddress};
+  goTo('page-briefing');
+  loadBriefing(caseId, resourceName, resourceType, resourceAddress);
+}
+
+// ── Start admin auto-refresh (15s) ────────────────────────
+function startAdminRefresh() {
+  if(_adminRefreshTimer) clearInterval(_adminRefreshTimer);
+  _adminRefreshTimer = setInterval(()=>{
+    // Only refresh if admin page is visible
+    if(document.getElementById('page-admin').classList.contains('active')) loadAdminCases();
+  }, 15000);
+}
+startAdminRefresh();
+
+// ══════════════════════════════════════════════════════════
+// BRIEFING PANEL
+// ══════════════════════════════════════════════════════════
+
+async function loadBriefing(caseId, resourceName, resourceType, resourceAddress) {
+  const el = document.getElementById('briefingContent');
+  const titleEl = document.getElementById('briefingTopbarTitle');
+  el.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;padding:60px;gap:16px"><div class="spinner"></div><div style="color:var(--t3);font-family:var(--mono);font-size:12px">Generating AI briefing...</div></div>`;
+  try {
+    const resp = await fetch('/api/admin/briefing', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({case_id:caseId, resource_name:resourceName, resource_type:resourceType, resource_address:resourceAddress})
+    });
+    if(!resp.ok) throw new Error(`Server error ${resp.status}`);
+    const b = await resp.json();
+    if(titleEl) titleEl.textContent = `Briefing: ${b.client_name||caseId}`;
+    const genEl = document.getElementById('briefingGenTime');
+    if(genEl) genEl.textContent = (b.llm_powered?'AI':'Rule-based') + ' · ' + (b.generated_at||'').slice(11,16);
+    el.innerHTML = renderFullBriefing(b);
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);padding:20px;font-size:13px">Error generating briefing: ${e.message}</div>`;
+  }
+}
+
+function regenerateBriefing() {
+  const {caseId,resourceName,resourceType,resourceAddress} = _activeBriefing;
+  if(caseId) loadBriefing(caseId, resourceName, resourceType, resourceAddress);
+}
+
+function renderFullBriefing(b) {
+  let html = '';
+  html += renderBriefingSnapshot(b);
+  html += renderBriefingDiagnosis(b);
+  html += renderBriefingDocs(b);
+  html += renderBriefingEdgeCases(b);
+  html += renderBriefingKnowledge(b);
+  html += renderBriefingAlternatives(b);
+  html += renderBriefingTimeline(b);
+  html += renderBriefingActions(b);
+  return html;
+}
+
+// ── Section 1: Client snapshot ────────────────────────────
+function renderBriefingSnapshot(b) {
+  const needs = b.all_needs || [];
+  const openNeeds = needs.filter(n=>n.status!=='resolved');
+  const resolvedNeeds = needs.filter(n=>n.status==='resolved');
+  const pct = needs.length ? Math.round((resolvedNeeds.length/needs.length)*100) : 0;
+  const ec = b.emergency_contact || {};
+
+  const stateColors = {intent_confirmed:'var(--t3)',notified:'var(--blue)',acknowledged:'var(--blue)',en_route:'var(--orange)',arrived:'var(--green)',resolved:'var(--green)'};
+
+  let destHtml = '';
+  if(b.resource_name && b.resource_name !== 'Unknown'){
+    destHtml = `<div style="margin-top:10px;padding:10px 14px;background:rgba(58,125,10,0.06);border:1px solid rgba(58,125,10,0.15);border-radius:8px">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Destination</div>
+      <div style="font-weight:600;font-size:14px">${b.resource_name}</div>
+      ${b.resource_address?`<div style="font-size:12px;color:var(--t2);font-family:var(--mono)">${b.resource_address}</div>`:''}
+      <div style="font-size:11px;color:var(--t3);margin-top:4px;text-transform:capitalize">${(b.resource_type||'').replace(/_/g,' ')}</div>
+    </div>`;
+  }
+
+  const ecHtml = ec.name ? `<div style="margin-top:8px;font-size:12px;color:var(--t2)">
+    <b>EC:</b> ${ec.name}${ec.telegram_username?' (@'+ec.telegram_username+')':''}
+    <span style="margin-left:6px;font-size:10px;padding:2px 6px;border-radius:4px;font-family:var(--mono);background:${ec.telegram_chat_id?'rgba(58,125,10,0.1)':'rgba(232,132,58,0.1)'};color:${ec.telegram_chat_id?'var(--green)':'var(--orange)'}">
+      ${ec.telegram_chat_id?'DM registered':'Not registered'}
+    </span>
+  </div>` : '';
+
+  let needRows = '';
+  for(const n of needs){
+    const icon = n.status==='resolved'?'&#9989;':n.status==='in_progress'?'&#9203;':'&#9898;';
+    const color = n.status==='resolved'?'var(--green)':n.status==='in_progress'?'var(--orange)':'var(--t3)';
+    needRows += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span>${icon}</span>
+      <div style="flex:1;font-size:13px;font-weight:600;color:${color};text-transform:capitalize">${(n.category||'').replace(/_/g,' ')}</div>
+      ${n.chosen_resource?`<div style="font-size:11px;color:var(--t3)">${n.chosen_resource}</div>`:''}
+    </div>`;
+  }
+
+  return `<div class="brief-section">
+    <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:22px;font-weight:700;margin-bottom:2px">${b.client_name||b.case_id}</div>
+        <div style="font-size:11px;font-family:var(--mono);color:var(--t3)">${b.case_id} &middot; ${b.total_visits||0} visit(s)</div>
+        ${ecHtml}
+        ${destHtml}
+      </div>
+      <div style="flex:1;min-width:180px">
+        <div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Progress (${resolvedNeeds.length}/${needs.length})</div>
+        <div style="background:var(--bg4);border-radius:6px;height:6px;margin-bottom:10px;overflow:hidden"><div style="background:var(--green);height:100%;width:${pct}%;border-radius:6px;transition:width 0.5s"></div></div>
+        ${needRows}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── Section 2: AI diagnosis ───────────────────────────────
+function renderBriefingDiagnosis(b) {
+  const urgMap = {critical:'urgency-critical',high:'urgency-high',medium:'urgency-medium',low:'urgency-low'};
+  const urgBorderMap = {critical:'var(--red)',high:'var(--orange)',medium:'var(--blue)',low:'var(--border)'};
+  const border = urgBorderMap[b.urgency]||'var(--border)';
+
+  let missingHtml = '';
+  if((b.missing_info||[]).length){
+    missingHtml = `<div style="margin-top:10px;padding:8px 12px;background:rgba(232,132,58,0.06);border-radius:6px;border-left:3px solid var(--orange)">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Missing Info</div>
+      ${b.missing_info.map(m=>`<div style="font-size:12px;color:var(--t2)">&middot; ${m}</div>`).join('')}
+    </div>`;
+  }
+
+  const likelyNeeds = (b.likely_needs||[]).map(n=>`<span class="rc-tag type" style="margin-right:4px;margin-bottom:4px">${n}</span>`).join('');
+
+  return `<div class="brief-section" style="border-color:${border}">
+    <div class="brief-section-title">AI Diagnosis</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      ${urgencyBadge(b.urgency)}
+      <span style="font-size:12px;color:var(--t2)">${b.urgency_reason||''}</span>
+    </div>
+    <div style="font-size:14px;line-height:1.7;color:var(--t1);margin-bottom:10px">${b.diagnosis||'No diagnosis available.'}</div>
+    ${likelyNeeds?`<div style="margin-bottom:10px">${likelyNeeds}</div>`:''}
+    ${b.recommended_approach?`<div style="padding:10px 14px;background:rgba(58,125,10,0.06);border-radius:8px;font-size:13px;line-height:1.6;border-left:3px solid var(--green)"><b style="font-size:10px;font-family:var(--mono);color:var(--green);text-transform:uppercase;display:block;margin-bottom:4px">Recommended Approach</b>${b.recommended_approach}</div>`:''}
+    ${b.pre_arrival_instructions?`<div style="margin-top:10px"><div style="font-size:10px;font-family:var(--mono);color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Pre-Arrival Instructions (send to client)</div><div class="prearival-box" onclick="navigator.clipboard&&navigator.clipboard.writeText('${(b.pre_arrival_instructions||'').replace(/'/g,"\\'")}').then(()=>this.style.background='rgba(58,125,10,0.1)')" title="Click to copy">${b.pre_arrival_instructions} <span style="font-size:10px;color:var(--t3)">[click to copy]</span></div></div>`:''}
+    ${missingHtml}
+  </div>`;
+}
+
+// ── Section 3: Document checklist ────────────────────────
+function renderBriefingDocs(b) {
+  const docs = b.required_docs || [];
+  if(!docs.length) return '';
+
+  let rows = '';
+  for(const d of docs){
+    const gapClass = d.gap_risk==='high'?'gap-high':d.gap_risk==='medium'?'gap-high':'gap-low';
+    const reqBadge = d.required ? `<span style="font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(217,64,64,0.1);color:var(--red);font-family:var(--mono);font-weight:700">REQUIRED</span>` :
+      `<span style="font-size:9px;padding:2px 6px;border-radius:3px;background:var(--bg3);color:var(--t3);font-family:var(--mono)">optional</span>`;
+    rows += `<div class="doc-row">
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="doc-name">${d.doc}</span>${reqBadge}
+          ${d.gap_risk?`<span class="${gapClass}">&#9650; ${d.gap_risk} gap risk</span>`:''}
+        </div>
+        ${d.gap_reason?`<div style="font-size:11px;color:var(--orange);margin-bottom:4px">${d.gap_reason}</div>`:''}
+        ${d.substitute?`<div class="doc-sub"><b style="color:var(--green)">Substitute:</b> ${d.substitute}</div>`:''}
+        ${d.fallback_process?`<div class="doc-sub" style="margin-top:2px"><b>Fallback:</b> ${d.fallback_process}</div>`:''}
+      </div>
+    </div>`;
+  }
+
+  return `<div class="brief-section">
+    <div class="brief-section-title">Document Checklist</div>
+    ${rows}
+  </div>`;
+}
+
+// ── Section 4: Edge cases ─────────────────────────────────
+function renderBriefingEdgeCases(b) {
+  const edges = b.edge_cases || [];
+  if(!edges.length) return '';
+
+  let cards = '';
+  for(const e of edges){
+    cards += `<div class="edge-card">
+      <div class="edge-issue">&#9888;&#65038; ${e.issue||''}</div>
+      ${e.workaround?`<div class="edge-workaround">&#9989; Workaround: ${e.workaround}</div>`:''}
+      ${e.risk?`<div class="edge-risk">&#9888; Risk: ${e.risk}</div>`:''}
+      ${e.next_action?`<div class="edge-action">Next action: ${e.next_action}</div>`:''}
+    </div>`;
+  }
+
+  return `<div class="brief-section">
+    <div class="brief-section-title">Edge Cases &amp; Workarounds</div>
+    ${cards}
+  </div>`;
+}
+
+// ── Section 5: Knowledge & protocols ─────────────────────
+function renderBriefingKnowledge(b) {
+  let html = `<div class="brief-section"><div class="brief-section-title">Knowledge &amp; Protocols</div>`;
+
+  if(b.service_protocol){
+    html += `<div style="margin-bottom:12px"><div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Service Protocol</div><div style="font-size:13px;color:var(--t1);line-height:1.7">${b.service_protocol}</div></div>`;
+  }
+
+  if(b.knowledge_notes && b.knowledge_notes !== b.service_protocol){
+    html += `<div style="margin-bottom:12px;padding:10px 14px;background:rgba(123,94,167,0.06);border-radius:8px;border-left:3px solid var(--purple)"><div style="font-size:10px;font-family:var(--mono);color:var(--purple);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">AI Knowledge Notes</div><div style="font-size:13px;color:var(--t1);line-height:1.7">${b.knowledge_notes}</div></div>`;
+  }
+
+  if((b.rights_info||[]).length){
+    const rights = b.rights_info.map(r=>`<div style="font-size:12px;color:var(--t2);padding:4px 0;border-bottom:1px solid var(--border)">${typeof r==='string'?r:JSON.stringify(r)}</div>`).join('');
+    html += `<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:11px;font-weight:600;font-family:var(--mono);color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;list-style:none">&#9660; Know Your Rights</summary><div style="margin-top:8px;padding-left:8px">${rights}</div></details>`;
+  }
+
+  if((b.success_stories||[]).length){
+    const stories = b.success_stories.map(s=>`<div style="padding:10px;background:var(--bg3);border-radius:8px;margin-bottom:6px;font-size:12px;color:var(--t1);line-height:1.6">${typeof s==='string'?s:JSON.stringify(s)}</div>`).join('');
+    html += `<details><summary style="cursor:pointer;font-size:11px;font-weight:600;font-family:var(--mono);color:var(--teal);text-transform:uppercase;letter-spacing:0.5px;list-style:none">&#9660; Success Stories</summary><div style="margin-top:8px">${stories}</div></details>`;
+  }
+
+  if((b.reasoning_path||[]).length){
+    const path = b.reasoning_path.slice(0,5).map(r=>`<div style="font-size:11px;color:var(--t2);padding:3px 0"><span style="font-family:var(--mono);color:var(--t3)">[hop ${r.hop||0}]</span> ${r.subject||''} → <b>${r.predicate||''}</b> → ${r.object||''} <span style="color:var(--t3);font-size:10px">(conf: ${(r.confidence||0).toFixed(2)})</span></div>`).join('');
+    html += `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;font-weight:600;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;list-style:none">&#9660; Resource Reasoning (KG)</summary><div style="margin-top:8px;padding-left:8px">${path}</div></details>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// ── Section 6: Alternative resources ─────────────────────
+function renderBriefingAlternatives(b) {
+  const alts = b.alternative_resources || [];
+  if(!alts.length) return '';
+
+  let cards = '';
+  for(const a of alts){
+    const sim = a.similarity ? Math.round(a.similarity*100) : null;
+    cards += `<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px">${a.name||''}</div>
+        <div style="font-size:11px;color:var(--t3);font-family:var(--mono)">${(a.resource_type||a.type||'').replace(/_/g,' ')} &middot; ${a.borough||''}</div>
+        ${a.address?`<div style="font-size:11px;color:var(--t2)">${a.address}</div>`:''}
+      </div>
+      ${sim!==null?`<div style="text-align:center;flex-shrink:0"><div style="font-size:16px;font-weight:700;font-family:var(--mono);color:var(--green)">${sim}%</div><div style="font-size:9px;color:var(--t3)">match</div></div>`:''}
+    </div>`;
+  }
+
+  return `<div class="brief-section">
+    <div class="brief-section-title">If Primary Fails — Alternatives</div>
+    ${cards}
+  </div>`;
+}
+
+// ── Section 7: History timeline ───────────────────────────
+function renderBriefingTimeline(b) {
+  const timeline = b.history_timeline || [];
+  if(!timeline.length) return '';
+
+  const icons = {Query:'&#128172;',Visited:'&#9989;',Failed:'&#10060;',Feedback:'&#9888;&#65038;'};
+  let rows = '';
+  for(const item of timeline.slice(-15)){
+    // Parse "[2026-04-11 19:04] Query: ..." format
+    const match = item.match(/^\[(.{16})\]\s*(\w+[^:]*?):\s*(.*)/);
+    if(match){
+      const [,ts,type,text] = match;
+      const icon = Object.entries(icons).find(([k])=>type.toLowerCase().includes(k.toLowerCase()))?.[1] || '&#9679;';
+      rows += `<div class="timeline-item"><span class="timeline-ts">${ts}</span><span style="font-size:14px;flex-shrink:0">${icon}</span><span class="timeline-text"><b>${type}:</b> ${text}</span></div>`;
+    } else {
+      rows += `<div class="timeline-item"><span class="timeline-ts"></span><span class="timeline-text">${item}</span></div>`;
+    }
+  }
+
+  return `<div class="brief-section">
+    <div class="brief-section-title">Case History</div>
+    <div>${rows}</div>
+  </div>`;
+}
+
+// ── Section 8: Admin actions ─────────────────────────────
+function renderBriefingActions(b) {
+  const LIFECYCLE = ['acknowledged','en_route','arrived','resolved'];
+  const stateLabels = {acknowledged:'Acknowledged',en_route:'En Route',arrived:'Arrived',resolved:'Resolved'};
+
+  let stateButtons = '';
+  for(const s of LIFECYCLE){
+    stateButtons += `<button class="state-btn" onclick="advanceState('${b.case_id}','${b.resource_name}','${s}')">${stateLabels[s]}</button>`;
+  }
+
+  return `<div class="brief-section">
+    <div class="brief-section-title">Admin Actions</div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Advance Destination State</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${stateButtons}</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn-primary" style="padding:10px 18px;font-size:12px;width:auto" onclick="regenerateBriefing()">&#8635; Regenerate Briefing</button>
+      <button class="state-btn danger" onclick="advanceState('${b.case_id}','${b.resource_name}','cancelled')">&#10005; Cancel Destination</button>
+    </div>
+  </div>`;
+}
+
+// ── Advance destination state ─────────────────────────────
+async function advanceState(caseId, resourceName, newState) {
+  try {
+    await fetch('/api/admin/update_state', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({case_id:caseId, resource_name:resourceName, new_state:newState})
+    });
+    // Reload briefing to reflect state change
+    const {resourceType, resourceAddress} = _activeBriefing;
+    loadBriefing(caseId, resourceName, resourceType, resourceAddress);
+  } catch(e) {
+    alert('Error updating state: '+e.message);
+  }
+}
 </script>
 </body>
 </html>

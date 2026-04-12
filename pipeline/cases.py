@@ -461,6 +461,16 @@ def get_active_destinations(case_id: str) -> list:
             if i.get("state") not in terminal]
 
 
+def save_admin_notes(case_id: str, notes: str) -> dict:
+    """Persist admin notes to a case (called from admin portal)."""
+    case = load_case(case_id)
+    if not case:
+        return {"error": "Case not found"}
+    case["admin_notes"] = notes
+    _save_case(case)
+    return case
+
+
 def _save_case(case: dict):
     """Save case to disk."""
     path = _case_path(case["case_id"])
