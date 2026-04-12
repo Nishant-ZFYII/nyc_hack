@@ -10,12 +10,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from llm.client import synth_chat
 
 SYNTH_PROMPT = """You are an NYC Department of Social Services AI assistant.
-Given a user query and structured data results, write a clear, helpful, concise answer.
-- For needs assessments: address each identified need, name specific resources with addresses
-- For lookups: list the resources with name, address, and any relevant details
-- For simulations: summarize the emergency response plan
+Write a clear, helpful, concise answer.
+- Name specific resources from the data with addresses
 - Be warm but professional — real people's lives are affected
-- Max 150 words. No markdown headers. Just clear prose."""
+- Max 150 words. No markdown headers. Just clear prose.
+
+CRITICAL NYC FACTS (always true, never contradict these):
+- Emergency shelter is a LEGAL RIGHT in NYC. Nobody can be turned away.
+- You can apply for benefits WITHOUT an ID (use Request for Proof form at HRA).
+- Children can enroll in NYC public school WITHOUT an address (McKinney-Vento law).
+- All NYC public school students get free meals regardless of income.
+- Hospitals must treat emergencies regardless of insurance or immigration status (EMTALA).
+- Food pantries do NOT check immigration status or require ID.
+- NYC agencies cannot share your info with ICE.
+
+If the user mentions NO ID, NO address, undocumented status, or no insurance — REASSURE them that help is still available. DO NOT tell them to get those things first."""
 
 
 def _format_results(result: dict) -> str:
@@ -76,17 +85,81 @@ def _format_results(result: dict) -> str:
     return str(result)
 
 
+def _detect_concerns(query: str) -> list:
+    """Detect common concerns that need explicit reassurance in the answer."""
+    q = query.lower()
+    concerns = []
+    if any(p in q for p in ["no id", "don't have an id", "without id", "lost my id",
+                              "no documents", "no papers"]):
+        concerns.append("NO_ID")
+    if any(p in q for p in ["undocumented", "no papers", "not legal",
+                              "no status", "afraid of ice", "deportation"]):
+        concerns.append("UNDOCUMENTED")
+    if any(p in q for p in ["no insurance", "don't have insurance", "uninsured"]):
+        concerns.append("NO_INSURANCE")
+    if any(p in q for p in ["no address", "nowhere to live", "no permanent address"]):
+        concerns.append("NO_ADDRESS")
+    if any(p in q for p in ["no money", "broke", "no cash", "can't pay"]):
+        concerns.append("NO_MONEY")
+    return concerns
+
+
+REASSURANCE = {
+    "NO_ID": (
+        "You can still get help without an ID. At HRA, ask for a 'Request for Proof' form "
+        "— staff will help you apply for benefits and get a new ID."
+    ),
+    "UNDOCUMENTED": (
+        "Immigration status does NOT prevent you from getting emergency shelter, food, "
+        "or healthcare in NYC. Your info is protected — NYC agencies cannot share it with ICE."
+    ),
+    "NO_INSURANCE": (
+        "You can still be treated. Hospitals must provide emergency care regardless of "
+        "insurance (EMTALA law). NYC Health + Hospitals offers care on a sliding-scale based on income."
+    ),
+    "NO_ADDRESS": (
+        "You can still apply for benefits, enroll children in school (McKinney-Vento law), "
+        "and get shelter without a permanent address."
+    ),
+    "NO_MONEY": (
+        "Emergency shelter, food, and emergency care are FREE. For transit, HRA Benefits "
+        "Centers provide free MetroCards for people going to benefits appointments."
+    ),
+}
+
+
 def answer(nl_query: str, plan: dict, result: dict) -> str:
     """Generate a natural language answer from the query, plan, and results."""
     context = _format_results(result)
+
+    # Detect concerns mentioned in the query → inject reassurance directly
+    concerns = _detect_concerns(nl_query)
+    reassurance_text = ""
+    if concerns:
+        lines = ["IMPORTANT — include these facts verbatim in your answer:"]
+        for c in concerns:
+            lines.append(f"- {REASSURANCE[c]}")
+        reassurance_text = "\n".join(lines) + "\n\n"
+
     messages = [
         {"role": "system", "content": SYNTH_PROMPT},
-        {"role": "user",   "content": f"Query: {nl_query}\n\nData:\n{context}"},
+        {"role": "user",   "content": f"Query: {nl_query}\n\n{reassurance_text}Data:\n{context}"},
     ]
     response = synth_chat(messages)
     # If LLM returns None or empty, fall back to structured summary
     if not response or response.strip().lower() in ("none", ""):
         return _fallback_answer(result, context)
+
+    # Post-hoc: if concerns exist but reassurance is missing, prepend it
+    if concerns and response:
+        resp_lower = response.lower()
+        # If the response doesn't mention the reassurance, prepend it
+        for c in concerns:
+            key_phrase = REASSURANCE[c][:40].lower()
+            if key_phrase not in resp_lower:
+                response = f"{REASSURANCE[c]}\n\n{response}"
+                break
+
     return response
 
 

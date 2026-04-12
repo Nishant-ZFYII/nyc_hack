@@ -437,7 +437,7 @@ def add_destination_intent(case_id: str, resource: dict,
 
 def update_destination_state(case_id: str, resource_name: str,
                               new_state: str) -> dict:
-    """Advance lifecycle state for a destination intent."""
+    """Advance lifecycle state: intent_confirmed → acknowledged → en_route → arrived → resolved."""
     case = load_case(case_id)
     if not case:
         return {"error": "Case not found"}
@@ -469,6 +469,50 @@ def save_admin_notes(case_id: str, notes: str) -> dict:
     case["admin_notes"] = notes
     _save_case(case)
     return case
+
+
+def raise_ticket(case_id: str, ticket_type: str = "sponsored_ride",
+                 reason: str = "") -> dict:
+    """Raise a support ticket on a case (e.g. to unlock sponsored ride).
+
+    Idempotent — if a ticket of the same type already exists and is open,
+    it's returned rather than duplicated. Tickets are stored on the case
+    under `tickets: [{type, raised_at, status, reason}]`.
+    """
+    case = load_case(case_id)
+    if not case:
+        return {"error": f"Case '{case_id}' not found"}
+    tickets = case.setdefault("tickets", [])
+    existing = next((t for t in tickets
+                     if t.get("type") == ticket_type
+                     and t.get("status") == "open"), None)
+    if existing:
+        return {"case_id": case_id, "ticket": existing, "already_raised": True}
+    ticket = {
+        "type": ticket_type,
+        "raised_at": datetime.utcnow().isoformat() + "Z",
+        "status": "open",
+        "reason": reason,
+    }
+    tickets.append(ticket)
+    _save_case(case)
+    return {"case_id": case_id, "ticket": ticket, "already_raised": False}
+
+
+def get_tickets(case_id: str) -> list:
+    """Return all tickets on a case."""
+    case = load_case(case_id)
+    if not case:
+        return []
+    return case.get("tickets", [])
+
+
+def has_open_ticket(case_id: str, ticket_type: str = "sponsored_ride") -> bool:
+    """Check if a case has an open ticket of the given type."""
+    for t in get_tickets(case_id):
+        if t.get("type") == ticket_type and t.get("status") == "open":
+            return True
+    return False
 
 
 def _save_case(case: dict):

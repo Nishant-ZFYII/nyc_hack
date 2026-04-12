@@ -11,12 +11,13 @@ Run:
 User portal (server.py) runs on port 9000.
 """
 from __future__ import annotations
+import io
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parent
@@ -28,9 +29,35 @@ from pipeline.cases import (
     update_destination_state,
     update_need_status,
     save_admin_notes,
+    get_tickets,
 )
+
+# Real NeMo Guardrails — same library the user portal uses
+try:
+    from guardrails import check_safety_async
+    _GUARDRAILS_AVAILABLE = True
+except Exception:
+    _GUARDRAILS_AVAILABLE = False
 from pipeline.briefing import generate_briefing, _estimate_urgency
 from pipeline.executor import load_state
+
+try:
+    from pipeline.form_filler import fill_forms_from_id, extract_id_fields
+    _FORM_FILLER_AVAILABLE = True
+except Exception:
+    _FORM_FILLER_AVAILABLE = False
+
+# nat (NeMo Agent Toolkit) — optional, degrades gracefully if missing
+import time as _time
+try:
+    import agent.register  # registers all 5 tool groups (incl. nyc_admin_tools)
+    from nat.runtime.loader import load_workflow as _nat_load_workflow
+    from agent.register import start_trace as _nat_start_trace
+    _NAT_AVAILABLE = True
+    _NAT_ADMIN_CONFIG = str(ROOT / "agent" / "config_admin.yml")
+except Exception as _nat_err:
+    _NAT_AVAILABLE = False
+    _NAT_IMPORT_ERROR = str(_nat_err)
 
 app = FastAPI(title="NYC Social Services — Admin Portal")
 app.add_middleware(
@@ -248,3 +275,172 @@ async def admin_stats():
         "urgency_counts": urgency_counts,
         "top_need_categories": [{"category": k, "count": v} for k, v in top_needs],
     }
+
+
+# ── Form Filler — OCR + pre-filled PDFs ───────────────────────────────────────
+
+@app.post("/api/admin/fill_forms")
+async def fill_forms(case_id: str = Form(...),
+                     forms: str = Form("snap,medicaid,proof"),
+                     id_image: UploadFile = File(...)):
+    """
+    Upload an ID photo + case_id. Returns a ZIP of pre-filled PDFs.
+
+    The flow:
+      1. OCR the uploaded ID (tesseract)
+      2. Load case data (household size, income)
+      3. Generate requested forms as PDFs
+      4. Return ZIP
+    """
+    import zipfile, tempfile, os
+
+    # Save uploaded image
+    tmp_dir = tempfile.mkdtemp()
+    id_path = os.path.join(tmp_dir, id_image.filename or "id.jpg")
+    with open(id_path, "wb") as f:
+        f.write(await id_image.read())
+
+    # Load case data for household + income
+    case = load_case(case_id) or {}
+    visits = case.get("visits", [])
+    # Try to extract profile from latest visit's plan
+    profile = {}
+    if visits:
+        last_plan = visits[-1].get("plan", {}) or {}
+        profile = last_plan.get("client_profile", {}) or {}
+
+    case_data = {
+        "household_size": profile.get("household_size", 1),
+        "annual_income": profile.get("income", 0) or profile.get("annual_income", 0),
+        "has_children": profile.get("has_children", False),
+        "housing_status": profile.get("housing_status", ""),
+        "snap_estimate": 598,  # demo placeholder; real eligibility calc happens in form
+    }
+
+    if not _FORM_FILLER_AVAILABLE:
+        raise HTTPException(501, "form_filler module not available")
+    form_types = [f.strip() for f in forms.split(",") if f.strip()]
+    result = fill_forms_from_id(id_path, case_data=case_data, forms=form_types)
+
+    # Bundle PDFs into a ZIP
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for form_type, pdf_bytes in result["forms"].items():
+            zf.writestr(f"{form_type}_{case_id}.pdf", pdf_bytes)
+        # Also include extracted ID fields as JSON
+        import json as _json
+        zf.writestr("extracted_id_fields.json",
+                    _json.dumps(result["id_fields"], indent=2))
+
+    zip_buf.seek(0)
+    return StreamingResponse(
+        iter([zip_buf.read()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="forms_{case_id}.zip"'},
+    )
+
+
+@app.post("/api/admin/ocr_id")
+async def ocr_id(id_image: UploadFile = File(...)):
+    """
+    OCR an ID image without generating forms.
+    Returns extracted fields as JSON. Useful for preview before form-fill.
+    """
+    if not _FORM_FILLER_AVAILABLE:
+        raise HTTPException(501, "form_filler module not available")
+    import tempfile, os
+    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+    tmp.write(await id_image.read())
+    tmp.close()
+    try:
+        fields = extract_id_fields(tmp.name)
+    finally:
+        os.unlink(tmp.name)
+    return fields
+
+
+# ── Tickets overview ───────────────────────────────────────
+
+@app.get("/api/admin/tickets")
+async def admin_tickets():
+    """Return all open tickets across all cases for dashboard overview."""
+    out = []
+    for c_summary in list_cases():
+        case = load_case(c_summary["case_id"])
+        if not case:
+            continue
+        for t in case.get("tickets", []):
+            if t.get("status") == "open":
+                out.append({
+                    "case_id": case.get("case_id"),
+                    "client_name": case.get("name", ""),
+                    **t,
+                })
+    # Most recent first
+    out.sort(key=lambda x: x.get("raised_at", ""), reverse=True)
+    return {"open_count": len(out), "tickets": out}
+
+
+# ── nat (NeMo Agent Toolkit) Admin Agent ───────────────────
+
+class AdminAgentRequest(BaseModel):
+    query: str
+    case_id: str = ""
+
+
+@app.post("/api/admin/agent/nat")
+async def admin_agent_nat(req: AdminAgentRequest):
+    """
+    Run a supervisor query through the NeMo Agent Toolkit ReAct agent with
+    admin-tier tools (list_all_cases, get_city_stats, generate_case_briefing,
+    update_case_need_status, etc). Returns answer + tool-call trace.
+    """
+    if not _NAT_AVAILABLE:
+        raise HTTPException(500, f"nat not available: {_NAT_IMPORT_ERROR}")
+
+    t0 = _time.time()
+
+    # NeMo Guardrails (real nemoguardrails) — same protection as user portal
+    if _GUARDRAILS_AVAILABLE:
+        guard = await check_safety_async(req.query, use_llm_fallback=False)
+        if not guard["allow"]:
+            return {
+                "answer": guard["replacement_response"],
+                "safety_block": True,
+                "reason": guard["reason"],
+                "via": "guardrails (pre-nat admin)",
+            }
+
+    message = req.query
+    if req.case_id:
+        message += f" (focus case_id: {req.case_id})"
+
+    try:
+        trace = _nat_start_trace()
+        async with _nat_load_workflow(_NAT_ADMIN_CONFIG) as workflow:
+            async with workflow.run(message) as runner:
+                if hasattr(runner, "result"):
+                    r = runner.result
+                    result = await r() if callable(r) else r
+                elif hasattr(runner, "get_result"):
+                    result = await runner.get_result()
+                else:
+                    result = runner
+        return {
+            "answer": str(result),
+            "trace": trace,
+            "tool_call_count": len(trace),
+            "total_time_s": round(_time.time() - t0, 2),
+            "via": "nat-react-agent",
+            "model": "llama3",
+            "framework": "NVIDIA NeMo Agent Toolkit",
+            "mode": "admin",
+        }
+    except Exception as e:
+        return {
+            "error": f"nat admin agent error: {e}",
+            "trace": trace if 'trace' in locals() else [],
+            "tool_call_count": len(trace) if 'trace' in locals() else 0,
+            "total_time_s": round(_time.time() - t0, 2),
+            "via": "nat-react-agent",
+        }

@@ -269,7 +269,16 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
       <!-- Query -->
       <div class="section-label fade-in-d1">What do you need?</div>
       <textarea id="queryInput" class="big-input fade-in-d2" rows="4" placeholder="e.g. I have 4 kids, income $28K, losing housing in Flatbush next week..."></textarea>
-      <button class="btn-primary fade-in-d2" style="margin-top:12px" id="sendBtn" onclick="sendQuery()">Find Help</button>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px" class="fade-in-d2">
+        <button class="btn-primary" style="padding:14px 20px;text-align:left;display:flex;flex-direction:column;gap:3px;align-items:flex-start" id="sendBtn" onclick="sendQuery()">
+          <span style="font-size:15px">&#128269; Find Help</span>
+          <span style="font-size:11px;opacity:0.85;font-weight:500;font-family:var(--ui);text-transform:none;letter-spacing:0">Know what you need? Search for it directly.</span>
+        </button>
+        <button class="btn-primary" style="padding:14px 20px;text-align:left;display:flex;flex-direction:column;gap:3px;align-items:flex-start;background:linear-gradient(135deg,#1b7a00,#0f4a00);color:#fff" onclick="runNatAgent()" title="AI figures out what you qualify for">
+          <span style="font-size:15px">&#127775; Not Sure Where to Start?</span>
+          <span style="font-size:11px;opacity:0.85;font-weight:500;font-family:var(--ui);text-transform:none;letter-spacing:0">Let our AI figure out what help exists for you.</span>
+        </button>
+      </div>
 
       <hr class="divider">
       <div class="section-label">Quick options</div>
@@ -323,6 +332,58 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
         <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--red)"></span> Hospitals</div>
         <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--blue)"></span> Schools</div>
         <div class="map-legend-item"><span class="map-legend-dot" style="background:#81c784"></span> Childcare</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ PAGE: OPENCLAW ═══════════ -->
+<div class="page" id="page-openclaw">
+  <div class="topbar">
+    <button class="topbar-back" onclick="goTo('page-ask')">&#8592; Back</button>
+    <span class="topbar-title">NeMo ReAct Agent</span>
+    <span class="topbar-right" id="openclawTrace"></span>
+    <button class="topbar-back" onclick="toggleNatMap()" id="natMapToggleBtn" style="margin-left:8px">&#128506; Map</button>
+  </div>
+  <div class="results-layout">
+    <div class="results-main" id="natMain">
+      <div class="page-scroll">
+        <div class="centered-wide" id="openclawContent"></div>
+      </div>
+    </div>
+    <div class="results-map" id="natMapPanel">
+      <div id="natMapEl" style="width:100%;height:100%"></div>
+      <div class="map-overlay map-legend">
+        <div class="map-legend-title">Plan Resources</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--red)"></span> Tonight</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--orange)"></span> This Week</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--blue)"></span> Next 2 Weeks</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ PAGE: AGENT PLAN (autonomous) ═══════════ -->
+<div class="page" id="page-agentplan">
+  <div class="topbar">
+    <button class="topbar-back" onclick="goTo('page-ask')">&#8592; Back</button>
+    <span class="topbar-title">Your Full Plan</span>
+    <button class="topbar-back" onclick="downloadPlanPDF()" style="margin-left:auto">&#128196; Save as PDF</button>
+    <button class="topbar-back" onclick="togglePlanMap()" id="planMapToggleBtn" style="margin-left:8px">&#128506; Map</button>
+  </div>
+  <div class="results-layout">
+    <div class="results-main" id="planMain">
+      <div class="page-scroll">
+        <div class="centered-wide" id="agentPlanContent"></div>
+      </div>
+    </div>
+    <div class="results-map" id="planMapPanel">
+      <div id="planMapEl" style="width:100%;height:100%"></div>
+      <div class="map-overlay map-legend">
+        <div class="map-legend-title">Plan Resources</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--red)"></span> Tonight</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--orange)"></span> This Week</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--blue)"></span> Next 2 Weeks</div>
       </div>
     </div>
   </div>
@@ -475,7 +536,7 @@ async function doLogin(){
 }
 
 // ── Query ──────────────────────────────────────────────────
-function quickAsk(q){document.getElementById('queryInput').value=q;sendQuery()}
+function quickAsk(q){const el=document.getElementById('queryInput');el.value=q;el.focus()}
 
 async function sendQuery(){
   const q=document.getElementById('queryInput').value.trim();if(!q)return;
@@ -514,6 +575,13 @@ async function sendQuery(){
 // ── Render Results ─────────────────────────────────────────
 function renderResults(data){
   const c=document.getElementById('resultsContent');
+
+  // Safety block check — intercept before normal rendering
+  if(data.safety_block){
+    c.innerHTML=renderSafetyBlock(data);
+    return;
+  }
+
   let html='';
 
   // Case ID banner
@@ -580,6 +648,10 @@ function renderResults(data){
       html+=`</div></div>`;
     }
   }
+
+  // Refine panel (eligibility + rights + resources)
+  html+=`<div id="refineResults"></div>`;
+  html+=renderRefinePanel();
 
   // Feedback
   html+=`<div class="feedback-box"><input class="feedback-input" type="text" placeholder="Report issue: e.g. 'Shelter at 66 Boerum is full'" onkeydown="if(event.key==='Enter')sendFeedback(this)"><button class="feedback-send" onclick="sendFeedback(this.previousElementSibling)">Report</button></div>`;
@@ -870,6 +942,932 @@ async function loadProgress(){
     const resp=await fetch(`/api/case/progress/${currentCaseId}`);
     return await resp.json();
   }catch(e){return null}
+}
+
+// ── Refine Panel ───────────────────────────────────────────
+function renderRefinePanel(){
+  return `<div style="margin-top:20px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;box-shadow:var(--shadow)">
+    <div style="font-weight:700;font-size:16px;margin-bottom:4px">&#128269; Help us understand your needs better</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:16px">Check anything that applies &mdash; we'll update your results, eligibility, and rights</div>
+
+    <div style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">About you</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      ${refineCheckbox('cb-has-id','I have an ID',true)}
+      ${refineCheckbox('cb-has-children','I have children',false)}
+      ${refineCheckbox('cb-pregnant',"I'm pregnant",false)}
+      ${refineCheckbox('cb-has-insurance','I have insurance',true)}
+      ${refineCheckbox('cb-senior',"I'm 65 or older",false)}
+      ${refineCheckbox('cb-disabled','I have a disability',false)}
+      ${refineCheckbox('cb-veteran','Veteran',false)}
+      ${refineCheckbox('cb-undoc','Undocumented',false)}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div>
+        <label style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Household size</label>
+        <input type="number" id="household-size" min="1" max="20" value="1" class="big-input" style="font-size:13px;padding:8px 12px">
+      </div>
+      <div>
+        <label style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Monthly income ($)</label>
+        <input type="number" id="monthly-income" min="0" placeholder="e.g. 2400" class="big-input" style="font-size:13px;padding:8px 12px">
+      </div>
+    </div>
+
+    <label style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Anything else we should know?</label>
+    <textarea id="refine-additional" class="big-input" rows="2" placeholder='e.g. "my kid has diabetes"' style="font-size:13px;padding:10px 14px;margin-bottom:12px"></textarea>
+
+    <button class="btn-primary" style="width:100%;padding:12px;font-size:13px" onclick="submitRefine()">Update My Results</button>
+  </div>`;
+}
+
+function refineCheckbox(id,label,defaultChecked){
+  return `<label style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;transition:all 0.2s;font-size:13px" onmouseover="this.style.borderColor='var(--green-d)'" onmouseout="this.style.borderColor='var(--border)'">
+    <input type="checkbox" id="${id}" ${defaultChecked?'checked':''} style="accent-color:var(--green);width:16px;height:16px;flex-shrink:0">
+    <span>${label}</span>
+  </label>`;
+}
+
+async function submitRefine(){
+  const getVal=(id)=>document.getElementById(id);
+  const payload={
+    original_query:lastQuery,
+    case_id:currentCaseId,
+    location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null,
+    has_id:getVal('cb-has-id')?.checked||false,
+    has_children:getVal('cb-has-children')?.checked||false,
+    has_pregnant:getVal('cb-pregnant')?.checked||false,
+    has_disabled:getVal('cb-disabled')?.checked||false,
+    has_senior:getVal('cb-senior')?.checked||false,
+    has_insurance:getVal('cb-has-insurance')?.checked||false,
+    is_veteran:getVal('cb-veteran')?.checked||false,
+    is_undocumented:getVal('cb-undoc')?.checked||false,
+    household_size:parseInt(getVal('household-size')?.value)||1,
+    annual_income:(parseFloat(getVal('monthly-income')?.value)||0)*12,
+    additional_info:getVal('refine-additional')?.value.trim()||'',
+  };
+
+  const target=document.getElementById('refineResults');
+  target.innerHTML='<div style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto"></div><div style="margin-top:8px;font-size:12px;color:var(--t3)">Updating...</div></div>';
+
+  try{
+    const resp=await fetch('/api/refine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await resp.json();
+    if(data.safety_block){target.innerHTML=renderSafetyBlock(data);return}
+    renderRefineResults(data,target);
+  }catch(err){
+    target.innerHTML=`<div style="color:var(--red);padding:12px">Error: ${err.message}</div>`;
+  }
+}
+
+function renderRefineResults(data,target){
+  let html='';
+
+  // Eligibility card
+  if(data.eligibility){
+    const e=data.eligibility;
+    const progs=e.programs||{};
+    const progKeys=Object.keys(progs).filter(k=>progs[k]?.qualifies!==false);
+    const shown=progKeys.slice(0,5);
+    const rest=progKeys.slice(5);
+
+    html+=`<div style="margin-top:20px;background:linear-gradient(135deg,rgba(58,125,10,0.08),rgba(58,125,10,0.02));border:2px solid var(--green-d);border-radius:14px;padding:20px;box-shadow:var(--shadow)">`;
+    if(e.monthly_benefits>0){
+      html+=`<div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">You qualify for</div>
+        <div style="font-family:var(--display);font-size:30px;font-weight:600;color:var(--green)">&#128176; $${e.monthly_benefits.toLocaleString()}/month</div>
+        <div style="font-size:12px;color:var(--t2);margin-top:2px">in benefits</div>
+      </div>`;
+    } else {
+      html+=`<div style="font-weight:700;font-size:16px;margin-bottom:12px;color:var(--green)">&#128176; Your eligibility</div>`;
+    }
+
+    for(const k of shown){
+      html+=renderProgram(progs[k]);
+    }
+
+    if(rest.length>0){
+      const expId='exp-'+Date.now();
+      html+=`<div id="${expId}" class="collapsed" style="margin-top:6px">`;
+      for(const k of rest)html+=renderProgram(progs[k]);
+      html+=`</div>`;
+      html+=`<button onclick="document.getElementById('${expId}').classList.toggle('collapsed')" class="btn-secondary" style="width:100%;margin-top:10px;padding:10px;font-size:12px">Expand ${rest.length} more program${rest.length>1?'s':''} &#9660;</button>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Rights
+  if(data.rights&&data.rights.length){
+    html+=`<div style="margin-top:14px;background:rgba(46,125,186,0.06);border:2px solid rgba(46,125,186,0.25);border-radius:14px;padding:18px;box-shadow:var(--shadow)">`;
+    html+=`<div style="font-weight:700;font-size:15px;margin-bottom:12px;color:var(--blue)">&#128737;&#65039; Your rights</div>`;
+    for(const r of data.rights){
+      html+=`<div style="padding:10px 0;border-bottom:1px solid rgba(46,125,186,0.1)">
+        <div style="font-weight:600;font-size:13px;color:var(--t1);margin-bottom:3px">&#9989; ${r.right||''}</div>
+        <div style="font-size:12px;color:var(--t2);line-height:1.6">${r.detail||''}</div>
+      </div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Updated resources (simple list with a header)
+  if(data.resources&&data.resources.length){
+    html+=`<div style="margin-top:14px"><div style="font-size:11px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">&#128269; Refined resources (${data.resources.length})</div>`;
+    for(const r of data.resources.slice(0,6)){
+      const dist=r.distance_miles?` &middot; ${r.distance_miles} mi`:'';
+      const eName=(r.name||'').replace(/'/g,'&#39;');
+      html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:6px">
+        <div style="font-weight:600;font-size:13px">${r.name||'Unknown'}</div>
+        <div style="font-size:11px;color:var(--t3);font-family:var(--mono);margin-top:2px">${r.address||''}${dist}</div>
+        ${r.lat&&r.lon?`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-secondary" style="padding:4px 10px;font-size:10px" onclick="getDirections(${r.lat},${r.lon},'${eName}')">Directions</button></div>`:''}
+      </div>`;
+    }
+    html+=`</div>`;
+    // Update map
+    if(data.resources.length>0){
+      lastResources=data.resources;
+      if(mapOpen)setTimeout(()=>updateResultMapLayers(),100);
+    }
+  }
+
+  target.innerHTML=html;
+}
+
+function renderProgram(p){
+  if(!p)return '';
+  let html=`<div style="padding:10px 0;border-bottom:1px solid rgba(58,125,10,0.1)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+      <div style="font-weight:600;font-size:13px;color:var(--t1)">&#9989; ${p.program||''}</div>`;
+  if(p.monthly_estimate)html+=`<div style="font-size:12px;color:var(--green);font-weight:600;font-family:var(--mono)">$${p.monthly_estimate}/mo</div>`;
+  html+=`</div>`;
+  if(p.notes)html+=`<div style="font-size:11.5px;color:var(--t2);line-height:1.5;margin-bottom:3px">${p.notes}</div>`;
+  if(p.where_to_apply)html+=`<div style="font-size:11px;color:var(--t3);margin-top:2px"><b>Apply at:</b> ${p.where_to_apply}</div>`;
+  if(p.how_long)html+=`<div style="font-size:11px;color:var(--t3)"><b>Timeline:</b> ${p.how_long}</div>`;
+  if(p.documents_needed&&p.documents_needed.length)html+=`<div style="font-size:11px;color:var(--t3)"><b>Bring:</b> ${p.documents_needed.join(', ')}</div>`;
+  html+=`</div>`;
+  return html;
+}
+
+// ── Safety Block Rendering ─────────────────────────────────
+function renderSafetyBlock(data){
+  const ctype=data.crisis_type;
+  const reason=data.plan?._reason||'';
+  const msg=(data.answer||'').replace(/\n/g,'<br>');
+
+  if(ctype==='suicide'){
+    return `<div style="margin-top:24px;background:linear-gradient(135deg,#b71c1c,#e53935);border-radius:16px;padding:28px;color:#fff;box-shadow:0 8px 40px rgba(229,57,53,0.25)">
+      <div style="font-size:36px;margin-bottom:12px;text-align:center">&#127479;</div>
+      <div style="font-family:var(--display);font-size:24px;font-weight:400;text-align:center;margin-bottom:16px">We hear you. You're not alone.</div>
+      <div style="font-size:14px;line-height:1.7;margin-bottom:20px;text-align:center;opacity:0.95">${msg}</div>
+      <a href="tel:988" style="display:block;background:rgba(255,255,255,0.15);backdrop-filter:blur(10px);border:2px solid rgba(255,255,255,0.4);border-radius:12px;padding:20px;margin-bottom:12px;text-decoration:none;color:#fff;text-align:center">
+        <div style="font-size:28px;margin-bottom:6px">&#128222;</div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:1px">CALL or TEXT 988</div>
+        <div style="font-size:13px;opacity:0.9;margin-top:4px">Suicide &amp; Crisis Lifeline</div>
+        <div style="font-size:12px;opacity:0.8;margin-top:2px">Free &middot; 24/7 &middot; Confidential</div>
+      </a>
+      <div style="text-align:center;font-size:13px;opacity:0.9;margin-bottom:16px">Or call: <a href="tel:18002738255" style="color:#fff;text-decoration:underline">1-800-273-8255</a></div>
+      <button onclick="safetyRedirect('mental health clinic near me')" style="width:100%;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:10px;padding:14px;font-size:14px;font-family:var(--mono);font-weight:600;cursor:pointer;letter-spacing:0.5px">Find a mental health clinic near me &rarr;</button>
+    </div>`;
+  }
+
+  if(ctype==='abuse'){
+    return `<div style="margin-top:24px;background:linear-gradient(135deg,#e65100,#ff6f00);border-radius:16px;padding:28px;color:#fff;box-shadow:0 8px 40px rgba(255,111,0,0.25)">
+      <div style="font-size:36px;margin-bottom:12px;text-align:center">&#128737;&#65039;</div>
+      <div style="font-family:var(--display);font-size:24px;font-weight:400;text-align:center;margin-bottom:16px">You deserve safety.</div>
+      <div style="font-size:14px;line-height:1.7;margin-bottom:16px;text-align:center;opacity:0.95">${msg}</div>
+      <div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:12px;text-align:center;margin-bottom:16px">
+        <div style="font-size:13px;opacity:0.95;margin-bottom:4px">If you're in danger right now:</div>
+        <a href="tel:911" style="color:#fff;font-size:20px;font-weight:700;text-decoration:underline">Call 911</a>
+      </div>
+      <a href="tel:18006214673" style="display:block;background:rgba(255,255,255,0.15);backdrop-filter:blur(10px);border:2px solid rgba(255,255,255,0.4);border-radius:12px;padding:20px;margin-bottom:16px;text-decoration:none;color:#fff;text-align:center">
+        <div style="font-size:28px;margin-bottom:6px">&#128222;</div>
+        <div style="font-size:20px;font-weight:700;letter-spacing:1px">1-800-621-HOPE</div>
+        <div style="font-size:13px;opacity:0.9;margin-top:4px">NYC Domestic Violence Hotline</div>
+        <div style="font-size:12px;opacity:0.8;margin-top:2px">24/7 &middot; Free &middot; Anonymous &middot; Interpreters available</div>
+      </a>
+      <button onclick="safetyRedirect('confidential domestic violence shelter')" style="width:100%;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:10px;padding:14px;font-size:14px;font-family:var(--mono);font-weight:600;cursor:pointer;letter-spacing:0.5px">Find a confidential DV shelter &rarr;</button>
+    </div>`;
+  }
+
+  if(reason==='pii_detected'){
+    return `<div style="margin-top:24px;background:linear-gradient(135deg,#1565c0,#1976d2);border-radius:16px;padding:28px;color:#fff;box-shadow:0 8px 40px rgba(21,101,192,0.2)">
+      <div style="font-size:36px;margin-bottom:12px;text-align:center">&#128274;</div>
+      <div style="font-family:var(--display);font-size:22px;font-weight:400;text-align:center;margin-bottom:12px">Keep your info safe</div>
+      <div style="font-size:14px;line-height:1.7;text-align:center;opacity:0.95;margin-bottom:16px">${msg}</div>
+      <div style="background:rgba(0,0,0,0.15);border-radius:10px;padding:14px;font-size:13px;line-height:1.6;opacity:0.95">
+        Don't share SSN, credit card, or bank numbers here. You can verify identity through official channels later. Just tell me what you need help with.
+      </div>
+    </div>`;
+  }
+
+  // Jailbreak, off_topic, harmful_output — gentle redirect with chips
+  const chips=[
+    {icon:'&#127968;',text:'I need shelter',query:'I need a shelter tonight'},
+    {icon:'&#127822;',text:"I'm hungry",query:'I need food near me'},
+    {icon:'&#127973;',text:'I need a doctor',query:'I need medical help'},
+    {icon:'&#128203;',text:'Apply for SNAP',query:'How do I apply for SNAP benefits?'},
+  ];
+  let chipsHtml='';
+  for(const c of chips){
+    chipsHtml+=`<button onclick="safetyRedirect('${c.query.replace(/'/g,"\\'")}')" style="background:var(--bg3);border:1px solid var(--green-d);color:var(--t1);border-radius:8px;padding:10px 14px;font-size:13px;font-family:var(--ui);cursor:pointer;transition:all 0.2s;text-align:left" onmouseover="this.style.borderColor='var(--green)';this.style.background='rgba(58,125,10,0.08)'" onmouseout="this.style.borderColor='var(--green-d)';this.style.background='var(--bg3)'">${c.icon} ${c.text}</button>`;
+  }
+
+  return `<div style="margin-top:24px;background:var(--bg2);border:2px solid var(--green-d);border-radius:16px;padding:28px;box-shadow:var(--shadow)">
+    <div style="font-size:36px;margin-bottom:12px;text-align:center">&#128508;</div>
+    <div style="font-family:var(--display);font-size:22px;font-weight:400;text-align:center;margin-bottom:12px">I'm a NYC Social Services assistant.</div>
+    <div style="font-size:14px;line-height:1.7;text-align:center;color:var(--t2);margin-bottom:20px">${msg||"I help with shelter, food, healthcare, benefits, school, and safety."}</div>
+    <div style="font-size:12px;color:var(--t3);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;text-align:center">Try asking:</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${chipsHtml}</div>
+  </div>`;
+}
+
+function safetyRedirect(query){
+  document.getElementById('queryInput').value=query;
+  sendQuery();
+}
+
+// ── OpenClaw Agent ─────────────────────────────────────────
+async function runOpenClaw(){
+  const q=document.getElementById('queryInput').value.trim();
+  if(!q){document.getElementById('queryInput').focus();return}
+  lastQuery=q;
+  goTo('page-openclaw');
+  const c=document.getElementById('openclawContent');
+  c.innerHTML=`<div style="text-align:center;padding:60px 20px">
+    <div style="font-size:56px;margin-bottom:18px;animation:pulse 2s infinite">&#9881;&#65039;</div>
+    <div style="font-family:var(--display);font-size:24px;font-weight:300;margin-bottom:8px">OpenClaw Agent is thinking...</div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:6px">Running <b>nyc-caseworker</b> skill on real Nemotron-3-Nano</div>
+    <div style="font-size:11px;color:var(--t3);font-family:var(--mono);margin-bottom:20px">via NVIDIA OpenClaw gateway &middot; local inference</div>
+    <div class="spinner" style="margin:0 auto"></div>
+    <div style="font-size:11px;color:var(--t3);margin-top:12px">This can take 30&ndash;60 seconds</div>
+  </div>`;
+
+  const start=Date.now();
+  try{
+    const resp=await fetch('/api/agent/openclaw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null,case_id:currentCaseId})});
+    const data=await resp.json();
+    renderOpenClawResult(data,Date.now()-start);
+  }catch(err){
+    c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error: ${err.message}</div>`;
+  }
+}
+
+function renderOpenClawResult(data,elapsed){
+  const c=document.getElementById('openclawContent');
+  const answer=(data.answer||data.message||'No response').replace(/\n/g,'<br>');
+  const via=data.via||'openclaw';
+  const provider=data.provider||'ollama';
+  const model=data.model||'nemotron-3-nano';
+  const sessionId=data.session_id||'';
+  const duration=data.duration_ms||elapsed;
+
+  let html=`<div style="margin-top:20px">`;
+
+  // Query
+  html+=`<div style="color:var(--t3);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">YOUR QUERY</div>`;
+  html+=`<div style="background:rgba(58,125,10,0.04);border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:20px">${lastQuery}</div>`;
+
+  // OpenClaw branding banner
+  html+=`<div style="background:linear-gradient(135deg,rgba(118,185,0,0.08),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+    <div style="font-size:24px">&#9881;&#65039;</div>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:13px;color:var(--green)">NVIDIA OpenClaw Agent</div>
+      <div style="font-size:11px;color:var(--t3);font-family:var(--mono)">nyc-caseworker skill &middot; ${provider} &middot; ${model}</div>
+    </div>
+  </div>`;
+
+  // Answer
+  html+=`<div class="answer-box fade-in" style="font-size:14.5px;line-height:1.8">${answer}</div>`;
+
+  // Trace panel
+  html+=`<div style="margin-top:16px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;font-family:var(--mono);font-size:11px">
+    <div style="color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;font-size:10px">&#9881;&#65039; Execution Trace</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;color:var(--t2)">
+      <div style="color:var(--t3)">via:</div><div><b style="color:var(--green)">${via}</b></div>
+      <div style="color:var(--t3)">provider:</div><div>${provider}</div>
+      <div style="color:var(--t3)">model:</div><div>${model}</div>
+      ${sessionId?`<div style="color:var(--t3)">session:</div><div>${sessionId}</div>`:''}
+      <div style="color:var(--t3)">duration:</div><div>${(duration/1000).toFixed(2)}s</div>
+    </div>
+  </div>`;
+
+  // Actions
+  html+=`<div style="display:flex;gap:8px;margin-top:16px">
+    <button class="btn-secondary" style="padding:10px 16px;font-size:12px" onclick="goTo('page-ask')">&#8592; Ask another</button>
+    <button class="btn-primary" style="padding:10px 16px;font-size:12px;background:var(--purple);color:#fff;flex:1" onclick="runAgentPlan()">&#129504; Try Full Plan</button>
+  </div>`;
+
+  html+=`</div>`;
+  c.innerHTML=html;
+
+  // Show trace in topbar
+  document.getElementById('openclawTrace').textContent=`${(duration/1000).toFixed(1)}s · ${provider}`;
+}
+
+// ── Tickets (unlock sponsored ride) ────────────────────────
+let _ticketStatus={sponsored_ride_unlocked:false,checked:false};
+
+async function refreshTicketStatus(){
+  if(!currentCaseId){_ticketStatus={sponsored_ride_unlocked:false,checked:true};return}
+  try{
+    const r=await fetch('/api/ticket/status/'+encodeURIComponent(currentCaseId));
+    const d=await r.json();
+    _ticketStatus={sponsored_ride_unlocked:!!d.sponsored_ride_unlocked,checked:true};
+    // Update any open button
+    const btn=document.getElementById('raiseTicketBtn');
+    if(btn&&_ticketStatus.sponsored_ride_unlocked){
+      btn.disabled=true;
+      btn.style.background='linear-gradient(135deg,#1b7a00,#0f4a00)';
+      btn.innerHTML='&#9989; Ticket Raised — Sponsored Ride Unlocked';
+    }
+  }catch(e){_ticketStatus.checked=true;}
+}
+
+function sponsoredRideLocked(){
+  const c=_activeContentContainer();
+  document.querySelectorAll('.sponsored-locked-msg').forEach(el=>el.remove());
+  c.insertAdjacentHTML('beforeend',`<div class="answer-box fade-in sponsored-locked-msg" style="border-color:var(--orange);background:rgba(255,152,0,0.05);margin-top:10px">
+    <div style="font-weight:600;color:var(--orange)">&#128274; Sponsored Ride locked</div>
+    <div style="font-size:13px;color:var(--t2);margin-top:4px">Please raise a ticket with your caseworker first — scroll up and click <b>Raise a Ticket for Sponsored Ride</b>.</div>
+  </div>`);
+}
+
+async function raiseTicket(){
+  const btn=document.getElementById('raiseTicketBtn');
+  if(btn){btn.disabled=true;btn.innerHTML='&#8987; Registering your case...';}
+
+  let isNewRegistration=false;
+  // If no active case, REGISTER the user — this creates their case_id for the first time.
+  if(!currentCaseId){
+    isNewRegistration=true;
+    // Generate a human-readable case id (e.g., NYC-A4F2X1)
+    const suffix=Math.random().toString(36).substring(2,8).toUpperCase();
+    const newId='NYC-'+suffix;
+    try{
+      const loginResp=await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:newId,name:'New Client'})});
+      if(!loginResp.ok)throw new Error('registration failed');
+      currentCaseId=newId;
+    }catch(e){
+      if(btn){btn.disabled=false;btn.innerHTML='&#127915; Raise a Ticket & Register My Case';}
+      alert('Could not register your case. Please try again.');
+      return;
+    }
+  }
+
+  // Raise the ticket
+  try{
+    const r=await fetch('/api/ticket/raise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,ticket_type:'sponsored_ride',reason:'Client requested assistance via NeMo agent'})});
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    _ticketStatus.sponsored_ride_unlocked=true;
+
+    if(btn){
+      btn.disabled=true;
+      btn.style.background='linear-gradient(135deg,#1b7a00,#0f4a00)';
+      btn.innerHTML='&#9989; Case Registered & Sponsored Ride Unlocked';
+    }
+
+    // 1. Sticky banner at TOP showing the case ID
+    if(isNewRegistration){
+      const container=_activeContentContainer();
+      const existing=document.getElementById('caseIdBanner');
+      if(existing)existing.remove();
+      const banner=document.createElement('div');
+      banner.id='caseIdBanner';
+      banner.style.cssText='position:sticky;top:0;z-index:50;background:linear-gradient(135deg,#1b7a00,#0f4a00);color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,0.15)';
+      banner.innerHTML=`
+        <div style="font-size:24px">&#127915;</div>
+        <div style="flex:1">
+          <div style="font-size:11px;font-family:var(--mono);opacity:0.85;letter-spacing:0.5px">CASE REGISTERED &middot; SAVE THIS ID</div>
+          <div style="font-size:20px;font-weight:700;font-family:var(--mono);letter-spacing:1px">${currentCaseId}</div>
+        </div>
+        <button style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:6px;padding:8px 14px;font-size:12px;cursor:pointer;font-family:var(--mono)" onclick="navigator.clipboard.writeText('${currentCaseId}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy ID',1500)">Copy ID</button>
+      `;
+      container.insertBefore(banner, container.firstChild);
+      banner.scrollIntoView({behavior:'smooth',block:'start'});
+    }
+
+    // 2. Inline confirmation lower down
+    _activeContentContainer().insertAdjacentHTML('beforeend',`<div class="answer-box fade-in" style="border-color:var(--green-d);background:rgba(118,185,0,0.04);margin-top:12px">
+      <div style="font-weight:600;color:var(--green)">&#9989; ${isNewRegistration?'Case registered &middot; Ticket raised':'Ticket raised'}</div>
+      <div style="font-size:13px;color:var(--t2);margin-top:4px">A caseworker will review your case shortly. Your sponsored ride is unlocked — use any <b>Directions</b> button and pick <b>Sponsored Ride</b>.</div>
+    </div>`);
+
+    // 3. If a budget picker is already on screen, live-update the sponsored ride button from locked to unlocked
+    const existingPicker=document.getElementById('budgetPicker');
+    if(existingPicker){
+      const lockedBtn=existingPicker.querySelector('button[onclick="sponsoredRideLocked()"]');
+      if(lockedBtn){
+        lockedBtn.setAttribute('onclick',"fetchDirections('sponsored')");
+        lockedBtn.style.opacity='1';
+        lockedBtn.style.cursor='pointer';
+        lockedBtn.style.borderColor='var(--green-d)';
+        lockedBtn.style.background='rgba(118,185,0,0.04)';
+        lockedBtn.innerHTML='<div style="font-size:16px">&#128663;</div>Sponsored Ride';
+      }
+    }
+
+  }catch(err){
+    if(btn){btn.disabled=false;btn.innerHTML=isNewRegistration?'&#127915; Raise a Ticket for Sponsored Ride':'&#127915; Raise a Ticket & Register My Case';}
+    alert('Error raising ticket: '+err.message);
+  }
+}
+
+// ── NeMo Agent Toolkit (nat) — Full Plan View ──────────────
+// Rotating loading stories — full cards with name, situation, quote, outcome
+const LOADING_STORIES=[
+  {name:'James',situation:'Just released from prison, no ID, no money, no family in NYC',quote:"I didn't think anyone would help a guy like me. They did.",outcome:'Moved into transitional housing same day. HRA got him new ID in 3 weeks. Started job training program.'},
+  {name:'Maria',situation:'Single mom, 2 kids, just lost her job at a restaurant',quote:"I thought I had to be homeless before anyone would help me.",outcome:'Qualified for $598/mo SNAP, Medicaid for her and the kids, Fair Fares MetroCard. Kept her apartment with emergency rent assistance.'},
+  {name:'Rosa',situation:'Fleeing domestic violence with 3 kids, mid-school-year',quote:"I was scared my kids would lose their school. They didn't.",outcome:'DV shelter placement same night. Kids stayed in their school via McKinney-Vento Act. Free meals + transport arranged.'},
+  {name:'David',situation:'Laid off after 15 years, too proud to ask for help',quote:"I thought SNAP was for other people. It was for me.",outcome:'Got $291/mo SNAP, Medicaid, and referral to job training. Back to work in 4 months with no gap in coverage.'},
+  {name:'Amara',situation:'Just arrived from Ghana, no English, no ID, pregnant',quote:"I didn't know where to go. Someone walked me in and stayed with me.",outcome:'WIC enrolled, prenatal care at free clinic, emergency housing with interpreter. Filed for benefits with "Request for Proof" form.'},
+  {name:'Carlos',situation:'Undocumented father of 2, construction accident, no work',quote:"I thought being undocumented meant no help at all.",outcome:'Emergency shelter, food pantry, free clinic treatment. Kids got school meals and free healthcare through Child Health Plus.'},
+  {name:'Helen',situation:'82-year-old widow, rent going up, fixed Social Security',quote:"I thought I\'d have to leave the apartment I\'ve had for 40 years.",outcome:'SCRIE rent freeze saved her $340/mo. Meals on Wheels 5x/week. Free transport to doctors. Still in her home.'},
+  {name:'Tina',situation:'Working 2 jobs, 4 kids, still couldn\'t make rent',quote:"I was working harder than ever and still falling behind.",outcome:'SNAP, emergency rent assistance, Fair Fares, free afterschool, summer camp for kids. $1,210/mo in benefits plus childcare.'},
+  {name:'Marcus',situation:'Veteran with PTSD, drinking too much, isolated',quote:"I didn\'t want therapy. Someone made it feel safe to try.",outcome:'Free VA mental health + outpatient group. VA housing voucher after 3 months. Connected with other vets.'},
+  {name:'Priya',situation:'Student, chronic illness, parents can\'t support her',quote:"I didn\'t know I could get Medicaid as an adult student.",outcome:'Medicaid, SNAP ($240/mo), CUNY emergency grant, free mental health. Graduated on time, debt-free on essentials.'},
+];
+let _loadingStoryTimer=null;
+
+function renderStoryCard(s){
+  return `<div style="font-weight:700;font-size:17px;color:var(--t1);margin-bottom:4px">${s.name}</div>
+    <div style="font-size:12.5px;color:var(--t2);margin-bottom:10px;line-height:1.6">${s.situation}</div>
+    <div style="font-style:italic;color:var(--t1);font-size:13.5px;padding:10px 14px;background:rgba(58,125,10,0.04);border-left:3px solid var(--green-d);border-radius:4px;margin-bottom:10px;line-height:1.6">&ldquo;${s.quote}&rdquo;</div>
+    <div style="font-size:12px;color:var(--t2);line-height:1.6"><span style="color:var(--green);font-weight:700;font-size:10px;font-family:var(--mono);letter-spacing:0.5px">OUTCOME:</span> ${s.outcome}</div>`;
+}
+
+function startLoadingStories(){
+  let idx=Math.floor(Math.random()*LOADING_STORIES.length);
+  const el=document.getElementById('loadingStoryText');
+  if(!el)return;
+  el.innerHTML=renderStoryCard(LOADING_STORIES[idx]);
+  el.parentElement.style.opacity='1';
+  if(_loadingStoryTimer)clearInterval(_loadingStoryTimer);
+  _loadingStoryTimer=setInterval(()=>{
+    const box=document.getElementById('loadingStoryText');
+    if(!box){clearInterval(_loadingStoryTimer);return}
+    box.parentElement.style.opacity='0';
+    setTimeout(()=>{
+      idx=(idx+1)%LOADING_STORIES.length;
+      const t=document.getElementById('loadingStoryText');
+      if(t){t.innerHTML=renderStoryCard(LOADING_STORIES[idx]);t.parentElement.style.opacity='1'}
+    },400);
+  },6000);
+}
+
+function stopLoadingStories(){
+  if(_loadingStoryTimer){clearInterval(_loadingStoryTimer);_loadingStoryTimer=null}
+}
+
+async function runNatAgent(){
+  const q=document.getElementById('queryInput').value.trim();
+  if(!q){document.getElementById('queryInput').focus();return}
+  lastQuery=q;
+  goTo('page-openclaw');
+  const c=document.getElementById('openclawContent');
+  c.innerHTML=`<div style="text-align:center;padding:60px 20px;max-width:560px;margin:0 auto">
+    <div style="font-size:56px;margin-bottom:18px;animation:pulse 2s infinite">&#127775;</div>
+    <div style="font-family:var(--display);font-size:26px;font-weight:300;margin-bottom:10px">Finding what's possible for you...</div>
+    <div style="font-size:14px;color:var(--t2);margin-bottom:32px;line-height:1.6">We're checking every program you might qualify for, finding nearby resources, and building your action plan.</div>
+    <div class="spinner" style="margin:0 auto 24px"></div>
+    <div id="loadingStory" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;box-shadow:var(--shadow);transition:opacity 0.4s ease;text-align:left">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;text-align:center">&#128172; Stories while you wait</div>
+      <div id="loadingStoryText"></div>
+    </div>
+  </div>`;
+  startLoadingStories();
+  const payload={query:q,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null,case_id:currentCaseId};
+  try{
+    // Run both in parallel: nat for the narrative, /api/agent/plan for the rich structured view
+    const [natResp,planResp]=await Promise.all([
+      fetch('/api/agent/nat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
+      fetch('/api/agent/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),
+    ]);
+    const natData=await natResp.json();
+    const planData=await planResp.json();
+    // Merge: nat answer becomes the narrative summary; plan provides the rich structured body
+    const merged={...planData, nat_answer: natData.answer||'', nat_framework:true};
+    lastPlanData=merged;
+    stopLoadingStories();
+    renderNatFullPlan(merged);
+    if(natMapOpen)setTimeout(()=>updateNatMapLayers(),200);
+  }catch(err){
+    stopLoadingStories();
+    c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error: ${err.message}</div>`;
+  }
+}
+
+function renderNatFullPlan(data){
+  const c=document.getElementById('openclawContent');
+  let html=`<div style="margin-top:20px">`;
+
+  // NVIDIA NeMo banner
+  html+=`<div style="background:linear-gradient(135deg,rgba(118,185,0,0.10),rgba(27,122,0,0.04));border:1px solid var(--green-d);border-radius:12px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow)">
+    <div style="font-size:28px">&#129302;</div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:14px;color:var(--green)">Generated by NVIDIA NeMo Agent Toolkit</div>
+      <div style="font-size:11px;color:var(--t3);font-family:var(--mono)">ReAct agent on llama3 &middot; Ollama local inference &middot; DGX Spark</div>
+    </div>
+  </div>`;
+
+  // Query echo
+  html+=`<div style="color:var(--t3);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">YOUR SITUATION</div>`;
+  html+=`<div style="background:rgba(58,125,10,0.04);border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:20px">${lastQuery}</div>`;
+
+  // NeMo agent's caseworker narrative — most prominent
+  if(data.nat_answer){
+    html+=`<div style="color:var(--t3);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">AI Caseworker Summary</div>`;
+    html+=`<div class="answer-box fade-in" style="font-size:15px;line-height:1.8;margin-bottom:20px">${data.nat_answer.replace(/\n/g,'<br>')}</div>`;
+  }
+
+  // Benefits banner
+  if(data.total_monthly_benefits>0){
+    html+=`<div style="background:linear-gradient(135deg,rgba(58,125,10,0.08),rgba(58,125,10,0.02));border:1px solid var(--green-d);border-radius:12px;padding:18px;margin-bottom:20px;text-align:center;box-shadow:var(--shadow)">
+      <div style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">You qualify for</div>
+      <div style="font-family:var(--display);font-size:32px;font-weight:600;color:var(--green);margin-bottom:4px">$${data.total_monthly_benefits.toLocaleString()}/month</div>
+      <div style="font-size:13px;color:var(--t2)">${(data.qualifying_programs||[]).join(' &middot; ')||'Benefits'}</div>
+    </div>`;
+  }
+
+  // Registration / Ticket — always visible. Creates the case on click.
+  const alreadyRegistered=!!currentCaseId;
+  html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:22px">&#127915;</span>
+      <div style="font-weight:600;font-size:14px">${alreadyRegistered?'Need help getting there?':'Ready to proceed with this plan?'}</div>
+    </div>
+    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:12px">
+      ${alreadyRegistered
+        ? 'Raise a ticket to unlock a <b>sponsored ride</b> to your chosen resource.'
+        : 'Raise a ticket to <b>register your case</b> with NYC Social Services. A caseworker will pick it up, and you\'ll unlock a <b>sponsored ride</b> to your chosen resource.'}
+    </div>
+    <button class="btn-primary" id="raiseTicketBtn" style="width:100%;background:linear-gradient(135deg,#ff9800,#e65100);color:#fff" onclick="raiseTicket()">
+      ${alreadyRegistered?'&#127915; Raise a Ticket for Sponsored Ride':'&#127915; Raise a Ticket & Register My Case'}
+    </button>
+  </div>`;
+  setTimeout(()=>refreshTicketStatus(),100);
+
+  // Action plan
+  if(data.steps&&data.steps.length){
+    html+=`<div class="section-label" style="margin-top:24px">Your action plan</div>`;
+    for(const step of data.steps){
+      html+=renderPlanStep(step);
+    }
+  }
+
+  // Stories
+  if(data.stories&&data.stories.length){
+    html+=`<div class="section-label" style="margin-top:24px">Others like you</div>`;
+    for(const s of data.stories){
+      html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:10px;box-shadow:var(--shadow)">
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px">${s.name||'Someone'}</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.6">${s.situation||''}</div>
+        ${s.quote?`<div style="font-style:italic;color:var(--t2);font-size:13px;padding:8px 12px;border-left:3px solid var(--green-d);margin-bottom:8px">&ldquo;${s.quote}&rdquo;</div>`:''}
+        ${s.outcome?`<div style="font-size:12px;color:var(--green)"><b>Outcome:</b> ${s.outcome}</div>`:''}
+      </div>`;
+    }
+  }
+
+  // PDF download
+  html+=`<div style="display:flex;gap:8px;margin-top:24px">
+    <button class="btn-primary" style="flex:1;background:linear-gradient(135deg,#1b7a00,#0f4a00);color:#fff" onclick="downloadPlanPDF()">&#128196; Download Plan (PDF)</button>
+  </div>`;
+
+  html+=`</div>`;
+  c.innerHTML=html;
+}
+
+function renderNatResult(data,elapsed){
+  const c=document.getElementById('openclawContent');
+  if(data.safety_block){
+    c.innerHTML=`<div class="answer-box" style="border-color:var(--red);background:rgba(220,38,38,0.05)"><b>Safety guardrail triggered:</b> ${data.reason}<br><br>${(data.answer||'').replace(/\n/g,'<br>')}</div>`;
+    return;
+  }
+  const answer=(data.answer||data.error||'No response').replace(/\n/g,'<br>');
+  const trace=data.trace||[];
+  const count=data.tool_call_count||trace.length;
+  const duration=data.total_time_s||(elapsed/1000);
+
+  let html=`<div style="margin-top:20px">`;
+  html+=`<div style="color:var(--t3);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">YOUR QUERY</div>`;
+  html+=`<div style="background:rgba(58,125,10,0.04);border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:20px">${lastQuery}</div>`;
+
+  // NeMo branding banner
+  html+=`<div style="background:linear-gradient(135deg,rgba(27,122,0,0.10),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+    <div style="font-size:28px">&#129302;</div>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:13px;color:var(--green)">NVIDIA NeMo Agent Toolkit</div>
+      <div style="font-size:11px;color:var(--t3);font-family:var(--mono)">ReAct &middot; nemotron-3-nano &middot; ${count} tool call${count===1?'':'s'} &middot; ${duration.toFixed(1)}s</div>
+    </div>
+  </div>`;
+
+  // Answer
+  html+=`<div class="answer-box fade-in" style="font-size:14.5px;line-height:1.8">${answer}</div>`;
+
+  // Tool trace — the key Phase 3 deliverable
+  if(trace.length){
+    html+=`<div style="margin-top:18px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px">
+      <div style="color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;font-size:10px;font-family:var(--mono)">&#9881;&#65039; AGENT REASONING — ${count} TOOL CALL${count===1?'':'S'}</div>`;
+    trace.forEach((t,i)=>{
+      const ins=JSON.stringify(t.inputs||{});
+      const out=(t.output_preview||'').replace(/</g,'&lt;');
+      html+=`<details style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--bg2)">
+        <summary style="cursor:pointer;font-family:var(--mono);font-size:12px"><b style="color:var(--green)">#${i+1} ${t.tool}</b> <span style="color:var(--t3);font-size:10px">· ${t.duration_ms}ms</span></summary>
+        <div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--t2)">
+          <div style="color:var(--t3);margin-bottom:4px">input:</div>
+          <div style="background:var(--bg);padding:6px 8px;border-radius:4px;margin-bottom:8px;white-space:pre-wrap;word-break:break-all">${ins}</div>
+          <div style="color:var(--t3);margin-bottom:4px">output:</div>
+          <div style="background:var(--bg);padding:6px 8px;border-radius:4px;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto">${out}</div>
+        </div>
+      </details>`;
+    });
+    html+=`</div>`;
+  }
+
+  html+=`</div>`;
+  c.innerHTML=html;
+  document.getElementById('openclawTrace').textContent=`${duration.toFixed(1)}s · ${count} tools`;
+}
+
+// ── Autonomous Agent Plan ──────────────────────────────────
+let lastPlanData=null;
+
+async function runAgentPlan(){
+  const q=document.getElementById('queryInput').value.trim();
+  if(!q){document.getElementById('queryInput').focus();return}
+  lastQuery=q;
+  goTo('page-agentplan');
+  const c=document.getElementById('agentPlanContent');
+  c.innerHTML=`<div style="text-align:center;padding:60px 20px">
+    <div style="font-size:48px;margin-bottom:16px;animation:pulse 2s infinite">&#129504;</div>
+    <div style="font-family:var(--display);font-size:22px;font-weight:300;margin-bottom:8px">Agent is thinking...</div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:20px">Analyzing your situation, finding resources, checking eligibility, optimizing routes.</div>
+    <div class="spinner" style="margin:0 auto"></div>
+  </div>`;
+  try{
+    const resp=await fetch('/api/agent/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null,case_id:currentCaseId})});
+    const data=await resp.json();
+    lastPlanData=data;
+    renderAgentPlan(data);
+    if(planMapOpen)setTimeout(()=>updatePlanMapLayers(),200);
+  }catch(err){
+    c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error: ${err.message}</div>`;
+  }
+}
+
+function renderAgentPlan(data){
+  const c=document.getElementById('agentPlanContent');
+  let html=`<div style="margin-top:20px">`;
+
+  // Query echo
+  html+=`<div style="color:var(--t3);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">YOUR SITUATION</div>`;
+  html+=`<div style="background:rgba(58,125,10,0.04);border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:20px">${lastQuery}</div>`;
+
+  // Summary
+  if(data.summary){
+    html+=`<div class="answer-box fade-in" style="font-size:15px;line-height:1.8">${data.summary.replace(/\n/g,'<br>')}</div>`;
+  }
+
+  // Benefits banner
+  if(data.total_monthly_benefits>0){
+    html+=`<div style="background:linear-gradient(135deg,rgba(58,125,10,0.08),rgba(58,125,10,0.02));border:1px solid var(--green-d);border-radius:12px;padding:18px;margin-bottom:20px;text-align:center;box-shadow:var(--shadow)">
+      <div style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">You qualify for</div>
+      <div style="font-family:var(--display);font-size:32px;font-weight:600;color:var(--green);margin-bottom:4px">$${data.total_monthly_benefits.toLocaleString()}/month</div>
+      <div style="font-size:13px;color:var(--t2)">${(data.qualifying_programs||[]).join(' · ')||'Benefits'}</div>
+    </div>`;
+  }
+
+  // Timeline
+  if(data.steps&&data.steps.length){
+    html+=`<div class="section-label" style="margin-top:24px">Your action plan</div>`;
+    for(const step of data.steps){
+      html+=renderPlanStep(step);
+    }
+  }
+
+  // Stories
+  if(data.stories&&data.stories.length){
+    html+=`<div class="section-label" style="margin-top:24px">Others like you</div>`;
+    for(const s of data.stories){
+      html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:10px;box-shadow:var(--shadow)">
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px">${s.name||'Someone'}</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.6">${s.situation||''}</div>
+        ${s.quote?`<div style="font-style:italic;color:var(--t2);font-size:13px;padding:8px 12px;border-left:3px solid var(--green-d);margin-bottom:8px">&ldquo;${s.quote}&rdquo;</div>`:''}
+        ${s.outcome?`<div style="font-size:12px;color:var(--green)"><b>Outcome:</b> ${s.outcome}</div>`:''}
+      </div>`;
+    }
+  }
+
+  // Trace (collapsed)
+  if(data.trace&&data.trace.length){
+    const tId='trace-'+Date.now();
+    html+=`<div style="margin-top:24px">
+      <div onclick="document.getElementById('${tId}').classList.toggle('collapsed')" style="cursor:pointer;font-size:11px;color:var(--t3);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;padding:8px 0">&#9881;&#65039; Agent steps (${data.trace.length}) &nbsp;&#9660;</div>
+      <div id="${tId}" class="collapsed" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);font-size:11px;color:var(--t2)">`;
+    for(const t of data.trace){
+      html+=`<div style="padding:3px 0">#${t.step} ${t.action||''} <span style="color:var(--t3)">(${t.duration_s||0}s)</span></div>`;
+    }
+    html+=`</div></div>`;
+  }
+
+  html+=`</div>`;
+  c.innerHTML=html;
+}
+
+function renderPlanStep(step){
+  const timeframes={TONIGHT:{color:'var(--red)',icon:'&#127769;'},THIS_WEEK:{color:'var(--orange)',icon:'&#128197;'},NEXT_2_WEEKS:{color:'var(--blue)',icon:'&#128197;'}};
+  const tf=timeframes[step.timeframe]||{color:'var(--green)',icon:'&#10003;'};
+  const cat=(step.category||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  const top=step.top_resource||{};
+  const dir=step.directions||{};
+
+  let html=`<div style="background:var(--bg2);border:1px solid var(--border);border-left:4px solid ${tf.color};border-radius:12px;padding:18px;margin-bottom:12px;box-shadow:var(--shadow)">`;
+
+  // Timeframe header
+  html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div>
+      <div style="font-size:10px;font-family:var(--mono);color:${tf.color};font-weight:700;letter-spacing:1px;text-transform:uppercase">${(step.timeframe||'').replace(/_/g,' ')}</div>
+      <div style="font-size:18px;font-weight:700;margin-top:2px">${tf.icon} ${cat}</div>
+    </div>
+    <div style="font-size:10px;color:var(--t3);font-family:var(--mono)">Step ${step.priority||'?'}</div>
+  </div>`;
+
+  // Top resource
+  if(top.name){
+    const eName=(top.name||'').replace(/'/g,'&#39;');
+    html+=`<div style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px">${top.name}</div>
+      <div style="font-size:12px;color:var(--t3);font-family:var(--mono);margin-bottom:6px">${top.address||'Address not listed'}</div>`;
+    if(dir.walk_min||dir.distance_miles){
+      html+=`<div style="font-size:12px;color:var(--t2);font-family:var(--mono)">`;
+      if(dir.distance_miles)html+=`${dir.distance_miles} mi`;
+      if(dir.walk_min)html+=` &middot; ~${dir.walk_min} min walk`;
+      html+=`</div>`;
+    }
+    if(dir.recommendation)html+=`<div style="font-size:12px;color:var(--green);margin-top:6px">${dir.recommendation}</div>`;
+    if(top.latitude&&top.longitude){
+      html+=`<div style="display:flex;gap:6px;margin-top:10px">`;
+      if(currentCaseId)html+=`<button class="btn-secondary" style="padding:6px 10px;font-size:11px;background:rgba(58,125,10,0.08);color:var(--green);border-color:var(--green-d)" onclick="chooseResource('${step.category}','${eName}','${top.address||''}','${top.resource_type||''}',${top.latitude},${top.longitude})">&#9989; Choose this</button>`;
+      html+=`<button class="btn-secondary" style="padding:6px 10px;font-size:11px" onclick="getDirections(${top.latitude},${top.longitude},'${eName}')">Directions</button>`;
+      html+=`</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Alternatives
+  if(step.alternatives&&step.alternatives.length){
+    const altId='alt-'+(step.priority||0)+'-'+Date.now();
+    html+=`<div onclick="document.getElementById('${altId}').classList.toggle('collapsed')" style="cursor:pointer;font-size:11px;color:var(--t3);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0">${step.alternatives.length} alternative${step.alternatives.length>1?'s':''} &nbsp;&#9660;</div>`;
+    html+=`<div id="${altId}" class="collapsed" style="margin-top:6px">`;
+    for(const alt of step.alternatives){
+      const eAlt=(alt.name||'').replace(/'/g,'&#39;');
+      html+=`<div style="background:var(--bg3);border-radius:6px;padding:10px;margin:4px 0;font-size:12px">
+        <div style="font-weight:600">${alt.name||'Unknown'}</div>
+        <div style="color:var(--t3);font-family:var(--mono);font-size:11px">${alt.address||''}</div>`;
+      if(alt.walk_min)html+=`<div style="color:var(--t2);font-size:11px;margin-top:4px">~${alt.walk_min} min walk</div>`;
+      if(alt.latitude&&alt.longitude){
+        html+=`<div style="display:flex;gap:6px;margin-top:8px">`;
+        if(currentCaseId)html+=`<button class="btn-secondary" style="padding:4px 8px;font-size:10px" onclick="chooseResource('${step.category}','${eAlt}','${alt.address||''}','${alt.resource_type||''}',${alt.latitude},${alt.longitude})">Choose</button>`;
+        html+=`<button class="btn-secondary" style="padding:4px 8px;font-size:10px" onclick="getDirections(${alt.latitude},${alt.longitude},'${eAlt}')">Directions</button>`;
+        html+=`</div>`;
+      }
+      html+=`</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Rights
+  if(step.rights&&step.rights.length){
+    html+=`<div style="margin-top:10px;padding:10px;background:rgba(66,165,245,0.06);border-radius:6px;border-left:3px solid var(--blue)">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Your rights</div>`;
+    for(const r of step.rights){
+      html+=`<div style="font-size:12px;color:var(--t2);margin:3px 0"><b>${r.right||''}</b>${r.detail?' — '+r.detail:''}</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Eligibility
+  if(step.eligibility&&step.eligibility.length){
+    html+=`<div style="margin-top:10px;padding:10px;background:rgba(58,125,10,0.06);border-radius:6px;border-left:3px solid var(--green)">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">You qualify for</div>`;
+    for(const e of step.eligibility){
+      if(typeof e==='string')html+=`<div style="font-size:12px;color:var(--t2);margin:3px 0">${e}</div>`;
+      else html+=`<div style="font-size:12px;color:var(--t2);margin:3px 0"><b>${e.program||e.name||''}</b>${e.amount?' — $'+e.amount+'/mo':''}${e.detail?' — '+e.detail:''}</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  html+=`</div>`;
+  return html;
+}
+
+let planMap=null, planDeck=null, planMapOpen=false;
+let natMap=null, natDeck=null, natMapOpen=false;
+
+function toggleNatMap(){
+  const panel=document.getElementById('natMapPanel');
+  natMapOpen=!natMapOpen;
+  if(natMapOpen){
+    panel.classList.add('open');
+    document.getElementById('natMapToggleBtn').innerHTML='&#10005; Close map';
+    if(!natMap){
+      natMap=new maplibregl.Map({container:'natMapEl',style:'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',center:NYC,zoom:11,pitch:45});
+      natMap.addControl(new maplibregl.NavigationControl(),'top-left');
+      natMap.on('load',()=>natMap.resize());
+    }
+    setTimeout(()=>{natMap.resize();updateNatMapLayers()},350);
+  } else {
+    panel.classList.remove('open');
+    document.getElementById('natMapToggleBtn').innerHTML='&#128506; Map';
+  }
+}
+
+function updateNatMapLayers(){
+  if(!natMap||!lastPlanData)return;
+  const TF_COLORS={TONIGHT:[239,83,80],THIS_WEEK:[232,132,58],NEXT_2_WEEKS:[46,125,186]};
+  const markers=[];
+  for(const step of(lastPlanData.steps||[])){
+    const tfColor=TF_COLORS[step.timeframe]||[118,185,0];
+    const top=step.top_resource;
+    if(top&&top.latitude&&top.longitude){
+      markers.push({lat:top.latitude,lon:top.longitude,name:top.name,timeframe:step.timeframe||'',color:tfColor,primary:true});
+    }
+    for(const alt of(step.alternatives||[])){
+      if(alt.latitude&&alt.longitude){
+        markers.push({lat:alt.latitude,lon:alt.longitude,name:alt.name,timeframe:step.timeframe||'',color:tfColor,primary:false});
+      }
+    }
+  }
+  const layers=[
+    new deck.ScatterplotLayer({id:'nat-alts',data:markers.filter(m=>!m.primary),getPosition:d=>[d.lon,d.lat],getRadius:60,getFillColor:d=>[...d.color,150],radiusMinPixels:6,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,200],lineWidthMinPixels:1,onHover:({object})=>{document.getElementById('natMapEl').title=object?`${object.name} (alt)`:''}}),
+    new deck.ScatterplotLayer({id:'nat-primary',data:markers.filter(m=>m.primary),getPosition:d=>[d.lon,d.lat],getRadius:120,getFillColor:d=>[...d.color,230],radiusMinPixels:10,radiusMaxPixels:22,pickable:true,stroked:true,getLineColor:[255,255,255,240],lineWidthMinPixels:3,onHover:({object})=>{document.getElementById('natMapEl').title=object?`${object.name} (${(object.timeframe||'').replace(/_/g,' ')})`:''}}),
+  ];
+  if(natDeck)natDeck.setProps({layers}); else {natDeck=new deck.MapboxOverlay({layers});natMap.addControl(natDeck)}
+  const pts=markers.filter(m=>m.primary);
+  if(pts.length>0){
+    const lats=pts.map(m=>m.lat),lons=pts.map(m=>m.lon);
+    natMap.fitBounds([[Math.min(...lons)-0.01,Math.min(...lats)-0.01],[Math.max(...lons)+0.01,Math.max(...lats)+0.01]],{padding:60,duration:1000});
+  }
+}
+
+function togglePlanMap(){
+  const panel=document.getElementById('planMapPanel');
+  planMapOpen=!planMapOpen;
+  if(planMapOpen){
+    panel.classList.add('open');
+    document.getElementById('planMapToggleBtn').innerHTML='&#10005; Close map';
+    if(!planMap)initPlanMap();
+    setTimeout(()=>{planMap.resize();updatePlanMapLayers()},350);
+  } else {
+    panel.classList.remove('open');
+    document.getElementById('planMapToggleBtn').innerHTML='&#128506; Map';
+  }
+}
+
+function initPlanMap(){
+  planMap=new maplibregl.Map({container:'planMapEl',style:'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',center:NYC,zoom:11,pitch:45});
+  planMap.addControl(new maplibregl.NavigationControl(),'top-left');
+  planMap.on('load',()=>planMap.resize());
+}
+
+function updatePlanMapLayers(){
+  if(!planMap||!lastPlanData)return;
+  const TF_COLORS={TONIGHT:[239,83,80],THIS_WEEK:[232,132,58],NEXT_2_WEEKS:[46,125,186]};
+  const markers=[];
+  for(const step of(lastPlanData.steps||[])){
+    const tfColor=TF_COLORS[step.timeframe]||[118,185,0];
+    const top=step.top_resource;
+    if(top&&top.latitude&&top.longitude){
+      markers.push({lat:top.latitude,lon:top.longitude,name:top.name,timeframe:step.timeframe||'',category:step.category,color:tfColor,primary:true});
+    }
+    for(const alt of(step.alternatives||[])){
+      if(alt.latitude&&alt.longitude){
+        markers.push({lat:alt.latitude,lon:alt.longitude,name:alt.name,timeframe:step.timeframe||'',category:step.category,color:tfColor,primary:false});
+      }
+    }
+  }
+  const layers=[
+    new deck.ScatterplotLayer({id:'plan-alts',data:markers.filter(m=>!m.primary),getPosition:d=>[d.lon,d.lat],getRadius:60,getFillColor:d=>[...d.color,150],radiusMinPixels:6,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,200],lineWidthMinPixels:1,onHover:({object})=>{document.getElementById('planMapEl').title=object?`${object.name} (alt)`:''}}),
+    new deck.ScatterplotLayer({id:'plan-primary',data:markers.filter(m=>m.primary),getPosition:d=>[d.lon,d.lat],getRadius:120,getFillColor:d=>[...d.color,230],radiusMinPixels:10,radiusMaxPixels:22,pickable:true,stroked:true,getLineColor:[255,255,255,240],lineWidthMinPixels:3,onHover:({object})=>{document.getElementById('planMapEl').title=object?`${object.name} (${(object.timeframe||'').replace(/_/g,' ')})`:''}}),
+  ];
+  if(planDeck)planDeck.setProps({layers}); else {planDeck=new deck.MapboxOverlay({layers});planMap.addControl(planDeck)}
+  // Fit bounds to primary markers
+  const pts=markers.filter(m=>m.primary);
+  if(pts.length>0){
+    const lats=pts.map(m=>m.lat),lons=pts.map(m=>m.lon);
+    planMap.fitBounds([[Math.min(...lons)-0.01,Math.min(...lats)-0.01],[Math.max(...lons)+0.01,Math.max(...lats)+0.01]],{padding:60,duration:1000});
+  }
+}
+
+async function downloadPlanPDF(){
+  if(!lastPlanData){alert('Generate a plan first');return}
+  try{
+    const resp=await fetch('/api/agent/pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastPlanData)});
+    const html=await resp.text();
+    const blob=new Blob([html],{type:'text/html'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='nyc-services-plan.html';a.click();
+    URL.revokeObjectURL(url);
+  }catch(e){alert('Download failed: '+e.message)}
 }
 
 async function refreshReturnFlow(){
@@ -1317,13 +2315,25 @@ function requestRide(rideId,sponsorName,etaMin){
 // ── Directions ─────────────────────────────────────────────
 let _pendingDir=null;
 
-function getDirections(toLat,toLon,name){
+// Return the visible content container so inline UIs (directions, etc.)
+// attach to whichever page is active (results / openclaw / admin).
+function _activeContentContainer(){
+  for(const id of ['openclawContent','agentPlanContent','resultsContent']){
+    const el=document.getElementById(id);
+    if(el && el.offsetParent!==null) return el;  // visible
+  }
+  return document.getElementById('resultsContent');
+}
+
+async function getDirections(toLat,toLon,name){
+  // Always refresh ticket status so the sponsored-ride button reflects current state
+  if(currentCaseId) await refreshTicketStatus();
   if(!userLocation){
     // Show location prompt inline
     document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt').forEach(el=>el.remove());
-    const c=document.getElementById('resultsContent');
+    const c=_activeContentContainer();
     c.insertAdjacentHTML('beforeend',`<div class="clarify-box fade-in directions-locprompt"><div class="clarify-label">Set your location first</div><div class="clarify-q">Enter your address above so we can calculate directions to ${name}.</div></div>`);
-    document.getElementById('locationInput').focus();
+    const li=document.getElementById('locationInput');if(li)li.focus();
     _pendingDir={toLat,toLon,name};
     return;
   }
@@ -1332,8 +2342,12 @@ function getDirections(toLat,toLon,name){
   document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt').forEach(el=>el.remove());
   if(resultMap){try{if(resultMap.getSource('route'))resultMap.getSource('route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
 
-  // Show budget picker inline
-  const c=document.getElementById('resultsContent');
+  // Show budget picker inline. Sponsored ride is gated behind a raised ticket.
+  const sponsoredUnlocked=_ticketStatus.sponsored_ride_unlocked;
+  const sponsoredBtn=sponsoredUnlocked
+    ? `<button class="btn-secondary" onclick="fetchDirections('sponsored')" style="flex:1;text-align:center;border-color:var(--green-d);background:rgba(118,185,0,0.04)"><div style="font-size:16px">&#128663;</div>Sponsored Ride</button>`
+    : `<button class="btn-secondary" onclick="sponsoredRideLocked()" style="flex:1;text-align:center;opacity:0.55;cursor:not-allowed" title="Raise a ticket to unlock sponsored ride"><div style="font-size:16px">&#128274;</div>Sponsored Ride</button>`;
+  const c=_activeContentContainer();
   c.insertAdjacentHTML('beforeend',`
   <div class="clarify-box fade-in directions-picker" id="budgetPicker">
     <div class="clarify-label">Directions to ${name}</div>
@@ -1341,7 +2355,7 @@ function getDirections(toLat,toLon,name){
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn-secondary" onclick="fetchDirections(0)" style="flex:1;text-align:center"><div style="font-size:16px">&#128694;</div>$0 / Walk</button>
       <button class="btn-secondary" onclick="fetchDirections(2.9)" style="flex:1;text-align:center"><div style="font-size:16px">&#128647;</div>$2.90 / Subway</button>
-      <button class="btn-secondary" onclick="fetchDirections('sponsored')" style="flex:1;text-align:center;border-color:var(--green-d);background:rgba(118,185,0,0.04)"><div style="font-size:16px">&#128663;</div>Sponsored Ride</button>
+      ${sponsoredBtn}
       <button class="btn-secondary" onclick="fetchDirections(null)" style="flex:1;text-align:center"><div style="font-size:16px">&#128269;</div>Show all</button>
     </div>
   </div>`);
@@ -1363,7 +2377,11 @@ async function fetchDirections(budget){
   try{
     const resp=await fetch('/api/directions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from_lat:userLocation.lat,from_lon:userLocation.lon,to_lat:toLat,to_lon:toLon,budget:budget})});
     const data=await resp.json();
+    // Build external map links (Google Maps + Apple Maps) as fallback for pages without the inline map
+    const gmapsUrl=`https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lon}&destination=${toLat},${toLon}&travelmode=${budget===2.9?'transit':'walking'}`;
+    const openMapsBtn=`<a href="${gmapsUrl}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;padding:6px 12px;background:rgba(118,185,0,0.08);border:1px solid var(--green-d);border-radius:6px;color:var(--green);font-size:12px;font-weight:600;text-decoration:none">&#128506;&#65039; Open in Google Maps</a>`;
     let html=`<div class="answer-box fade-in directions-result"><div style="font-weight:600;margin-bottom:6px">Directions to ${name}</div>`;
+    html+=`<div style="margin-bottom:10px">${openMapsBtn}</div>`;
     if(data.recommendation)html+=`<div style="color:var(--green);margin-bottom:10px;font-size:13px">${data.recommendation}</div>`;
     if(data.free_metrocard_location){
       const h=data.free_metrocard_location;
@@ -1411,9 +2429,10 @@ async function fetchDirections(budget){
       html+=`</div>`;
     }
     html+=`</div>`;
-    document.getElementById('resultsContent').insertAdjacentHTML('beforeend',html);
-    // Open map and show route
-    if(!mapOpen)toggleMap();
+    _activeContentContainer().insertAdjacentHTML('beforeend',html);
+    // Open map and show route (only if we're on the results page)
+    const onResultsPage=document.getElementById('resultsContent')&&document.getElementById('resultsContent').offsetParent!==null;
+    if(onResultsPage&&!mapOpen)toggleMap();
     setTimeout(()=>{
       if(resultMap){
         resultMap.resize();
@@ -1429,7 +2448,7 @@ async function fetchDirections(budget){
         resultMap.fitBounds(bounds,{padding:60,duration:1500});
       }
     },400);
-  }catch(err){document.getElementById('resultsContent').insertAdjacentHTML('beforeend',`<div style="color:var(--red);padding:12px">Directions error: ${err.message}</div>`)}
+  }catch(err){_activeContentContainer().insertAdjacentHTML('beforeend',`<div style="color:var(--red);padding:12px">Directions error: ${err.message}</div>`)}
   document.getElementById('loadingOverlay').classList.remove('active');
 }
 
@@ -1464,13 +2483,59 @@ function backToBoroughs(){
 
 let exploreUserLoc=null, exploreUserMarker=null;
 
+// Emoji → canvas icon atlas (browser renders emoji natively)
+const TYPE_EMOJI={shelter:'\u{1F3E0}',food_bank:'\u{1F34E}',hospital:'\u{1F3E5}',clinic:'\u{1FA7A}',school:'\u{1F4DA}',childcare:'\u{1F476}',youth_services:'\u{1F3BE}',community_center:'\u{1F3DB}\u{FE0F}',senior_services:'\u{1F474}',library:'\u{1F4D6}',emergency_services:'\u{1F6A8}',education:'\u{1F393}',legal_aid:'\u{2696}\u{FE0F}',benefits_center:'\u{1F4CB}',domestic_violence:'\u{1F6E1}\u{FE0F}',mental_health:'\u{1F4AC}',dropin_center:'\u{2615}',transit_station:'\u{1F687}',police_precinct:'\u{1F46E}'};
+let _iconAtlasUrl=null;
+let _iconMapping=null;
+function buildIconAtlas(){
+  if(_iconAtlasUrl)return;
+  const size=96; // each icon cell
+  const entries=Object.keys(TYPE_EMOJI);
+  const canvas=document.createElement('canvas');
+  canvas.width=size*entries.length; canvas.height=size;
+  const ctx=canvas.getContext('2d');
+  ctx.font=`${size*0.7}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  _iconMapping={};
+  entries.forEach((type,i)=>{
+    // Draw a soft circle background so icons read well on any map
+    ctx.fillStyle='rgba(255,255,255,0.95)';
+    ctx.beginPath();
+    ctx.arc(i*size+size/2, size/2, size*0.45, 0, Math.PI*2);
+    ctx.fill();
+    // Colored ring
+    const color=TYPE_COLORS[type]||[118,185,0];
+    ctx.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},1)`;
+    ctx.lineWidth=size*0.08;
+    ctx.stroke();
+    // Emoji on top
+    ctx.fillStyle='#000';
+    ctx.fillText(TYPE_EMOJI[type], i*size+size/2, size/2+size*0.04);
+    _iconMapping[type]={x:i*size,y:0,width:size,height:size,mask:false};
+  });
+  _iconAtlasUrl=canvas.toDataURL();
+}
+
 function refreshExploreIcons(){
   if(!exploreMap||!exploreBoro)return;
+  buildIconAtlas();
   const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===exploreBoro&&exploreFilters.has(r.resource_type));
   const layers=[
-    new deck.ScatterplotLayer({id:'explore-icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],getRadius:60,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[118,185,0]),200],radiusMinPixels:5,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,120],lineWidthMinPixels:1,
+    new deck.IconLayer({
+      id:'explore-icons',
+      data:filtered,
+      getPosition:d=>[d.longitude,d.latitude],
+      iconAtlas:_iconAtlasUrl,
+      iconMapping:_iconMapping,
+      getIcon:d=>_iconMapping[d.resource_type]?d.resource_type:'shelter',
+      getSize:36,
+      sizeMinPixels:22,
+      sizeMaxPixels:48,
+      pickable:true,
       onClick:({object})=>{if(object)showExplorePopup(object)},
-      onHover:({object})=>{document.getElementById('exploreMapEl').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
+      onHover:({object})=>{document.getElementById('exploreMapEl').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''},
+    }),
   ];
   if(exploreDeck)exploreDeck.setProps({layers});else{exploreDeck=new deck.MapboxOverlay({layers});exploreMap.addControl(exploreDeck)}
 }

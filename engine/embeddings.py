@@ -17,12 +17,24 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+# cuML GPU acceleration for similarity search
+try:
+    from cuml.neighbors import NearestNeighbors as cuNearestNeighbors
+    import cupy as cp
+    _HAS_CUML = True
+except ImportError:
+    _HAS_CUML = False
+
 DATA = Path(__file__).resolve().parent.parent / "data"
 
 _embeddings: dict | None = None      # {resource_id: np.array}
 _feature_names: list | None = None   # feature dimension names
 _resource_meta: pd.DataFrame | None = None  # resource_id → name, type, borough
 _kge_mode: str = "unknown"           # "pykeen" or "handcrafted"
+
+# cuML NearestNeighbors index (GPU) — built once, reused for all queries
+_knn_index = None
+_resource_ids_ordered: list | None = None  # order matches the index
 
 
 def _load_pykeen_embeddings() -> dict | None:
@@ -190,43 +202,101 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(dot / norm)
 
 
+def _build_knn_index():
+    """Build cuML NearestNeighbors index on GPU — one-time setup per process."""
+    global _knn_index, _resource_ids_ordered
+    if _knn_index is not None:
+        return _knn_index
+
+    embs = build_embeddings()
+    if not embs:
+        return None
+
+    # Fix resource order + convert to matrix
+    _resource_ids_ordered = list(embs.keys())
+    matrix = np.stack([embs[rid] for rid in _resource_ids_ordered]).astype(np.float32)
+
+    # Normalize rows so L2 distance == 2*(1 - cosine_sim)
+    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    matrix = matrix / norms
+
+    if _HAS_CUML:
+        # GPU: upload to device, build cuML kNN
+        t0 = time.time()
+        gpu_matrix = cp.asarray(matrix)
+        _knn_index = cuNearestNeighbors(n_neighbors=min(50, len(matrix)),
+                                         metric="euclidean", algorithm="brute")
+        _knn_index.fit(gpu_matrix)
+        print(f"[KGE] Built cuML GPU kNN index: {len(matrix):,} × {matrix.shape[1]} dims "
+              f"in {time.time()-t0:.2f}s")
+        _knn_index._matrix = gpu_matrix  # stash for query-from-vec
+        _knn_index._backend = "cuml"
+    else:
+        # CPU fallback: sklearn
+        from sklearn.neighbors import NearestNeighbors as skNN
+        t0 = time.time()
+        _knn_index = skNN(n_neighbors=min(50, len(matrix)), metric="euclidean", algorithm="brute")
+        _knn_index.fit(matrix)
+        _knn_index._matrix = matrix
+        _knn_index._backend = "sklearn"
+        print(f"[KGE] Built sklearn CPU kNN index: {len(matrix):,} × {matrix.shape[1]} dims "
+              f"in {time.time()-t0:.2f}s")
+
+    return _knn_index
+
+
 def find_similar(resource_id: str, k: int = 5, same_type: bool = False,
                  same_borough: bool = False) -> pd.DataFrame:
     """
-    Find k most similar resources to a given resource based on KGE embedding similarity.
+    Find k most similar resources via cuML kNN on GPU (falls back to sklearn).
 
-    Parameters
-    ----------
-    resource_id : str
-    k : int — number of similar resources to return
-    same_type : bool — if True, only return same resource_type
-    same_borough : bool — if True, only return same borough
-
-    Returns DataFrame with columns: resource_id, name, type, borough, similarity
+    Returns DataFrame with columns: resource_id, name, resource_type, borough,
+    address, similarity, backend (cuml|sklearn).
     """
     embs = build_embeddings()
     if resource_id not in embs:
-        return pd.DataFrame(columns=["resource_id", "name", "type", "borough", "similarity"])
+        return pd.DataFrame(columns=["resource_id", "name", "resource_type", "borough", "similarity"])
 
-    target_vec = embs[resource_id]
+    index = _build_knn_index()
+    if index is None:
+        return pd.DataFrame()
+
     meta = _resource_meta
-
+    target_idx = _resource_ids_ordered.index(resource_id)
     target_type = meta.loc[resource_id, "resource_type"] if resource_id in meta.index else ""
     target_boro = meta.loc[resource_id, "borough"] if resource_id in meta.index else ""
 
+    # Query: over-fetch so filtering still returns k
+    query_k = min(k * 5 + 10, len(_resource_ids_ordered))
+
+    if index._backend == "cuml":
+        query_vec = index._matrix[target_idx:target_idx + 1]
+        distances, indices = index.kneighbors(query_vec, n_neighbors=query_k)
+        distances = cp.asnumpy(distances)[0]
+        indices = cp.asnumpy(indices)[0]
+    else:
+        query_vec = index._matrix[target_idx:target_idx + 1]
+        distances, indices = index.kneighbors(query_vec, n_neighbors=query_k)
+        distances = distances[0]
+        indices = indices[0]
+
+    # Convert L2 on normalized vectors → cosine sim:  cos = 1 - d^2 / 2
     scores = []
-    for rid, vec in embs.items():
+    for idx, dist in zip(indices, distances):
+        rid = _resource_ids_ordered[idx]
         if rid == resource_id:
             continue
         if same_type and rid in meta.index and meta.loc[rid, "resource_type"] != target_type:
             continue
         if same_borough and rid in meta.index and meta.loc[rid, "borough"] != target_boro:
             continue
+        sim = round(1 - (float(dist) ** 2) / 2, 4)
+        scores.append({"resource_id": rid, "similarity": sim, "backend": index._backend})
+        if len(scores) >= k:
+            break
 
-        sim = cosine_similarity(target_vec, vec)
-        scores.append({"resource_id": rid, "similarity": round(sim, 4)})
-
-    result = pd.DataFrame(scores).nlargest(k, "similarity")
+    result = pd.DataFrame(scores)
     if not result.empty and meta is not None:
         result = result.merge(
             meta[["name", "resource_type", "borough", "address"]],
