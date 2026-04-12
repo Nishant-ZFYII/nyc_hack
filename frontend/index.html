@@ -765,6 +765,9 @@ async function setManualLocation(){
 // ── Case: Choose, Checkin, Progress ────────────────────────
 async function chooseResource(needCategory,resourceName,resourceAddr,resourceType,lat,lon){
   if(!currentCaseId)return;
+  // Map resource type to need category
+  const typeToNeed={hospital:'medical',clinic:'medical',shelter:'housing',food_bank:'food',school:'school',childcare:'school',benefits_center:'benefits',domestic_violence:'safety',community_center:'housing',youth_services:'school',senior_services:'medical',legal_aid:'legal'};
+  needCategory=typeToNeed[needCategory]||needCategory;
   try{
     const resp=await fetch('/api/case/choose',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,need_category:needCategory,resource_name:resourceName,resource_address:resourceAddr,resource_type:resourceType})});
     const data=await resp.json();
