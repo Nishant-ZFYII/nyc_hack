@@ -966,6 +966,10 @@ async def agent_nat(req: AgentPlanRequest):
         message += f" (case_id: {req.case_id})"
 
     try:
+        # Start per-request trace (contextvar — no cross-request leakage)
+        from agent.register import start_trace
+        trace = start_trace()
+
         async with _nat_load_workflow(_NAT_CONFIG) as workflow:
             async with workflow.run(message) as runner:
                 if hasattr(runner, "result"):
@@ -978,6 +982,8 @@ async def agent_nat(req: AgentPlanRequest):
 
         return {
             "answer": str(result),
+            "trace": trace,  # list of {tool, inputs, output_preview, duration_ms}
+            "tool_call_count": len(trace),
             "total_time_s": round(time.time() - t0, 2),
             "via": "nat-react-agent",
             "model": "nemotron-3-nano",

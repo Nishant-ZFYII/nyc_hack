@@ -272,6 +272,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
         <button class="btn-primary" style="flex:1;min-width:140px" id="sendBtn" onclick="sendQuery()">Find Help</button>
         <button class="btn-primary" style="flex:1;min-width:140px;background:var(--purple);color:#fff" onclick="runAgentPlan()" title="Get a full action plan across all needs">&#129504; Full Plan</button>
         <button class="btn-primary" style="flex:1;min-width:140px;background:linear-gradient(135deg,#76b900,#5a8f00);color:#fff" onclick="runOpenClaw()" title="Real NVIDIA OpenClaw agent running on Nemotron-3-Nano">&#9881;&#65039; OpenClaw Agent</button>
+        <button class="btn-primary" style="flex:1;min-width:140px;background:linear-gradient(135deg,#1b7a00,#0f4a00);color:#fff" onclick="runNatAgent()" title="NVIDIA NeMo Agent Toolkit ReAct agent dispatching real tools">&#129302; NeMo ReAct</button>
       </div>
 
       <hr class="divider">
@@ -1226,6 +1227,84 @@ function renderOpenClawResult(data,elapsed){
 
   // Show trace in topbar
   document.getElementById('openclawTrace').textContent=`${(duration/1000).toFixed(1)}s · ${provider}`;
+}
+
+// ── NeMo Agent Toolkit (nat) ReAct Agent ───────────────────
+async function runNatAgent(){
+  const q=document.getElementById('queryInput').value.trim();
+  if(!q){document.getElementById('queryInput').focus();return}
+  lastQuery=q;
+  showView('openclaw'); // reuse the openclaw panel
+  document.getElementById('openclawTitle').textContent='NeMo ReAct Agent';
+  const c=document.getElementById('openclawContent');
+  c.innerHTML=`<div style="text-align:center;padding:60px 20px">
+    <div style="font-size:56px;margin-bottom:18px;animation:pulse 2s infinite">&#129302;</div>
+    <div style="font-family:var(--display);font-size:24px;font-weight:300;margin-bottom:8px">NeMo Agent is reasoning...</div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:6px">ReAct loop on <b>Nemotron-3-Nano</b> via <b>NVIDIA NeMo Agent Toolkit</b></div>
+    <div style="font-size:11px;color:var(--t3);font-family:var(--mono);margin-bottom:20px">dispatching real tools: find_resources · calculate_eligibility · get_rights · get_directions</div>
+    <div class="spinner" style="margin:0 auto"></div>
+    <div style="font-size:11px;color:var(--t3);margin-top:12px">Each tool call is a real Python function. This can take 30-90 seconds.</div>
+  </div>`;
+  const start=Date.now();
+  try{
+    const resp=await fetch('/api/agent/nat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null,case_id:currentCaseId})});
+    const data=await resp.json();
+    renderNatResult(data,Date.now()-start);
+  }catch(err){
+    c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error: ${err.message}</div>`;
+  }
+}
+
+function renderNatResult(data,elapsed){
+  const c=document.getElementById('openclawContent');
+  if(data.safety_block){
+    c.innerHTML=`<div class="answer-box" style="border-color:var(--red);background:rgba(220,38,38,0.05)"><b>Safety guardrail triggered:</b> ${data.reason}<br><br>${(data.answer||'').replace(/\n/g,'<br>')}</div>`;
+    return;
+  }
+  const answer=(data.answer||data.error||'No response').replace(/\n/g,'<br>');
+  const trace=data.trace||[];
+  const count=data.tool_call_count||trace.length;
+  const duration=data.total_time_s||(elapsed/1000);
+
+  let html=`<div style="margin-top:20px">`;
+  html+=`<div style="color:var(--t3);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">YOUR QUERY</div>`;
+  html+=`<div style="background:rgba(58,125,10,0.04);border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:20px">${lastQuery}</div>`;
+
+  // NeMo branding banner
+  html+=`<div style="background:linear-gradient(135deg,rgba(27,122,0,0.10),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+    <div style="font-size:28px">&#129302;</div>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:13px;color:var(--green)">NVIDIA NeMo Agent Toolkit</div>
+      <div style="font-size:11px;color:var(--t3);font-family:var(--mono)">ReAct &middot; nemotron-3-nano &middot; ${count} tool call${count===1?'':'s'} &middot; ${duration.toFixed(1)}s</div>
+    </div>
+  </div>`;
+
+  // Answer
+  html+=`<div class="answer-box fade-in" style="font-size:14.5px;line-height:1.8">${answer}</div>`;
+
+  // Tool trace — the key Phase 3 deliverable
+  if(trace.length){
+    html+=`<div style="margin-top:18px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px">
+      <div style="color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;font-size:10px;font-family:var(--mono)">&#9881;&#65039; AGENT REASONING — ${count} TOOL CALL${count===1?'':'S'}</div>`;
+    trace.forEach((t,i)=>{
+      const ins=JSON.stringify(t.inputs||{});
+      const out=(t.output_preview||'').replace(/</g,'&lt;');
+      html+=`<details style="margin-bottom:8px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--bg2)">
+        <summary style="cursor:pointer;font-family:var(--mono);font-size:12px"><b style="color:var(--green)">#${i+1} ${t.tool}</b> <span style="color:var(--t3);font-size:10px">· ${t.duration_ms}ms</span></summary>
+        <div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--t2)">
+          <div style="color:var(--t3);margin-bottom:4px">input:</div>
+          <div style="background:var(--bg);padding:6px 8px;border-radius:4px;margin-bottom:8px;white-space:pre-wrap;word-break:break-all">${ins}</div>
+          <div style="color:var(--t3);margin-bottom:4px">output:</div>
+          <div style="background:var(--bg);padding:6px 8px;border-radius:4px;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto">${out}</div>
+        </div>
+      </details>`;
+    });
+    html+=`</div>`;
+  }
+
+  html+=`</div>`;
+  c.innerHTML=html;
+  document.getElementById('openclawTrace').textContent=`${duration.toFixed(1)}s · ${count} tools`;
 }
 
 // ── Autonomous Agent Plan ──────────────────────────────────

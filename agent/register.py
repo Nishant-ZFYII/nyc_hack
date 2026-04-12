@@ -12,8 +12,53 @@ from __future__ import annotations
 
 import json
 import sys
+import time
+import contextvars
 from collections.abc import AsyncGenerator
 from pathlib import Path
+
+# Per-request trace. Set to a list by the caller (server endpoint) before
+# invoking the workflow; each tool call appends a record. Callers read it
+# out after the run completes. Default None means "no trace requested".
+_trace_ctx: contextvars.ContextVar = contextvars.ContextVar("nat_trace", default=None)
+
+
+def start_trace() -> list:
+    """Start trace capture for the current async context. Returns the list."""
+    trace = []
+    _trace_ctx.set(trace)
+    return trace
+
+
+def _record_call(tool_name: str, inputs: dict, output: str, duration_ms: float):
+    trace = _trace_ctx.get()
+    if trace is None:
+        return
+    # Truncate big outputs so the trace stays small for the UI
+    out_preview = output if len(output) <= 800 else output[:800] + "…"
+    trace.append({
+        "tool": tool_name,
+        "inputs": inputs,
+        "output_preview": out_preview,
+        "duration_ms": round(duration_ms, 1),
+    })
+
+
+def _traced(name: str, fn):
+    """Wrap an async tool fn to record (name, inputs, output, duration) in the trace."""
+    async def wrapper(*args, **kwargs):
+        t0 = time.time()
+        try:
+            result = await fn(*args, **kwargs)
+            _record_call(name, kwargs or {"_args": list(args)}, str(result),
+                         (time.time() - t0) * 1000)
+            return result
+        except Exception as e:
+            _record_call(name, kwargs or {"_args": list(args)}, f"ERROR: {e}",
+                         (time.time() - t0) * 1000)
+            raise
+    wrapper.__doc__ = fn.__doc__
+    return wrapper
 
 from pydantic import Field
 
@@ -119,9 +164,9 @@ async def nyc_resource_tools(_config, _builder: Builder) -> AsyncGenerator[Funct
                    "borough": r.get("borough")} for r in resources]
         return json.dumps(_clean(simple), indent=2, default=str)
 
-    group.add_function(name="find_resources", fn=_find_resources,
+    group.add_function(name="find_resources", fn=_traced("find_resources", _find_resources),
                        description=_find_resources.__doc__)
-    group.add_function(name="find_resources_by_type", fn=_find_resources_by_type,
+    group.add_function(name="find_resources_by_type", fn=_traced("find_resources_by_type", _find_resources_by_type),
                        description=_find_resources_by_type.__doc__)
     yield group
 
@@ -175,11 +220,11 @@ async def nyc_eligibility_tools(_config, _builder: Builder) -> AsyncGenerator[Fu
                   for s in stories]
         return json.dumps(simple, indent=2)
 
-    group.add_function(name="calculate_eligibility", fn=_calculate_eligibility,
+    group.add_function(name="calculate_eligibility", fn=_traced("calculate_eligibility", _calculate_eligibility),
                        description=_calculate_eligibility.__doc__)
-    group.add_function(name="get_rights", fn=_get_rights,
+    group.add_function(name="get_rights", fn=_traced("get_rights", _get_rights),
                        description=_get_rights.__doc__)
-    group.add_function(name="get_stories", fn=_get_stories,
+    group.add_function(name="get_stories", fn=_traced("get_stories", _get_stories),
                        description=_get_stories.__doc__)
     yield group
 
@@ -213,7 +258,7 @@ async def nyc_directions_tools(_config, _builder: Builder) -> AsyncGenerator[Fun
             simple["free_metrocard"] = result["free_metrocard_location"]
         return json.dumps(_clean(simple), indent=2)
 
-    group.add_function(name="get_directions", fn=_get_directions,
+    group.add_function(name="get_directions", fn=_traced("get_directions", _get_directions),
                        description=_get_directions.__doc__)
     yield group
 
@@ -256,12 +301,12 @@ async def nyc_case_tools(_config, _builder: Builder) -> AsyncGenerator[FunctionG
         status = "Need resolved" if arrived else "Resource marked failed"
         return f"Checkin saved: arrived={arrived} at {resource_name}. {status}."
 
-    group.add_function(name="get_case_summary", fn=_get_case_summary,
+    group.add_function(name="get_case_summary", fn=_traced("get_case_summary", _get_case_summary),
                        description=_get_case_summary.__doc__)
-    group.add_function(name="get_progress", fn=_get_progress,
+    group.add_function(name="get_progress", fn=_traced("get_progress", _get_progress),
                        description=_get_progress.__doc__)
-    group.add_function(name="choose_resource", fn=_choose_resource,
+    group.add_function(name="choose_resource", fn=_traced("choose_resource", _choose_resource),
                        description=_choose_resource.__doc__)
-    group.add_function(name="checkin_resource", fn=_checkin_resource,
+    group.add_function(name="checkin_resource", fn=_traced("checkin_resource", _checkin_resource),
                        description=_checkin_resource.__doc__)
     yield group
