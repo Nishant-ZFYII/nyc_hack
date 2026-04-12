@@ -190,6 +190,21 @@ def get_case_summary(case_id: str) -> str:
     return " ".join(lines)
 
 
+# Map resource types back to need categories
+_TYPE_TO_NEED = {
+    "hospital": "medical", "clinic": "medical", "mental_health": "medical",
+    "shelter": "housing", "nycha": "housing", "dropin_center": "housing",
+    "food_bank": "food",
+    "school": "school", "childcare": "school", "education": "school",
+    "benefits_center": "benefits",
+    "domestic_violence": "safety",
+    "legal_aid": "legal",
+    "senior_services": "senior",
+    "community_center": "employment",
+    "emergency_services": "safety",
+}
+
+
 def choose_resource(case_id: str, need_category: str, resource_name: str,
                     resource_address: str = "", resource_type: str = "") -> dict:
     """User selects a specific resource for a need. Saves the choice and marks need as in_progress."""
@@ -197,14 +212,42 @@ def choose_resource(case_id: str, need_category: str, resource_name: str,
     if not case:
         return {"error": "Case not found"}
 
-    # Update the need status to in_progress with chosen resource
+    # Map resource type to need category if the exact category doesn't match
+    matched = False
     for need in case["needs"]:
-        if need["category"] == need_category:
+        if need["category"] == need_category and need["status"] == "open":
             need["status"] = "in_progress"
             need["chosen_resource"] = resource_name
             need["chosen_address"] = resource_address
             need["chosen_type"] = resource_type
             need["chosen_at"] = datetime.now().isoformat()
+            matched = True
+            break
+
+    # If no exact match, try mapping resource type → need category
+    if not matched:
+        mapped_cat = _TYPE_TO_NEED.get(need_category, need_category)
+        for need in case["needs"]:
+            if need["category"] == mapped_cat and need["status"] == "open":
+                need["status"] = "in_progress"
+                need["chosen_resource"] = resource_name
+                need["chosen_address"] = resource_address
+                need["chosen_type"] = resource_type
+                need["chosen_at"] = datetime.now().isoformat()
+                matched = True
+                break
+
+    # If still no match, try matching by resource_type parameter
+    if not matched and resource_type:
+        mapped_cat = _TYPE_TO_NEED.get(resource_type, resource_type)
+        for need in case["needs"]:
+            if need["category"] == mapped_cat and need["status"] == "open":
+                need["status"] = "in_progress"
+                need["chosen_resource"] = resource_name
+                need["chosen_address"] = resource_address
+                need["chosen_type"] = resource_type
+                need["chosen_at"] = datetime.now().isoformat()
+                break
 
     _save_case(case)
     return case
