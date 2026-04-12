@@ -1065,21 +1065,22 @@ function renderRefineResults(data,target){
 
   // Updated resources (simple list with a header)
   if(data.resources&&data.resources.length){
-    html+=`<div style="margin-top:14px"><div style="font-size:11px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">&#128269; Refined resources (${data.resources.length})</div>`;
+    html+=`<div style="margin-top:14px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-size:11px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.5px">&#128269; Refined resources (${data.resources.length})</div><button class="btn-secondary" style="padding:4px 10px;font-size:10px" onclick="if(!mapOpen)toggleMap()">&#128506; View on map</button></div>`;
     for(const r of data.resources.slice(0,6)){
-      const dist=r.distance_miles?` &middot; ${r.distance_miles} mi`:'';
+      const dist=r.distance_miles?` &middot; ${(+r.distance_miles).toFixed(2)} mi`:'';
       const eName=(r.name||'').replace(/'/g,'&#39;');
       html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:6px">
         <div style="font-weight:600;font-size:13px">${r.name||'Unknown'}</div>
         <div style="font-size:11px;color:var(--t3);font-family:var(--mono);margin-top:2px">${r.address||''}${dist}</div>
-        ${r.lat&&r.lon?`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-secondary" style="padding:4px 10px;font-size:10px" onclick="getDirections(${r.lat},${r.lon},'${eName}')">Directions</button></div>`:''}
+        ${r.lat&&r.lon?`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-secondary" style="padding:4px 10px;font-size:10px" onclick="getDirections(${r.lat},${r.lon},'${eName}')">Directions</button><button class="btn-secondary" style="padding:4px 10px;font-size:10px" onclick="flyToResult(${r.lat},${r.lon})">Show on map</button></div>`:''}
       </div>`;
     }
     html+=`</div>`;
-    // Update map
+    // Update map — open it if closed so user sees the refined resources
     if(data.resources.length>0){
       lastResources=data.resources;
-      if(mapOpen)setTimeout(()=>updateResultMapLayers(),100);
+      if(!mapOpen)toggleMap();
+      else setTimeout(()=>updateResultMapLayers(),100);
     }
   }
 
