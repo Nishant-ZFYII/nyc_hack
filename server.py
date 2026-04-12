@@ -29,6 +29,7 @@ from pipeline.feedback import parse_feedback
 from pipeline.cases import (load_case, create_case, add_visit, mark_resource_visited,
                              resolve_need, get_case_summary, list_cases,
                              choose_resource, checkin, get_failed_resources, get_progress)
+from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
 from llm.client import get_active_provider
 import pandas as pd
 
@@ -437,6 +438,63 @@ async def case_progress(case_id: str):
 async def cases_list():
     """List all cases (admin view)."""
     return list_cases()
+
+
+# ── Eligibility / Rights / Stories ────────────────────────────────────────────
+
+class EligibilityRequest(BaseModel):
+    household_size: int = 1
+    annual_income: float = 0
+    has_children: bool = False
+    has_pregnant: bool = False
+    has_disabled: bool = False
+    has_senior: bool = False
+    is_veteran: bool = False
+    housing_status: str = ""  # homeless, at_risk, stable
+    has_id: bool = True
+    immigration_status: str = "any"
+
+
+@app.post("/api/eligibility")
+async def eligibility(req: EligibilityRequest):
+    """Calculate benefits eligibility for a household profile.
+
+    Returns which programs they qualify for (SNAP, Medicaid, WIC, Cash Assistance,
+    Fair Fares, emergency shelter, etc.) with estimated monthly amounts and
+    documents needed.
+    """
+    return calculate_eligibility(
+        household_size=req.household_size,
+        annual_income=req.annual_income,
+        has_children=req.has_children,
+        has_pregnant=req.has_pregnant,
+        has_disabled=req.has_disabled,
+        has_senior=req.has_senior,
+        is_veteran=req.is_veteran,
+        housing_status=req.housing_status,
+        has_id=req.has_id,
+        immigration_status=req.immigration_status,
+    )
+
+
+@app.get("/api/rights")
+async def rights(resource_type: str = "default"):
+    """Get know-your-rights info for a resource type.
+
+    Returns legal rights a person has at that type of resource
+    (shelter, food bank, hospital, school, benefits center, etc.)
+    """
+    return {"resource_type": resource_type, "rights": get_rights(resource_type)}
+
+
+@app.get("/api/stories")
+async def stories(need: str = None, k: int = 3):
+    """Get success stories, optionally filtered by need category.
+
+    Returns 2-3 anonymized journeys of people who found help in similar
+    situations. Used to build trust with new users.
+    """
+    return {"need": need, "stories": get_stories(need, k)}
 
 
 @app.get("/api/resources")
