@@ -298,8 +298,14 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
     <span class="topbar-title">Results</span>
     <button class="topbar-back" onclick="toggleMap()" style="margin-left:auto" id="mapToggleBtn">&#128506; Map</button>
   </div>
+  <!-- Location bar on results page -->
+  <div id="resultsLocBar" style="padding:8px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--bg3);flex-shrink:0">
+    <span style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px">&#128205; Location:</span>
+    <span id="resultsLocText" style="font-size:12px;color:var(--green);font-weight:500;flex:1"></span>
+    <input type="text" id="resultsLocInput" style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--t1);font-family:var(--ui);outline:none;display:none" placeholder="Your address..." onkeydown="if(event.key==='Enter')setResultsLocation()">
+    <button class="btn-secondary" style="padding:5px 10px;font-size:10px" onclick="toggleResultsLocInput()">Change</button>
+  </div>
   <div class="results-layout">
-    <!-- Chat/Results panel (always visible, centered when map hidden) -->
     <div class="results-main" id="resultsMain">
       <div class="page-scroll">
         <div class="centered-wide" id="resultsContent"></div>
@@ -505,6 +511,7 @@ async function sendQuery(){
     const data=await resp.json();
     renderResults(data);
     goTo('page-results');
+    updateResultsLocBar();
   }catch(err){
     document.getElementById('resultsContent').innerHTML=`<div class="answer-box" style="color:var(--red)">Connection error: ${err.message}</div>`;
     goTo('page-results');
@@ -688,6 +695,43 @@ function showUserMarker(){
   el.className='user-loc-marker';
   el.style.cssText='width:16px;height:16px;background:#4fc3f7;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #4fc3f788;animation:pulse 2s infinite';
   userMarker=new maplibregl.Marker({element:el}).setLngLat([userLocation.lon,userLocation.lat]).addTo(resultMap);
+}
+
+// ── Results Location Bar ───────────────────────────────────
+function updateResultsLocBar(){
+  const text=document.getElementById('resultsLocText');
+  const input=document.getElementById('resultsLocInput');
+  if(userLocation){
+    text.textContent=`${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}`;
+    text.style.display='inline';
+    input.style.display='none';
+  } else {
+    text.style.display='none';
+    input.style.display='inline';
+    input.placeholder='Enter your address to get directions...';
+  }
+}
+function toggleResultsLocInput(){
+  const text=document.getElementById('resultsLocText');
+  const input=document.getElementById('resultsLocInput');
+  if(input.style.display==='none'){
+    input.style.display='inline';input.focus();text.style.display='none';
+  } else {
+    setResultsLocation();
+  }
+}
+async function setResultsLocation(){
+  const input=document.getElementById('resultsLocInput');
+  const addr=input.value.trim();if(!addr)return;
+  try{
+    const resp=await fetch(`/api/geocode?q=${encodeURIComponent(addr)}`);
+    const results=await resp.json();
+    if(results&&results.length>0){
+      userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
+      updateResultsLocBar();
+      showUserMarker();
+    }
+  }catch(e){}
 }
 
 // ── Location ───────────────────────────────────────────────
