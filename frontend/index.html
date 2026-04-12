@@ -970,16 +970,25 @@ async function showNextSteps(){
 async function setNxLoc(){
   const input=document.getElementById('nxLocInput');
   const addr=input.value.trim();if(!addr)return;
+  input.style.borderColor='var(--border)';
   try{
     const resp=await fetch(`/api/geocode?q=${encodeURIComponent(addr)}`);
     const results=await resp.json();
     if(results&&results.length>0){
       userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
-      const text=document.getElementById('nxLocText');
-      if(text){text.textContent='Location set: '+results[0].display_name.split(',').slice(0,2).join(',');text.style.color='var(--green)'}
-      input.style.display='none';
+      const loc=results[0].display_name.split(',').slice(0,2).join(',');
+      // Replace the entire location card with success
+      const card=input.closest('div[style*="border-radius:10px"]');
+      if(card){
+        card.innerHTML=`<div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">&#128205; Your current location</div>
+        <div style="color:var(--green);font-size:14px;font-weight:600" id="nxLocText">&#9989; ${loc}</div>
+        <div style="margin-top:6px"><button class="btn-secondary" style="padding:6px 10px;font-size:10px" onclick="this.nextElementSibling.style.display='flex';this.style.display='none'">Change</button><div style="display:none;gap:6px;margin-top:4px"><input type="text" id="nxLocInput" class="big-input" placeholder="New address..." style="font-size:12px;padding:8px 12px" onkeydown="if(event.key==='Enter')setNxLoc()"><button class="btn-secondary" style="padding:8px 10px;font-size:10px" onclick="setNxLoc()">Set</button></div></div>`;
+      }
+    } else {
+      input.style.borderColor='var(--orange)';
+      input.placeholder='Address not found — try again';
     }
-  }catch(e){}
+  }catch(e){input.style.borderColor='var(--red)';input.placeholder='Error — try again'}
 }
 
 function gpsNx(){
