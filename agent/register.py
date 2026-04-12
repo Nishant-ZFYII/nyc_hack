@@ -42,6 +42,53 @@ def _record_call(tool_name: str, inputs: dict, output: str, duration_ms: float):
     })
 
 
+# Middleware that captures tool invocations into _current_trace. Installed on
+# every function group below via group.configure_middleware([...]).
+if _MIDDLEWARE_AVAILABLE:
+    class _TraceMiddleware(Middleware):
+        """Records each tool call's (name, args, output, duration) in the trace."""
+
+        def __init__(self):
+            super().__init__(is_final=False)
+            self._start_times: dict = {}
+
+        @property
+        def enabled(self) -> bool:
+            return True
+
+        async def pre_invoke(self, context: InvocationContext):
+            # Stash start time keyed by the context's id
+            self._start_times[id(context)] = time.time()
+            return None
+
+        async def post_invoke(self, context: InvocationContext):
+            t0 = self._start_times.pop(id(context), time.time())
+            duration_ms = (time.time() - t0) * 1000
+            name = getattr(context.function_context, "name", "unknown")
+            # Strip group prefix (resource_tools__find_resources -> find_resources)
+            if "__" in name:
+                name = name.split("__", 1)[1]
+            # Inputs come in as kwargs dict (pydantic model dump) or args tuple
+            try:
+                inputs = dict(context.modified_kwargs) if context.modified_kwargs else {}
+                if not inputs and context.modified_args:
+                    inputs = {"_args": list(context.modified_args)}
+            except Exception:
+                inputs = {"_repr": repr(context.modified_kwargs)}
+            _record_call(name, inputs, str(context.output), duration_ms)
+            return None
+
+    def _install_trace(group: FunctionGroup):
+        """Attach the trace middleware to a function group."""
+        try:
+            group.configure_middleware([_TraceMiddleware()])
+        except Exception:
+            pass  # If nat API changes, silently skip — agent still works
+else:
+    def _install_trace(group):  # no-op fallback
+        return
+
+
 def _traced(name: str, fn):
     """Wrap an async tool fn to record (name, inputs, output, duration) in the trace.
 
@@ -72,6 +119,13 @@ from nat.builder.builder import Builder
 from nat.builder.function import FunctionGroup
 from nat.cli.register_workflow import register_function_group
 from nat.data_models.function import FunctionGroupBaseConfig
+
+# Middleware for trace capture — runs around every tool call in the group
+try:
+    from nat.middleware.middleware import Middleware, InvocationContext
+    _MIDDLEWARE_AVAILABLE = True
+except Exception:
+    _MIDDLEWARE_AVAILABLE = False
 
 # Add project root to path so pipeline imports work
 ROOT = Path(__file__).resolve().parent.parent
@@ -180,6 +234,7 @@ async def nyc_resource_tools(_config, _builder: Builder) -> AsyncGenerator[Funct
                        description=_find_resources.__doc__)
     group.add_function(name="find_resources_by_type", fn=_find_resources_by_type,
                        description=_find_resources_by_type.__doc__)
+    _install_trace(group)
     yield group
 
 
@@ -238,6 +293,7 @@ async def nyc_eligibility_tools(_config, _builder: Builder) -> AsyncGenerator[Fu
                        description=_get_rights.__doc__)
     group.add_function(name="get_stories", fn=_get_stories,
                        description=_get_stories.__doc__)
+    _install_trace(group)
     yield group
 
 
@@ -272,6 +328,7 @@ async def nyc_directions_tools(_config, _builder: Builder) -> AsyncGenerator[Fun
 
     group.add_function(name="get_directions", fn=_get_directions,
                        description=_get_directions.__doc__)
+    _install_trace(group)
     yield group
 
 
@@ -321,6 +378,7 @@ async def nyc_case_tools(_config, _builder: Builder) -> AsyncGenerator[FunctionG
                        description=_choose_resource.__doc__)
     group.add_function(name="checkin_resource", fn=_checkin_resource,
                        description=_checkin_resource.__doc__)
+    _install_trace(group)
     yield group
 
 
@@ -479,4 +537,5 @@ async def nyc_admin_tools(_config, _builder: Builder) -> AsyncGenerator[Function
                        description=_advance_destination_state.__doc__)
     group.add_function(name="add_admin_note", fn=_add_admin_note,
                        description=_add_admin_note.__doc__)
+    _install_trace(group)
     yield group
