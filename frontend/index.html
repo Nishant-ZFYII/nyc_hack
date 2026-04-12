@@ -324,14 +324,6 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
     <!-- Map panel (hidden by default, slides in from right) -->
     <div class="results-map" id="resultsMapPanel">
       <div id="mapEl" style="width:100%;height:100%"></div>
-      <div class="map-overlay map-legend">
-        <div class="map-legend-title">Resources</div>
-        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--green)"></span> Shelters</div>
-        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--orange)"></span> Food</div>
-        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--red)"></span> Hospitals</div>
-        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--blue)"></span> Schools</div>
-        <div class="map-legend-item"><span class="map-legend-dot" style="background:#81c784"></span> Childcare</div>
-      </div>
     </div>
   </div>
 </div>
@@ -466,14 +458,6 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
       </div>
     </div>
     <div class="map-overlay" style="top:16px;left:16px;padding:8px 14px;font-size:12px;cursor:pointer;z-index:20" onclick="backToBoroughs()">&#8592; All boroughs</div>
-    <div class="map-overlay map-legend">
-      <div class="map-legend-title">Resources</div>
-      <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--green)"></span> Shelters</div>
-      <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--orange)"></span> Food</div>
-      <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--red)"></span> Hospitals</div>
-      <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--blue)"></span> Schools</div>
-      <div class="map-legend-item"><span class="map-legend-dot" style="background:#81c784"></span> Childcare</div>
-    </div>
   </div>
 </div>
 
@@ -730,11 +714,23 @@ function initResultMap(){
 
 function updateResultMapLayers(){
   if(!resultMap)return;
-  const fg=lastResources.filter(r=>r.lat&&r.lon);
+  buildIconAtlas();
+  const fg=lastResources.filter(r=>r.lat&&r.lon).map(r=>({...r,resource_type:r.type||'shelter'}));
   const layers=[
-    new deck.ScatterplotLayer({id:'results',data:fg,getPosition:d=>[d.lon,d.lat],getRadius:100,getFillColor:d=>[...(TYPE_COLORS[d.type]||[118,185,0]),220],radiusMinPixels:8,radiusMaxPixels:25,pickable:true,stroked:true,getLineColor:[255,255,255,180],lineWidthMinPixels:2,
+    new deck.IconLayer({
+      id:'results',
+      data:fg,
+      getPosition:d=>[d.lon,d.lat],
+      iconAtlas:_iconAtlasUrl,
+      iconMapping:_iconMapping,
+      getIcon:d=>_iconMapping[d.resource_type]?d.resource_type:'shelter',
+      getSize:42,
+      sizeMinPixels:28,
+      sizeMaxPixels:56,
+      pickable:true,
       onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''},
-      onClick:({object})=>{if(object)showResultResourceInfo(object)}}),
+      onClick:({object})=>{if(object)showResultResourceInfo(object)},
+    }),
   ];
   if(resultDeck)resultDeck.setProps({layers});else{resultDeck=new deck.MapboxOverlay({layers});resultMap.addControl(resultDeck)}
   if(fg.length){
@@ -1781,17 +1777,19 @@ function toggleNatMap(){
 
 function updateNatMapLayers(){
   if(!natMap||!lastPlanData)return;
+  buildIconAtlas();
   const TF_COLORS={TONIGHT:[239,83,80],THIS_WEEK:[232,132,58],NEXT_2_WEEKS:[46,125,186]};
   const markers=[];
   for(const step of(lastPlanData.steps||[])){
     const tfColor=TF_COLORS[step.timeframe]||[118,185,0];
     const top=step.top_resource;
+    const rtype=step.category==='housing'?'shelter':step.category==='benefits'?'benefits_center':step.category==='medical'?'hospital':step.category==='school'?'school':step.category==='food'?'food_bank':step.category==='safety'?'domestic_violence':step.category==='legal'?'legal_aid':'shelter';
     if(top&&top.latitude&&top.longitude){
-      markers.push({lat:top.latitude,lon:top.longitude,name:top.name,timeframe:step.timeframe||'',color:tfColor,primary:true});
+      markers.push({lat:top.latitude,lon:top.longitude,name:top.name,timeframe:step.timeframe||'',color:tfColor,primary:true,resource_type:top.resource_type||rtype});
     }
     for(const alt of(step.alternatives||[])){
       if(alt.latitude&&alt.longitude){
-        markers.push({lat:alt.latitude,lon:alt.longitude,name:alt.name,timeframe:step.timeframe||'',color:tfColor,primary:false});
+        markers.push({lat:alt.latitude,lon:alt.longitude,name:alt.name,timeframe:step.timeframe||'',color:tfColor,primary:false,resource_type:alt.resource_type||rtype});
       }
     }
   }

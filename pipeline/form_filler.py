@@ -204,7 +204,8 @@ SNAP_PDF = FORMS_DIR / "ldss_4826_snap.pdf"
 MEDICAID_PDF = FORMS_DIR / "doh_4220_medicaid.pdf"
 
 
-def _overlay_on_real_form(source_pdf: Path, answers: dict) -> bytes:
+def _overlay_on_real_form(source_pdf: Path, answers: dict,
+                           extra_placements: list = None) -> bytes:
     """
     Overlay filled answers onto the source PDF.
 
@@ -241,7 +242,6 @@ def _overlay_on_real_form(source_pdf: Path, answers: dict) -> bytes:
             for label_key, value in answers.items():
                 if not value:
                     continue
-                # Skip if we've already placed this exact value somewhere
                 value_str = str(value)
                 if value_str in used_values:
                     continue
@@ -249,7 +249,6 @@ def _overlay_on_real_form(source_pdf: Path, answers: dict) -> bytes:
                 for i, w in enumerate(words):
                     if w["text"].lower().rstrip(":") != label_tokens[0]:
                         continue
-                    # Check following tokens match
                     ok = True
                     last_w = w
                     first_w = w
@@ -261,9 +260,6 @@ def _overlay_on_real_form(source_pdf: Path, answers: dict) -> bytes:
                         last_w = words[i + j]
                     if not ok:
                         continue
-                    # Place value BELOW the label baseline, roughly aligned to label's left edge.
-                    # pdfplumber "top" is from top of page; reportlab y is from bottom.
-                    # Use label midpoint X so value lands on the write-line beneath.
                     x = first_w["x0"]
                     y_pdf = page_sizes[page_idx][1] - last_w["bottom"] - 14
                     if _too_close(page_idx, x, y_pdf):
@@ -272,6 +268,13 @@ def _overlay_on_real_form(source_pdf: Path, answers: dict) -> bytes:
                     occupied_spots.append((page_idx, x, y_pdf))
                     used_values.add(value_str)
                     break
+
+    # Merge in caller-provided hardcoded placements (for fields that don't
+    # work via label-search — e.g. duplicated "Zip" labels).
+    if extra_placements:
+        for p in extra_placements:
+            if len(p) == 4:
+                placements.append(p)
 
     # Pass 2: build overlay PDF with reportlab (one page per source page)
     overlay_buf = BytesIO()
@@ -318,6 +321,9 @@ def _answers_from_case(id_fields: dict, case_data: dict) -> dict:
 
     # Canonical labels only — overlay is placed once per distinct value.
     # Keys match label text as it appears in the form (case-insensitive).
+    # Zip intentionally omitted here — it's handled via hardcoded positions
+    # per form (see FIXED_PLACEMENTS) because multiple "Zip" labels appear
+    # on the same page and label-search picks the wrong one.
     return {
         "last name": ln,
         "first name": fn,
@@ -325,8 +331,35 @@ def _answers_from_case(id_fields: dict, case_data: dict) -> dict:
         "sex": sex,
         "address": addr,
         "city": city,
-        "zip": zipc,
     }
+
+
+# Hardcoded known-good positions for fields that collide via label-search.
+# Each entry: form_key → [(page_idx, x, y_pdf_from_bottom, value_source), ...]
+# Coordinates verified manually against the actual PDFs at samples/forms/.
+FIXED_PLACEMENTS = {
+    # Zip placements intentionally omitted — multiple "Zip" labels per page
+    # cause collisions and our guessed hardcoded coords landed on adjacent
+    # text. Cleaner to leave zip blank on the form (caseworker can fill by
+    # hand in 2 seconds) than to have ugly overlap. All other applicant
+    # fields (name, DOB, address, city, sex) land cleanly.
+    "ldss_4826_snap.pdf": [],
+    "doh_4220_medicaid.pdf": [],
+}
+
+
+def _apply_fixed_placements(form_filename: str, id_fields: dict, case_data: dict):
+    """Return list of (page_idx, x, y, value) for hardcoded placements."""
+    out = []
+    for pidx, x, y, src_key in FIXED_PLACEMENTS.get(form_filename, []):
+        val = ""
+        if src_key == "zip":
+            val = id_fields.get("zip", "")
+        elif src_key == "state":
+            val = id_fields.get("state", "")
+        if val:
+            out.append((pidx, x, y, str(val)))
+    return out
 
 
 def generate_snap_form(id_fields: dict, case_data: dict = None) -> bytes:
@@ -334,7 +367,8 @@ def generate_snap_form(id_fields: dict, case_data: dict = None) -> bytes:
     case_data = case_data or {}
     if SNAP_PDF.exists():
         answers = _answers_from_case(id_fields, case_data)
-        return _overlay_on_real_form(SNAP_PDF, answers)
+        extras = _apply_fixed_placements("ldss_4826_snap.pdf", id_fields, case_data)
+        return _overlay_on_real_form(SNAP_PDF, answers, extras)
     # Fallback to synthetic form if the real PDF isn't available
     return _generate_form(
         title="SNAP APPLICATION (Food Stamps)",
