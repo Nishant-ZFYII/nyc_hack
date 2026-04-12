@@ -2482,13 +2482,59 @@ function backToBoroughs(){
 
 let exploreUserLoc=null, exploreUserMarker=null;
 
+// Emoji → canvas icon atlas (browser renders emoji natively)
+const TYPE_EMOJI={shelter:'\u{1F3E0}',food_bank:'\u{1F34E}',hospital:'\u{1F3E5}',clinic:'\u{1FA7A}',school:'\u{1F4DA}',childcare:'\u{1F476}',youth_services:'\u{1F3BE}',community_center:'\u{1F3DB}\u{FE0F}',senior_services:'\u{1F474}',library:'\u{1F4D6}',emergency_services:'\u{1F6A8}',education:'\u{1F393}',legal_aid:'\u{2696}\u{FE0F}',benefits_center:'\u{1F4CB}',domestic_violence:'\u{1F6E1}\u{FE0F}',mental_health:'\u{1F4AC}',dropin_center:'\u{2615}',transit_station:'\u{1F687}',police_precinct:'\u{1F46E}'};
+let _iconAtlasUrl=null;
+let _iconMapping=null;
+function buildIconAtlas(){
+  if(_iconAtlasUrl)return;
+  const size=96; // each icon cell
+  const entries=Object.keys(TYPE_EMOJI);
+  const canvas=document.createElement('canvas');
+  canvas.width=size*entries.length; canvas.height=size;
+  const ctx=canvas.getContext('2d');
+  ctx.font=`${size*0.7}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  _iconMapping={};
+  entries.forEach((type,i)=>{
+    // Draw a soft circle background so icons read well on any map
+    ctx.fillStyle='rgba(255,255,255,0.95)';
+    ctx.beginPath();
+    ctx.arc(i*size+size/2, size/2, size*0.45, 0, Math.PI*2);
+    ctx.fill();
+    // Colored ring
+    const color=TYPE_COLORS[type]||[118,185,0];
+    ctx.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},1)`;
+    ctx.lineWidth=size*0.08;
+    ctx.stroke();
+    // Emoji on top
+    ctx.fillStyle='#000';
+    ctx.fillText(TYPE_EMOJI[type], i*size+size/2, size/2+size*0.04);
+    _iconMapping[type]={x:i*size,y:0,width:size,height:size,mask:false};
+  });
+  _iconAtlasUrl=canvas.toDataURL();
+}
+
 function refreshExploreIcons(){
   if(!exploreMap||!exploreBoro)return;
+  buildIconAtlas();
   const filtered=allResources.filter(r=>r.latitude&&r.longitude&&r.borough===exploreBoro&&exploreFilters.has(r.resource_type));
   const layers=[
-    new deck.ScatterplotLayer({id:'explore-icons',data:filtered,getPosition:d=>[d.longitude,d.latitude],getRadius:60,getFillColor:d=>[...(TYPE_COLORS[d.resource_type]||[118,185,0]),200],radiusMinPixels:5,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,120],lineWidthMinPixels:1,
+    new deck.IconLayer({
+      id:'explore-icons',
+      data:filtered,
+      getPosition:d=>[d.longitude,d.latitude],
+      iconAtlas:_iconAtlasUrl,
+      iconMapping:_iconMapping,
+      getIcon:d=>_iconMapping[d.resource_type]?d.resource_type:'shelter',
+      getSize:36,
+      sizeMinPixels:22,
+      sizeMaxPixels:48,
+      pickable:true,
       onClick:({object})=>{if(object)showExplorePopup(object)},
-      onHover:({object})=>{document.getElementById('exploreMapEl').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''}}),
+      onHover:({object})=>{document.getElementById('exploreMapEl').title=object?`${object.name} (${(object.resource_type||'').replace(/_/g,' ')})`:''},
+    }),
   ];
   if(exploreDeck)exploreDeck.setProps({layers});else{exploreDeck=new deck.MapboxOverlay({layers});exploreMap.addControl(exploreDeck)}
 }
