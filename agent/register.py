@@ -188,6 +188,7 @@ async def nyc_resource_tools(_config, _builder: Builder) -> AsyncGenerator[Funct
     async def _find_resources(query: str, lat: float = 0, lon: float = 0,
                               case_id: str = "") -> str:
         """Find NYC social services resources matching a query. ALWAYS call this before giving resource recommendations. Query examples: 'shelter in Brooklyn', 'food pantry Manhattan', 'hospital near Flatbush'. Pass lat/lon if known for distance sorting. Pass case_id to exclude resources the user previously marked as full."""
+        _t0 = time.time()
         plan = generate_plan(query)
         if lat and lon:
             plan["_user_location"] = {"lat": lat, "lon": lon}
@@ -215,12 +216,17 @@ async def nyc_resource_tools(_config, _builder: Builder) -> AsyncGenerator[Funct
                 "distance_miles": r.get("distance_miles"),
                 "walk_min": r.get("walk_min_est"),
             })
-        return json.dumps(_clean({"intent": result.get("intent"), "resources": simple}),
+        _out = json.dumps(_clean({"intent": result.get("intent"), "resources": simple}),
                           indent=2, default=str)
+        _record_call("find_resources", {"query": query, "lat": lat, "lon": lon,
+                                         "case_id": case_id}, _out,
+                     (time.time() - _t0) * 1000)
+        return _out
 
     async def _find_resources_by_type(resource_type: str, borough: str = "",
                                        limit: int = 5) -> str:
         """Find NYC resources filtered by type and borough. Types: shelter, food_bank, hospital, clinic, school, childcare, benefits_center, domestic_violence, legal_aid, senior_services, mental_health. Boroughs: MN, BK, QN, BX, SI (or leave blank)."""
+        _t0 = time.time()
         plan = {
             "intent": "lookup",
             "resource_types": [resource_type],
@@ -231,7 +237,11 @@ async def nyc_resource_tools(_config, _builder: Builder) -> AsyncGenerator[Funct
         resources = _df_to_records(result.get("results"), limit)
         simple = [{"name": r.get("name"), "address": r.get("address"),
                    "borough": r.get("borough")} for r in resources]
-        return json.dumps(_clean(simple), indent=2, default=str)
+        _out = json.dumps(_clean(simple), indent=2, default=str)
+        _record_call("find_resources_by_type", {"resource_type": resource_type,
+                                                 "borough": borough, "limit": limit},
+                     _out, (time.time() - _t0) * 1000)
+        return _out
 
     group.add_function(name="find_resources", fn=_find_resources,
                        description=_find_resources.__doc__)
@@ -262,6 +272,7 @@ async def nyc_eligibility_tools(_config, _builder: Builder) -> AsyncGenerator[Fu
                                       has_senior: bool = False,
                                       housing_status: str = "") -> str:
         """Calculate which NYC/federal benefits a household qualifies for (SNAP, Medicaid, WIC, Cash Assistance, Fair Fares, Emergency Shelter). ALWAYS call when user mentions income, kids, pregnancy, or asks about benefits."""
+        _t0 = time.time()
         result = pipeline_calc_elig(
             household_size=household_size, annual_income=annual_income,
             has_children=has_children, has_pregnant=has_pregnant,
@@ -275,20 +286,34 @@ async def nyc_eligibility_tools(_config, _builder: Builder) -> AsyncGenerator[Fu
                              "where_to_apply": v.get("where_to_apply")}
                          for k, v in result["programs"].items()},
         }
-        return json.dumps(_clean(simple), indent=2, default=str)
+        _out = json.dumps(_clean(simple), indent=2, default=str)
+        _record_call("calculate_eligibility", {
+            "household_size": household_size, "annual_income": annual_income,
+            "has_children": has_children, "has_pregnant": has_pregnant,
+            "has_disabled": has_disabled, "has_senior": has_senior,
+            "housing_status": housing_status,
+        }, _out, (time.time() - _t0) * 1000)
+        return _out
 
     async def _get_rights(resource_type: str = "default") -> str:
         """Get the legal rights a person has at a resource type. ALWAYS call when user mentions 'no ID', 'undocumented', 'no insurance', 'no address', or asks 'is X a problem?'. Types: shelter, food_bank, hospital, school, benefits_center, domestic_violence."""
+        _t0 = time.time()
         rights = pipeline_get_rights(resource_type)
-        return json.dumps(rights[:5], indent=2)
+        _out = json.dumps(rights[:5], indent=2)
+        _record_call("get_rights", {"resource_type": resource_type}, _out,
+                     (time.time() - _t0) * 1000)
+        return _out
 
     async def _get_stories(need: str = "housing") -> str:
         """Get 2-3 anonymized success stories of people in similar situations. Used to build trust. Need categories: housing, medical, benefits, safety, employment."""
+        _t0 = time.time()
         stories = pipeline_get_stories(need=need, k=2)
         simple = [{"name": s["name"], "situation": s["situation"],
                    "outcome": s["outcome"], "timeframe": s["timeframe"]}
                   for s in stories]
-        return json.dumps(simple, indent=2)
+        _out = json.dumps(simple, indent=2)
+        _record_call("get_stories", {"need": need}, _out, (time.time() - _t0) * 1000)
+        return _out
 
     group.add_function(name="calculate_eligibility", fn=_calculate_eligibility,
                        description=_calculate_eligibility.__doc__)
@@ -317,6 +342,7 @@ async def nyc_directions_tools(_config, _builder: Builder) -> AsyncGenerator[Fun
                                to_lat: float, to_lon: float,
                                budget: float = -1) -> str:
         """Get walking + transit directions from origin to destination. Budget: -1=show all, 0=walk only (includes nearest free MetroCard location), >2.90=subway OK. Pass coordinates as floats."""
+        _t0 = time.time()
         b = None if budget < 0 else budget
         result = pipeline_get_directions(from_lat, from_lon, to_lat, to_lon, b)
         simple = {
@@ -327,7 +353,12 @@ async def nyc_directions_tools(_config, _builder: Builder) -> AsyncGenerator[Fun
         }
         if result.get("free_metrocard_location"):
             simple["free_metrocard"] = result["free_metrocard_location"]
-        return json.dumps(_clean(simple), indent=2)
+        _out = json.dumps(_clean(simple), indent=2)
+        _record_call("get_directions", {"from_lat": from_lat, "from_lon": from_lon,
+                                          "to_lat": to_lat, "to_lon": to_lon,
+                                          "budget": budget}, _out,
+                     (time.time() - _t0) * 1000)
+        return _out
 
     group.add_function(name="get_directions", fn=_get_directions,
                        description=_get_directions.__doc__)
@@ -425,6 +456,7 @@ async def nyc_admin_tools(_config, _builder: Builder) -> AsyncGenerator[Function
     async def _list_all_cases(filter_urgency: str = "", filter_open_need: str = "",
                               limit: int = 20) -> str:
         """List NYC Social Services cases for the dashboard. Filter by urgency (critical/high/medium/low) or by a specific open need category (housing/medical/benefits/safety/employment). Default returns top 20 most recent. USE THIS FIRST for any 'show me cases' or 'who needs help' question."""
+        _t0 = time.time()
         out = []
         for c_summary in list_cases():
             case = load_case(c_summary["case_id"])
@@ -437,10 +469,16 @@ async def nyc_admin_tools(_config, _builder: Builder) -> AsyncGenerator[Function
                 continue
             out.append(row)
         out.sort(key=lambda x: (x["urgency"] != "critical", x["urgency"] != "high"))
-        return json.dumps(_clean(out[:limit]), indent=2, default=str)
+        _out = json.dumps(_clean(out[:limit]), indent=2, default=str)
+        _record_call("list_all_cases", {"filter_urgency": filter_urgency,
+                                         "filter_open_need": filter_open_need,
+                                         "limit": limit}, _out,
+                     (time.time() - _t0) * 1000)
+        return _out
 
     async def _get_case_details(case_id: str) -> str:
         """Get full record for a single case including all needs, visits, destinations, and notes. Use after list_all_cases identifies a case of interest."""
+        _t0 = time.time()
         case = load_case(case_id)
         if not case:
             return json.dumps({"error": f"Case '{case_id}' not found"})
@@ -455,10 +493,14 @@ async def nyc_admin_tools(_config, _builder: Builder) -> AsyncGenerator[Function
             "visits": case.get("visits", [])[-5:],  # last 5 only
             "emergency_contact": case.get("emergency_contact", {}),
         }
-        return json.dumps(_clean(trimmed), indent=2, default=str)
+        _out = json.dumps(_clean(trimmed), indent=2, default=str)
+        _record_call("get_case_details", {"case_id": case_id}, _out,
+                     (time.time() - _t0) * 1000)
+        return _out
 
     async def _get_city_stats(unused: str = "") -> str:
         """Get aggregate stats across all cases: urgency breakdown, need category counts, total visits, resolved vs open needs. Use for dashboard summaries and 'how is the city doing' questions. Pass an empty string for the argument."""
+        _t0 = time.time()
         urgency_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unknown": 0}
         need_counts: dict = {}
         resolved, open_ = 0, 0
@@ -477,7 +519,7 @@ async def nyc_admin_tools(_config, _builder: Builder) -> AsyncGenerator[Function
                     open_ += 1
             row = _case_row(case)
             urgency_counts[row["urgency"]] = urgency_counts.get(row["urgency"], 0) + 1
-        return json.dumps(_clean({
+        _out = json.dumps(_clean({
             "urgency_breakdown": urgency_counts,
             "need_categories": need_counts,
             "needs_resolved": resolved,
@@ -485,24 +527,38 @@ async def nyc_admin_tools(_config, _builder: Builder) -> AsyncGenerator[Function
             "total_visits": total_visits,
             "total_cases": len(list_cases()),
         }), indent=2, default=str)
+        _record_call("get_city_stats", {}, _out, (time.time() - _t0) * 1000)
+        return _out
 
     async def _find_critical_cases(limit: int = 10) -> str:
         """Shortcut: list only critical-urgency cases that need immediate dispatcher attention. Use for emergency response queries."""
+        # Delegates to _list_all_cases which already records its own trace entry.
         return await _list_all_cases(filter_urgency="critical", limit=limit)
 
     async def _generate_case_briefing(case_id: str, resource_name: str = "",
                                        resource_type: str = "",
                                        resource_address: str = "") -> str:
         """Generate a structured AI briefing for a specific case + resource combination. Used when a dispatcher needs talking points before a client arrives. Returns diagnosis, urgency, document gaps, edge cases, and recommended approach."""
+        _t0 = time.time()
         if not _BRIEFING_AVAILABLE:
-            return json.dumps({"error": "briefing pipeline unavailable"})
+            _out = json.dumps({"error": "briefing pipeline unavailable"})
+            _record_call("generate_case_briefing", {"case_id": case_id}, _out,
+                         (time.time() - _t0) * 1000)
+            return _out
         case = load_case(case_id)
         if not case:
-            return json.dumps({"error": f"Case '{case_id}' not found"})
+            _out = json.dumps({"error": f"Case '{case_id}' not found"})
+            _record_call("generate_case_briefing", {"case_id": case_id}, _out,
+                         (time.time() - _t0) * 1000)
+            return _out
         resource = {"name": resource_name, "resource_type": resource_type,
                     "address": resource_address}
         b = generate_briefing(case, resource)
-        return json.dumps(_clean(b), indent=2, default=str)
+        _out = json.dumps(_clean(b), indent=2, default=str)
+        _record_call("generate_case_briefing", {"case_id": case_id,
+                                                  "resource_name": resource_name},
+                     _out, (time.time() - _t0) * 1000)
+        return _out
 
     async def _update_case_need_status(case_id: str, category: str, status: str) -> str:
         """Admin action: set a need's status to open / in_progress / resolved."""
