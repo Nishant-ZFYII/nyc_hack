@@ -305,7 +305,7 @@ function renderNatAdminResult(data,elapsed){
       <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:14px">
         Upload a photo of the client's ID (driver's license, state ID, passport). We'll extract name, date of birth, address, and ID number via OCR, then generate pre-filled PDFs for SNAP, Medicaid, and HRA Request-for-Proof.
       </div>
-      <input type="file" id="idImageInput" accept="image/*" style="display:none" onchange="onIdImageChosen(event)">
+      <input type="file" id="idImageInput" accept="image/png,image/jpeg,image/jpg,image/*" style="display:none" onchange="onIdImageChosen(event)">
       <button class="btn-secondary" style="width:100%;padding:14px;font-size:14px;background:linear-gradient(135deg,#76b900,#5a8f00);color:#fff;border:none" onclick="document.getElementById('idImageInput').click()">
         &#128248; Choose ID Photo
       </button>
