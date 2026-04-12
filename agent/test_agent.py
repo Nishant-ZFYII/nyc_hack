@@ -22,9 +22,16 @@ from nat.builder.workflow_builder import WorkflowBuilder
 async def run(query: str) -> str:
     config_path = str(ROOT / "agent" / "config.yml")
     async with load_workflow(config_path) as workflow:
-        runner = workflow.run(query)
-        result = await runner
-        return str(result)
+        async with workflow.run(query) as runner:
+            # Try common result accessors across nat versions
+            if hasattr(runner, "result"):
+                r = runner.result
+                result = await r() if callable(r) else r
+            elif hasattr(runner, "get_result"):
+                result = await runner.get_result()
+            else:
+                result = runner
+            return str(result)
 
 
 async def main():

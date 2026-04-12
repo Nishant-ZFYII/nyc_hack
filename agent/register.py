@@ -253,8 +253,8 @@ async def nyc_case_tools(_config, _builder: Builder) -> AsyncGenerator[FunctionG
                                   resource_name: str, feedback: str = "") -> str:
         """Record whether the user arrived at a resource. arrived=true resolves the need; arrived=false marks resource as failed and excludes it from future searches."""
         case = checkin(case_id, arrived, resource_name, feedback, None)
-        return (f"Checkin saved: arrived={arrived} at {resource_name}. "
-                f"Resource failed' if not arrived else 'Need resolved'")
+        status = "Need resolved" if arrived else "Resource marked failed"
+        return f"Checkin saved: arrived={arrived} at {resource_name}. {status}."
 
     group.add_function(name="get_case_summary", fn=_get_case_summary,
                        description=_get_case_summary.__doc__)
