@@ -311,20 +311,101 @@ async def similar(req: SimilarRequest):
         return {"similar": [], "error": str(e)}
 
 
+# NYC neighborhood fallback lookup (used when Nominatim is unavailable)
+_NYC_NEIGHBORHOODS = {
+    "manhattan": (40.7831, -73.9712),
+    "midtown": (40.7549, -73.9840),
+    "midtown manhattan": (40.7549, -73.9840),
+    "times square": (40.7580, -73.9855),
+    "harlem": (40.8116, -73.9465),
+    "upper east side": (40.7736, -73.9566),
+    "upper west side": (40.7870, -73.9754),
+    "lower east side": (40.7150, -73.9843),
+    "east village": (40.7265, -73.9815),
+    "west village": (40.7352, -74.0031),
+    "soho": (40.7233, -74.0020),
+    "tribeca": (40.7163, -74.0086),
+    "chelsea": (40.7465, -74.0014),
+    "washington heights": (40.8417, -73.9393),
+    "financial district": (40.7074, -74.0113),
+
+    "brooklyn": (40.6782, -73.9442),
+    "flatbush": (40.6415, -73.9590),
+    "flatbush brooklyn": (40.6415, -73.9590),
+    "williamsburg": (40.7081, -73.9571),
+    "park slope": (40.6710, -73.9814),
+    "bed-stuy": (40.6872, -73.9418),
+    "bedford stuyvesant": (40.6872, -73.9418),
+    "crown heights": (40.6697, -73.9446),
+    "bushwick": (40.6944, -73.9213),
+    "bay ridge": (40.6266, -74.0330),
+    "coney island": (40.5755, -73.9707),
+    "downtown brooklyn": (40.6922, -73.9877),
+    "boerum hill": (40.6864, -73.9858),
+    "prospect heights": (40.6773, -73.9699),
+
+    "queens": (40.7282, -73.7949),
+    "astoria": (40.7643, -73.9236),
+    "long island city": (40.7447, -73.9485),
+    "jackson heights": (40.7557, -73.8831),
+    "flushing": (40.7680, -73.8333),
+    "jamaica": (40.7019, -73.7890),
+    "forest hills": (40.7157, -73.8448),
+    "elmhurst": (40.7365, -73.8821),
+
+    "bronx": (40.8448, -73.8648),
+    "the bronx": (40.8448, -73.8648),
+    "south bronx": (40.8262, -73.9064),
+    "riverdale": (40.8976, -73.9064),
+    "fordham": (40.8621, -73.8976),
+    "mott haven": (40.8107, -73.9244),
+
+    "staten island": (40.5795, -74.1502),
+    "st george": (40.6437, -74.0735),
+    "tottenville": (40.5108, -74.2489),
+    "new dorp": (40.5710, -74.1181),
+
+    "nyc": (40.7128, -74.0060),
+    "new york city": (40.7128, -74.0060),
+    "new york": (40.7128, -74.0060),
+}
+
+
 @app.get("/api/geocode")
 async def geocode(q: str):
-    """Proxy geocoding to avoid CORS issues with Nominatim."""
+    """Geocode an address — try Nominatim first, fallback to NYC neighborhood table."""
     import requests
+    # Try Nominatim (external API)
     try:
         resp = requests.get(
             "https://nominatim.openstreetmap.org/search",
             params={"q": f"{q}, NYC", "format": "json", "limit": "1", "countrycodes": "us"},
             headers={"User-Agent": "NYC-SocialServices-Engine/1.0"},
-            timeout=5,
+            timeout=3,
         )
-        return resp.json()
-    except Exception as e:
-        return []
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                return data
+    except Exception:
+        pass
+
+    # Fallback: NYC neighborhood lookup
+    q_lower = q.strip().lower()
+    # Remove common suffixes
+    for suffix in [", nyc", ", ny", ", new york", ", brooklyn", ", manhattan", ", queens", ", bronx"]:
+        q_lower = q_lower.replace(suffix, "").strip()
+
+    if q_lower in _NYC_NEIGHBORHOODS:
+        lat, lon = _NYC_NEIGHBORHOODS[q_lower]
+        return [{"lat": str(lat), "lon": str(lon), "display_name": f"{q.strip()}, New York, NY"}]
+
+    # Partial match
+    for key, (lat, lon) in _NYC_NEIGHBORHOODS.items():
+        if key in q_lower or q_lower in key:
+            return [{"lat": str(lat), "lon": str(lon), "display_name": f"{key.title()}, New York, NY"}]
+
+    return []
 
 
 class DirectionsRequest(BaseModel):
