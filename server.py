@@ -524,6 +524,175 @@ async def stories(need: str = None, k: int = 3):
     return {"need": need, "stories": get_stories(need, k)}
 
 
+# ── Refine: progressive disclosure checkbox handler ───────────────────────────
+
+class RefineRequest(BaseModel):
+    original_query: str
+    case_id: str | None = None
+    location: LocationModel | None = None
+    # Checkbox profile
+    has_id: bool = True
+    has_children: bool = False
+    has_pregnant: bool = False
+    has_disabled: bool = False
+    has_senior: bool = False
+    has_insurance: bool = True
+    is_veteran: bool = False
+    is_undocumented: bool = False
+    household_size: int = 1
+    annual_income: float = 0
+    # Optional free-text additional info
+    additional_info: str = ""
+
+
+@app.post("/api/refine")
+async def refine(req: RefineRequest):
+    """
+    Refine query results with a checkbox profile.
+
+    Each checkbox maps to a deterministic skill call:
+      - has_id=False  → includes 'no ID needed' rights
+      - has_pregnant  → adds WIC + emergency Medicaid
+      - has_senior    → adds SCRIE + senior services
+      - has_disabled  → adds disability benefits
+    Free-text additional_info is appended to the query and goes through
+    the normal LLM + guardrails pipeline.
+    """
+    t0 = time.time()
+
+    # Build an enriched query
+    situation_bits = [req.original_query]
+    if not req.has_id:
+        situation_bits.append("(no ID)")
+    if req.has_children:
+        situation_bits.append("(with children)")
+    if req.has_pregnant:
+        situation_bits.append("(pregnant)")
+    if req.has_disabled:
+        situation_bits.append("(has disability)")
+    if req.has_senior:
+        situation_bits.append("(senior 65+)")
+    if not req.has_insurance:
+        situation_bits.append("(no insurance)")
+    if req.is_veteran:
+        situation_bits.append("(veteran)")
+    if req.is_undocumented:
+        situation_bits.append("(undocumented)")
+    if req.additional_info:
+        situation_bits.append(req.additional_info)
+
+    enriched_query = " ".join(situation_bits)
+
+    # Calculate eligibility from the profile
+    eligibility = calculate_eligibility(
+        household_size=req.household_size,
+        annual_income=req.annual_income,
+        has_children=req.has_children,
+        has_pregnant=req.has_pregnant,
+        has_disabled=req.has_disabled,
+        has_senior=req.has_senior,
+        is_veteran=req.is_veteran,
+        has_id=req.has_id,
+        immigration_status="undocumented" if req.is_undocumented else "any",
+    )
+
+    # Build relevant rights based on profile
+    applicable_rights = []
+    if not req.has_id:
+        applicable_rights.append({
+            "right": "Apply without ID",
+            "detail": "You can apply for benefits without ID using a 'Request for Proof' form at HRA. Staff will help you get documents.",
+        })
+    if req.is_undocumented:
+        applicable_rights.append({
+            "right": "Immigration status protected",
+            "detail": "NYC agencies cannot share your information with ICE. You can use shelter, food, and healthcare regardless of status.",
+        })
+    if not req.has_insurance:
+        applicable_rights.append({
+            "right": "EMTALA — emergency care",
+            "detail": "Hospitals must treat emergencies regardless of insurance. NYC Health + Hospitals offers sliding-scale care.",
+        })
+    if req.has_children:
+        applicable_rights.append({
+            "right": "School without address",
+            "detail": "Children can enroll in NYC public school without a permanent address (McKinney-Vento Act). Free meals included.",
+        })
+
+    # Run the normal query pipeline with enriched query
+    user_loc = None
+    if req.location:
+        user_loc = {"lat": req.location.lat, "lon": req.location.lon}
+
+    # Optional safety check on additional_info if provided
+    if req.additional_info:
+        guard = await check_safety_async(req.additional_info, use_llm_fallback=False)
+        if not guard["allow"]:
+            return {
+                "safety_block": True,
+                "replacement_response": guard["replacement_response"],
+                "reason": guard["reason"],
+            }
+
+    plan = generate_plan(enriched_query)
+    if user_loc:
+        plan["_user_location"] = user_loc
+
+    # Exclude failed resources for this case
+    if req.case_id:
+        set_excluded_resources(get_failed_resources(req.case_id))
+
+    result = execute(plan)
+
+    # Extract resources
+    resources = []
+    if result.get("intent") == "lookup":
+        df = result.get("results")
+        if isinstance(df, pd.DataFrame) and len(df):
+            resources = df.to_dict("records")
+    elif result.get("intent") == "needs_assessment":
+        for key, df in result.get("results_by_need", {}).items():
+            if isinstance(df, pd.DataFrame) and len(df):
+                for rec in df.to_dict("records"):
+                    rec["need"] = key
+                    resources.append(rec)
+
+    # Clean NaN
+    import math
+    def _clean(obj):
+        if isinstance(obj, float):
+            return None if math.isnan(obj) or math.isinf(obj) else obj
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_clean(x) for x in obj]
+        return obj
+
+    return _clean({
+        "enriched_query": enriched_query,
+        "profile": {
+            "household_size": req.household_size,
+            "annual_income": req.annual_income,
+            "has_id": req.has_id,
+            "has_children": req.has_children,
+            "has_pregnant": req.has_pregnant,
+            "has_disabled": req.has_disabled,
+            "has_senior": req.has_senior,
+            "has_insurance": req.has_insurance,
+            "is_veteran": req.is_veteran,
+            "is_undocumented": req.is_undocumented,
+        },
+        "eligibility": {
+            "qualifying_programs": eligibility["qualifying_programs"],
+            "monthly_benefits": eligibility["estimated_monthly_benefits"],
+            "programs": eligibility["programs"],
+        },
+        "rights": applicable_rights,
+        "resources": resources[:10],
+        "timing": {"total": round(time.time() - t0, 2)},
+    })
+
+
 # ── Autonomous Agent ──────────────────────────────────────────────────────────
 
 class AgentPlanRequest(BaseModel):
