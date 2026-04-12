@@ -54,55 +54,68 @@ def notify_ec_added(case: dict, ec_username: str,
     # Resolve guild_id from channel
     guild_id = _get_guild_id_from_channel(channel_id, bot_token)
 
-    # Generate a single-use permanent invite
-    try:
-        r = _req.post(
-            f"https://discord.com/api/v10/channels/{channel_id}/invites",
-            json={"max_age": 0, "max_uses": 1, "unique": True},
-            headers=headers,
-            timeout=10,
-        )
-        if r.status_code in (200, 201):
-            code = r.json().get("code", "")
-            if code:
-                result["invite_url"] = f"https://discord.gg/{code}"
-    except Exception:
-        pass
+    ec_embed = {
+        "title": "You've been added as an emergency contact",
+        "description": (
+            f"**{name}** has added you as their emergency contact on NYC Help Finder.\n\n"
+            f"If they confirm they are heading to a service location, "
+            f"you'll receive a private message here so you can check in on them."
+        ),
+        "color": 0x76B900,
+        "footer": {"text": "NYC Help Finder · You won't be contacted unless needed"},
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
 
     # Try to DM the EC if they're already in the server
     if guild_id:
+        result["dm_sent"] = _dm_user_by_username(
+            ec_username, ec_embed, bot_token, guild_id,
+        )
+        if result["dm_sent"]:
+            result["already_in_server"] = True
+
+    # If not in server, generate a single-use invite and post it in the
+    # coordination channel so the bot handles delivery autonomously
+    if not result["already_in_server"]:
+        invite_url = None
         try:
-            r = _req.get(
-                f"https://discord.com/api/v10/guilds/{guild_id}/members/search",
-                params={"query": ec_username.lstrip("@"), "limit": 5},
+            r = _req.post(
+                f"https://discord.com/api/v10/channels/{channel_id}/invites",
+                json={"max_age": 0, "max_uses": 1, "unique": True},
                 headers=headers,
                 timeout=10,
             )
-            if r.status_code == 200:
-                for member in r.json():
-                    u = member.get("user", {})
-                    if (u.get("username", "").lower() == ec_username.lower() or
-                            u.get("global_name", "").lower() == ec_username.lower()):
-                        result["already_in_server"] = True
-                        user_id = u["id"]
-                        embed = {
-                            "title": f"You've been added as an emergency contact",
-                            "description": (
-                                f"**{name}** has added you as their emergency contact "
-                                f"on NYC Help Finder.\n\n"
-                                f"If they confirm they are heading to a service location, "
-                                f"you'll receive a private message here so you can check in on them."
-                            ),
-                            "color": 0x76B900,
-                            "footer": {"text": "NYC Help Finder · You won't be contacted unless needed"},
-                            "timestamp": datetime.utcnow().isoformat() + "Z",
-                        }
-                        result["dm_sent"] = _dm_user_by_username(
-                            ec_username, embed, bot_token, guild_id,
-                        )
-                        break
+            if r.status_code in (200, 201):
+                code = r.json().get("code", "")
+                if code:
+                    invite_url = f"https://discord.gg/{code}"
+                    result["invite_url"] = invite_url
         except Exception:
             pass
+
+        # Post invite + instructions into the coordination channel
+        if invite_url:
+            try:
+                _req.post(
+                    f"https://discord.com/api/v10/channels/{channel_id}/messages",
+                    json={"embeds": [{
+                        "title": f"Invite for emergency contact: {ec_username}",
+                        "description": (
+                            f"**{name}** registered **{ec_username}** as their emergency contact, "
+                            f"but they haven't joined the server yet.\n\n"
+                            f"**Forward this invite to them:** {invite_url}\n\n"
+                            f"Once they join, they will automatically receive notifications "
+                            f"whenever {name} confirms a destination."
+                        ),
+                        "color": 0xFF9800,
+                        "footer": {"text": "NYC Help Finder · Single-use invite"},
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }]},
+                    headers=headers,
+                    timeout=10,
+                )
+            except Exception:
+                pass
 
     return result
 

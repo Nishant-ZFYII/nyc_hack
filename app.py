@@ -515,21 +515,13 @@ if st.session_state.get("show_welcome_back"):
     st.markdown("</div>", unsafe_allow_html=True)
     st.session_state.pop("show_welcome_back", None)
 
-# ── EC invite banner (shown once after onboarding if EC was added) ────────────
-_invite_url = st.session_state.pop("_ec_invite_url", None)
+# ── EC notification status (shown once after onboarding) ─────────────────────
+st.session_state.pop("_ec_invite_url", None)
 _ec_dm_sent = st.session_state.pop("_ec_dm_sent", None)
-if _invite_url or _ec_dm_sent:
+if _ec_dm_sent:
     _ec_name = st.session_state.get("case", {}).get(
         "emergency_contact", {}).get("name", "your emergency contact")
-    if _ec_dm_sent:
-        st.success(f"Discord DM sent to {_ec_name} — they've been notified.")
-    else:
-        st.info(
-            f"**Share this invite with {_ec_name}** so they can join the server "
-            f"and receive notifications when needed."
-        )
-        if _invite_url:
-            st.code(_invite_url)
+    st.success(f"Discord DM sent to {_ec_name} — they've been notified.")
 
 # ── Main query interface ──────────────────────────────────────────────────────
 query = st.text_area(
