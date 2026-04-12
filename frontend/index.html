@@ -1234,8 +1234,7 @@ async function runNatAgent(){
   const q=document.getElementById('queryInput').value.trim();
   if(!q){document.getElementById('queryInput').focus();return}
   lastQuery=q;
-  showView('openclaw'); // reuse the openclaw panel
-  document.getElementById('openclawTitle').textContent='NeMo ReAct Agent';
+  goTo('page-openclaw'); // reuse the openclaw panel
   const c=document.getElementById('openclawContent');
   c.innerHTML=`<div style="text-align:center;padding:60px 20px">
     <div style="font-size:56px;margin-bottom:18px;animation:pulse 2s infinite">&#129302;</div>
