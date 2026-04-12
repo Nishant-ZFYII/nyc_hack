@@ -763,21 +763,23 @@ async def agent_openclaw(req: AgentPlanRequest):
 
     try:
         # Run: openclaw agent --agent main --local --json --message "..."
+        # Merge stderr into stdout because OpenClaw may write JSON to stderr
         result = subprocess.run(
             ["openclaw", "agent", "--agent", "main", "--local", "--json",
              "--message", message, "--timeout", "60"],
             capture_output=True, text=True, timeout=90,
         )
 
-        if result.returncode != 0:
+        # Combine both streams — the JSON block is somewhere in them
+        out = (result.stdout or "") + "\n" + (result.stderr or "")
+
+        if result.returncode != 0 and "{" not in out:
             return {
                 "error": "OpenClaw agent failed",
-                "stderr": result.stderr[:500],
+                "stderr": (result.stderr or "")[:500],
+                "returncode": result.returncode,
                 "via": "openclaw-subprocess",
             }
-
-        # OpenClaw sometimes prints tool warnings before JSON — extract the JSON block
-        out = result.stdout
         start = out.find("{")
         if start == -1:
             return {"error": "No JSON in openclaw output", "raw": out[:500],
