@@ -115,8 +115,9 @@ if _MIDDLEWARE_AVAILABLE:
     def _install_trace(group: FunctionGroup):
         try:
             group.configure_middleware([_TraceMiddleware()])
-        except Exception:
-            pass
+            print(f"[trace] middleware installed on group {getattr(group, '_instance_name', '?')}")
+        except Exception as e:
+            print(f"[trace] FAILED to install on group: {type(e).__name__}: {e}")
 else:
     def _install_trace(group):
         return
