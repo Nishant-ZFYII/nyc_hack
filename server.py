@@ -776,7 +776,43 @@ async def agent_openclaw(req: AgentPlanRequest):
                 "via": "openclaw-subprocess",
             }
 
-        data = _json.loads(result.stdout)
+        # OpenClaw sometimes prints tool warnings before JSON — extract the JSON block
+        out = result.stdout
+        start = out.find("{")
+        if start == -1:
+            return {"error": "No JSON in openclaw output", "raw": out[:500],
+                    "via": "openclaw-subprocess"}
+
+        # Find the matching closing brace (balance tracking)
+        depth = 0
+        end = -1
+        in_string = False
+        escape = False
+        for i, ch in enumerate(out[start:], start):
+            if escape:
+                escape = False
+                continue
+            if ch == '\\':
+                escape = True
+                continue
+            if ch == '"' and not escape:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+
+        if end == -1:
+            return {"error": "Unterminated JSON in openclaw output",
+                    "raw": out[start:start+500], "via": "openclaw-subprocess"}
+
+        data = _json.loads(out[start:end])
         total_time = time.time() - t0
 
         return {
