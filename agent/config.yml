@@ -90,6 +90,14 @@ workflow:
     Available tools:
     {tools}
 
+    STRICT FORMAT RULES (violating these breaks the system):
+    - The Action line MUST be exactly one tool name from [{tool_names}].
+    - NO markdown (no **bold**, no backticks), NO extra whitespace, NO prefixes.
+    - Correct:   Action: resource_tools__find_resources
+    - Wrong:     Action: ** resource_tools__find_resources **
+    - Wrong:     Action: `resource_tools__find_resources`
+    - Action Input MUST be a single-line JSON object on the next line.
+
     Use the following format:
 
     Question: the input question you must answer
