@@ -100,12 +100,10 @@ if _MIDDLEWARE_AVAILABLE:
             return True
 
         async def pre_invoke(self, context: "InvocationContext"):
-            print(f"[trace] PRE  {getattr(context.function_context, 'name', '?')}")
             self._start_times[id(context)] = time.time()
             return None
 
         async def post_invoke(self, context: "InvocationContext"):
-            print(f"[trace] POST {getattr(context.function_context, 'name', '?')}")
             t0 = self._start_times.pop(id(context), time.time())
             duration_ms = (time.time() - t0) * 1000
             name = getattr(context.function_context, "name", "unknown")
@@ -121,11 +119,12 @@ if _MIDDLEWARE_AVAILABLE:
             return None
 
     def _install_trace(group: FunctionGroup):
+        # Middleware left in place as a backup; primary trace path is the
+        # inline _record_call() calls within each tool function body.
         try:
             group.configure_middleware([_TraceMiddleware()])
-            print(f"[trace] middleware installed on group {getattr(group, '_instance_name', '?')}")
-        except Exception as e:
-            print(f"[trace] FAILED to install on group: {type(e).__name__}: {e}")
+        except Exception:
+            pass
 else:
     def _install_trace(group):
         return
