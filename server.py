@@ -31,7 +31,7 @@ from pipeline.cases import (load_case, create_case, add_visit, mark_resource_vis
                              choose_resource, checkin, get_failed_resources, get_progress)
 from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
 from pipeline.agent import run_autonomous_agent, generate_plan_pdf
-from guardrails import apply_guardrails
+from guardrails import check_safety
 from llm.client import get_active_provider
 import pandas as pd
 
@@ -111,10 +111,10 @@ async def status():
 async def query(req: QueryRequest):
     t0 = time.time()
 
-    # ── Guardrails: input safety check ───────────────────────────────────────
-    guard = apply_guardrails(req.query)
+    # ── Guardrails: two-layer safety check (regex + NeMo Guardrails) ─────────
+    guard = check_safety(req.query, use_llm_fallback=True)
     if not guard["allow"]:
-        # Short-circuit: return safe response without calling LLM
+        checked_by = guard.get("checked_by", "regex")
         return {
             "answer": guard["replacement_response"],
             "plan": {"intent": "safety_block", "_reason": guard["reason"]},
@@ -123,11 +123,17 @@ async def query(req: QueryRequest):
             "llm": get_active_provider(),
             "verification": {"verified": True, "confidence": "SAFETY_BLOCK"},
             "clarify_question": "",
-            "reasoning": [{"hop": 1, "fact": f"Safety guardrail triggered: {guard['reason']}",
-                           "confidence": 1.0, "source": "NeMo_Guardrails", "cumulative": 1.0}],
-            "reasoning_summary": f"Safety check: {guard['reason']}. Showing crisis resources instead.",
+            "reasoning": [{
+                "hop": 1,
+                "fact": f"Safety guardrail triggered: {guard['reason']} (via {checked_by})",
+                "confidence": 1.0,
+                "source": "NeMo_Guardrails" if checked_by == "nemo_guardrails" else "regex_prefilter",
+                "cumulative": 1.0,
+            }],
+            "reasoning_summary": f"Safety check: {guard['reason']} (checked by {checked_by}).",
             "safety_block": True,
             "crisis_type": guard.get("crisis_type"),
+            "guardrail_layer": checked_by,
         }
 
     # Combine global exclusions + case-specific failed resources
