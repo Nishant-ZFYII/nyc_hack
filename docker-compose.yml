@@ -23,8 +23,9 @@ services:
     image: ollama/ollama:latest
     container_name: nyc_ollama
     restart: unless-stopped
-    ports:
-      - "11434:11434"        # exposed for local debug; app talks over docker net
+    # Note: port 11434 NOT exposed to host by default — if host Ollama is already
+    # running on 11434, we'd collide. App containers talk over Docker network.
+    # To expose for debugging, add: ports: ["11434:11434"]
     volumes:
       - ollama_data:/root/.ollama
     environment:
@@ -57,12 +58,13 @@ services:
     # llama3 drives the ReAct agent. llama3.2-vision reads the ID images.
     # This can take 10-20 min on first run depending on bandwidth.
     # Skips pulls if models are already present in the volume.
+    # Note: $$ escapes $ so Docker Compose passes literal $ to the shell.
     command: |
       "for m in llama3 llama3.2-vision:11b; do
-         if ollama list | grep -q \"^$m\"; then
-           echo \"$m already present — skipping.\";
+         if ollama list | grep -q \"^$${m}\"; then
+           echo \"$${m} already present — skipping.\";
          else
-           echo \"Pulling $m...\"; ollama pull \"$m\" || exit 1;
+           echo \"Pulling $${m}...\"; ollama pull \"$${m}\" || exit 1;
          fi;
        done && echo 'Models ready.'"
     volumes:
