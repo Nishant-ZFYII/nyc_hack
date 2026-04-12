@@ -56,10 +56,15 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     # llama3 drives the ReAct agent. llama3.2-vision reads the ID images.
     # This can take 10-20 min on first run depending on bandwidth.
+    # Skips pulls if models are already present in the volume.
     command: |
-      "echo 'Pulling llama3...' && ollama pull llama3 && \
-       echo 'Pulling llama3.2-vision:11b...' && ollama pull llama3.2-vision:11b && \
-       echo 'Models ready.'"
+      "for m in llama3 llama3.2-vision:11b; do
+         if ollama list | grep -q \"^$m\"; then
+           echo \"$m already present — skipping.\";
+         else
+           echo \"Pulling $m...\"; ollama pull \"$m\" || exit 1;
+         fi;
+       done && echo 'Models ready.'"
     volumes:
       - ollama_data:/root/.ollama
     restart: "no"
@@ -85,6 +90,7 @@ services:
                uvicorn server:app --host 0.0.0.0 --port 9000"
 
   app-admin:
+    build: .                     # ensures image exists even if app-user hasn't built yet
     image: nyc_services_app      # reuses image built by app-user
     container_name: nyc_admin_portal
     restart: unless-stopped
@@ -108,3 +114,12 @@ volumes:
   ollama_data:
     # Persists across `docker compose down` — judges don't re-download models
     # unless they run `docker compose down -v`.
+    #
+    # To reuse an EXISTING host Ollama cache (skip re-download of ~25GB),
+    # replace this named volume with a bind mount:
+    #   driver: local
+    #   driver_opts:
+    #     type: none
+    #     o: bind
+    #     device: /home/YOUR_USER/.ollama
+    # Then restart: docker compose up -d
