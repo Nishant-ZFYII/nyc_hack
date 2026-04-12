@@ -1258,27 +1258,49 @@ function sponsoredRideLocked(){
 }
 
 async function raiseTicket(){
-  // Auto-create an anonymous case if none exists (demo-friendly)
-  if(!currentCaseId){
-    try{
-      const tempId='anon-'+Date.now();
-      const r=await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:tempId,name:'Anonymous'})});
-      if(r.ok){currentCaseId=tempId;}
-    }catch(e){/* fall through */}
-    if(!currentCaseId){alert('Could not create a case. Please log in first.');return;}
-  }
   const btn=document.getElementById('raiseTicketBtn');
-  if(btn){btn.disabled=true;btn.innerHTML='&#8987; Raising ticket...';}
+  if(btn){btn.disabled=true;btn.innerHTML='&#8987; Registering your case...';}
+
+  let isNewRegistration=false;
+  // If no active case, REGISTER the user — this creates their case_id for the first time.
+  if(!currentCaseId){
+    isNewRegistration=true;
+    // Generate a human-readable case id (e.g., NYC-A4F2X1)
+    const suffix=Math.random().toString(36).substring(2,8).toUpperCase();
+    const newId='NYC-'+suffix;
+    try{
+      const loginResp=await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:newId,name:'New Client'})});
+      if(!loginResp.ok)throw new Error('registration failed');
+      currentCaseId=newId;
+    }catch(e){
+      if(btn){btn.disabled=false;btn.innerHTML='&#127915; Raise a Ticket & Register My Case';}
+      alert('Could not register your case. Please try again.');
+      return;
+    }
+  }
+
+  // Raise the ticket
   try{
-    const r=await fetch('/api/ticket/raise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,ticket_type:'sponsored_ride',reason:'Transportation assistance needed'})});
+    const r=await fetch('/api/ticket/raise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,ticket_type:'sponsored_ride',reason:'Client requested assistance via NeMo agent'})});
     const d=await r.json();
-    if(d.error){throw new Error(d.error);}
+    if(d.error)throw new Error(d.error);
     _ticketStatus.sponsored_ride_unlocked=true;
-    if(btn){btn.disabled=true;btn.style.background='linear-gradient(135deg,#1b7a00,#0f4a00)';btn.innerHTML='&#9989; Ticket Raised — Sponsored Ride Unlocked';}
-    // Quick inline confirmation
-    _activeContentContainer().insertAdjacentHTML('beforeend',`<div class="answer-box fade-in" style="border-color:var(--green-d);background:rgba(118,185,0,0.04);margin-top:12px"><div style="font-weight:600;color:var(--green)">&#9989; Ticket raised</div><div style="font-size:13px;color:var(--t2);margin-top:4px">Your sponsored ride is now unlocked. Click Directions on any resource and choose Sponsored Ride.</div></div>`);
+    if(btn){
+      btn.disabled=true;
+      btn.style.background='linear-gradient(135deg,#1b7a00,#0f4a00)';
+      btn.innerHTML='&#9989; Case Registered & Sponsored Ride Unlocked';
+    }
+    // Inline confirmation with the new case ID
+    const caseIdDisplay=isNewRegistration
+      ? `<div style="background:rgba(118,185,0,0.08);border:1px dashed var(--green-d);border-radius:6px;padding:8px 12px;margin-top:8px;font-family:var(--mono);font-size:12px">Your case ID: <b style="color:var(--green)">${currentCaseId}</b> &mdash; save this to check progress later.</div>`
+      : '';
+    _activeContentContainer().insertAdjacentHTML('beforeend',`<div class="answer-box fade-in" style="border-color:var(--green-d);background:rgba(118,185,0,0.04);margin-top:12px">
+      <div style="font-weight:600;color:var(--green)">&#9989; ${isNewRegistration?'Case registered &middot; Ticket raised':'Ticket raised'}</div>
+      <div style="font-size:13px;color:var(--t2);margin-top:4px">A caseworker will review your case shortly. In the meantime, your sponsored ride is unlocked — click Directions on any resource and choose Sponsored Ride.</div>
+      ${caseIdDisplay}
+    </div>`);
   }catch(err){
-    if(btn){btn.disabled=false;btn.innerHTML='&#127915; Raise a Ticket for Sponsored Ride';}
+    if(btn){btn.disabled=false;btn.innerHTML=isNewRegistration?'&#127915; Raise a Ticket for Sponsored Ride':'&#127915; Raise a Ticket & Register My Case';}
     alert('Error raising ticket: '+err.message);
   }
 }
@@ -1348,17 +1370,20 @@ function renderNatFullPlan(data){
     </div>`;
   }
 
-  // Ticket / Sponsored ride unlock — always visible
+  // Registration / Ticket — always visible. Creates the case on click.
+  const alreadyRegistered=!!currentCaseId;
   html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <span style="font-size:22px">&#127915;</span>
-      <div style="font-weight:600;font-size:14px">Need help getting there?</div>
+      <div style="font-weight:600;font-size:14px">${alreadyRegistered?'Need help getting there?':'Ready to proceed with this plan?'}</div>
     </div>
     <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:12px">
-      Raise a ticket with your caseworker to unlock a <b>sponsored ride</b> to your chosen resource.
+      ${alreadyRegistered
+        ? 'Raise a ticket to unlock a <b>sponsored ride</b> to your chosen resource.'
+        : 'Raise a ticket to <b>register your case</b> with NYC Social Services. A caseworker will pick it up, and you\'ll unlock a <b>sponsored ride</b> to your chosen resource.'}
     </div>
     <button class="btn-primary" id="raiseTicketBtn" style="width:100%;background:linear-gradient(135deg,#ff9800,#e65100);color:#fff" onclick="raiseTicket()">
-      &#127915; Raise a Ticket for Sponsored Ride
+      ${alreadyRegistered?'&#127915; Raise a Ticket for Sponsored Ride':'&#127915; Raise a Ticket & Register My Case'}
     </button>
   </div>`;
   setTimeout(()=>refreshTicketStatus(),100);
