@@ -780,9 +780,14 @@ async def agent_openclaw(req: AgentPlanRequest):
                 "returncode": result.returncode,
                 "via": "openclaw-subprocess",
             }
-        start = out.find("{")
+        # Look for the JSON block containing "payloads" (the actual response)
+        payloads_idx = out.find('"payloads"')
+        if payloads_idx == -1:
+            return {"error": "No payloads in openclaw output",
+                    "raw": out[:800], "via": "openclaw-subprocess"}
+        start = out.rfind("{", 0, payloads_idx)
         if start == -1:
-            return {"error": "No JSON in openclaw output", "raw": out[:500],
+            return {"error": "No opening brace before payloads",
                     "via": "openclaw-subprocess"}
 
         # Find the matching closing brace (balance tracking)
