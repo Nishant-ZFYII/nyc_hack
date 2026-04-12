@@ -35,7 +35,8 @@ workflow:
   llm_name: nemotron_local
   verbose: true
   handle_tool_errors: true
-  max_iterations: 4
+  max_iterations: 6
+  parse_agent_response_max_retries: 3
   system_prompt: |
     You are an AI caseworker for NYC Social Services. You help people in crisis
     find real resources: shelter, food, healthcare, benefits, schools, legal aid.

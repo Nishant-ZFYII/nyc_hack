@@ -36,7 +36,9 @@ async def run(query: str) -> str:
 
 async def main():
     queries = [
-        "List 3 shelters in Manhattan.",  # simplest: one tool call, one answer
+        "I need a shelter tonight in Brooklyn near Flatbush",
+        "I don't have an ID. Can I still apply for SNAP?",
+        "What benefits qualify a family of 5 with $28K income?",
     ]
     for q in queries:
         print(f"\n{'=' * 72}")
