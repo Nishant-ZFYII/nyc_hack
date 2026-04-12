@@ -616,6 +616,19 @@ def execute(plan: dict) -> dict[str, Any]:
         needs    = plan.get("identified_needs", [])
         searches = plan.get("resource_searches", [])
 
+        # Auto-generate searches from needs if planner didn't produce any
+        if not searches and needs:
+            for need in needs:
+                cat = need.get("category", "")
+                if cat:
+                    # Use TYPE_EXPANSION to get actual resource types
+                    rtypes = TYPE_EXPANSION.get(cat.lower(), [cat])
+                    searches.append({
+                        "resource_types": rtypes,
+                        "filters": {"borough": profile.get("borough", "")},
+                        "limit": 5,
+                    })
+
         all_results = {}
         for search in searches:
             rtypes  = search.get("resource_types", [])
