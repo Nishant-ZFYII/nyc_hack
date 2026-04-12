@@ -277,7 +277,7 @@ function renderNatAdminResult(data,elapsed){
     <span class="topbar-title" id="briefingTopbarTitle">Briefing</span>
     <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
       <span id="briefingGenTime" style="font-size:10px;color:var(--t3);font-family:var(--mono)"></span>
-      <button class="btn-secondary" style="padding:6px 12px;font-size:11px;background:linear-gradient(135deg,#76b900,#5a8f00);color:#fff;border:none" onclick="openFillFormsModal()" title="OCR an ID photo and auto-fill SNAP/Medicaid/Proof forms">&#128196; Fill Forms from ID</button>
+      <button class="btn-secondary" style="padding:6px 12px;font-size:11px;background:linear-gradient(135deg,#76b900,#5a8f00);color:#fff;border:none" onclick="openFillFormsModal()" title="Read an ID photo with llama3.2-vision and auto-fill SNAP/Medicaid/Proof forms">&#128196; Fill Forms from ID</button>
       <button class="btn-secondary" style="padding:6px 12px;font-size:11px" onclick="window.print()" title="Print briefing">&#128438; Print</button>
       <button class="btn-secondary" style="padding:6px 12px;font-size:11px" onclick="regenerateBriefing()">&#8635; Refresh</button>
     </div>
@@ -296,14 +296,14 @@ function renderNatAdminResult(data,elapsed){
       <span style="font-size:22px">&#128196;</span>
       <div style="flex:1">
         <div style="font-weight:600;font-size:14px">Fill Forms from ID</div>
-        <div style="font-size:11px;color:var(--t3);font-family:var(--mono)">Tesseract OCR &middot; auto-fills SNAP + Medicaid + Request for Proof PDFs</div>
+        <div style="font-size:11px;color:var(--t3);font-family:var(--mono)">llama3.2-vision (local multimodal AI) &middot; auto-fills SNAP + Medicaid + Request for Proof PDFs</div>
       </div>
       <button class="topbar-back" onclick="closeFillFormsModal()">&times; Close</button>
     </div>
     <div style="padding:18px">
       <div id="fillFormsCaseBadge" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--t2)"></div>
       <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:14px">
-        Upload a photo of the client's ID (driver's license, state ID, passport). We'll extract name, date of birth, address, and ID number via OCR, then generate pre-filled PDFs for SNAP, Medicaid, and HRA Request-for-Proof.
+        Upload a photo of the client's ID (driver's license, state ID, passport). A local multimodal model (<b>llama3.2-vision</b> on Ollama) reads the image and extracts name, date of birth, address, and ID number — then we overlay those values onto the real NYC LDSS-4826 SNAP and DOH-4220 Medicaid PDFs.
       </div>
       <input type="file" id="idImageInput" accept="image/png,image/jpeg,image/jpg,image/*" style="display:none" onchange="onIdImageChosen(event)">
       <button class="btn-secondary" style="width:100%;padding:14px;font-size:14px;background:linear-gradient(135deg,#76b900,#5a8f00);color:#fff;border:none" onclick="document.getElementById('idImageInput').click()">
@@ -340,7 +340,7 @@ async function onIdImageChosen(event) {
   const status = document.getElementById('fillFormsStatus');
   status.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:14px;background:var(--bg2);border-radius:8px;font-size:13px;color:var(--t2)">
     <div class="spinner" style="width:20px;height:20px"></div>
-    OCR'ing ID and generating 3 pre-filled PDFs...
+    Reading ID with llama3.2-vision and generating 3 pre-filled PDFs...
   </div>`;
 
   try {
@@ -369,7 +369,7 @@ async function onIdImageChosen(event) {
           <li>SNAP application (pre-filled)</li>
           <li>Medicaid application (pre-filled)</li>
           <li>HRA Request-for-Proof form (pre-filled)</li>
-          <li>extracted_id_fields.json (OCR raw output)</li>
+          <li>extracted_id_fields.json (llama3.2-vision raw output)</li>
         </ul>
       </div>
     </div>`;
