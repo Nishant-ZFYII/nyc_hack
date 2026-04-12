@@ -28,6 +28,84 @@ DISCORD_COORD_CHANNEL_ID = os.environ.get("DISCORD_COORD_CHANNEL_ID", "")
 _sla_scheduled: set = set()
 _sla_lock = threading.Lock()
 
+
+def notify_ec_added(case: dict, ec_username: str,
+                    bot_token: str, channel_id: str) -> dict:
+    """
+    Called immediately when an EC username is saved during onboarding.
+
+    - If EC is already in the server: DMs them right away.
+    - Always generates a one-time server invite link to share with the EC.
+
+    Returns:
+        {
+          "dm_sent": bool,
+          "invite_url": str | None,
+          "already_in_server": bool,
+        }
+    """
+    result = {"dm_sent": False, "invite_url": None, "already_in_server": False}
+    if not _HAS_REQUESTS or not bot_token or not channel_id:
+        return result
+
+    headers = {"Authorization": f"Bot {bot_token}", "Content-Type": "application/json"}
+    name = case.get("name", "Someone")
+
+    # Resolve guild_id from channel
+    guild_id = _get_guild_id_from_channel(channel_id, bot_token)
+
+    # Generate a single-use permanent invite
+    try:
+        r = _req.post(
+            f"https://discord.com/api/v10/channels/{channel_id}/invites",
+            json={"max_age": 0, "max_uses": 1, "unique": True},
+            headers=headers,
+            timeout=10,
+        )
+        if r.status_code in (200, 201):
+            code = r.json().get("code", "")
+            if code:
+                result["invite_url"] = f"https://discord.gg/{code}"
+    except Exception:
+        pass
+
+    # Try to DM the EC if they're already in the server
+    if guild_id:
+        try:
+            r = _req.get(
+                f"https://discord.com/api/v10/guilds/{guild_id}/members/search",
+                params={"query": ec_username.lstrip("@"), "limit": 5},
+                headers=headers,
+                timeout=10,
+            )
+            if r.status_code == 200:
+                for member in r.json():
+                    u = member.get("user", {})
+                    if (u.get("username", "").lower() == ec_username.lower() or
+                            u.get("global_name", "").lower() == ec_username.lower()):
+                        result["already_in_server"] = True
+                        user_id = u["id"]
+                        embed = {
+                            "title": f"You've been added as an emergency contact",
+                            "description": (
+                                f"**{name}** has added you as their emergency contact "
+                                f"on NYC Help Finder.\n\n"
+                                f"If they confirm they are heading to a service location, "
+                                f"you'll receive a private message here so you can check in on them."
+                            ),
+                            "color": 0x76B900,
+                            "footer": {"text": "NYC Help Finder · You won't be contacted unless needed"},
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                        }
+                        result["dm_sent"] = _dm_user_by_username(
+                            ec_username, embed, bot_token, guild_id,
+                        )
+                        break
+        except Exception:
+            pass
+
+    return result
+
 # Lifecycle order — used for display; terminal states filtered in cases.py
 LIFECYCLE = ["intent_confirmed", "notified", "acknowledged",
              "en_route", "arrived", "resolved"]

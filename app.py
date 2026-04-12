@@ -27,6 +27,7 @@ from pipeline.cases    import (create_case, load_case, add_visit, mark_resource_
                                 get_active_destinations)
 from pipeline.case_notify      import schedule_followup
 from pipeline.destination_notify import (confirm_destination_intent,
+                                          notify_ec_added,
                                           DISCORD_BOT_TOKEN, DISCORD_COORD_CHANNEL_ID)
 from llm.client        import get_active_provider
 import importlib.util
@@ -431,12 +432,22 @@ if not st.session_state.get("onboarding_done"):
                 cid = new_name.strip().lower().replace(" ", "_") + "_" + uuid.uuid4().hex[:6]
                 case = create_case(cid, name=new_name.strip())
                 if new_ec_name.strip() or new_ec_discord.strip():
+                    _ec_user = new_ec_discord.strip().lstrip("@")
                     case["emergency_contact"] = {
                         "name": new_ec_name.strip(),
-                        "discord_username": new_ec_discord.strip().lstrip("@"),
+                        "discord_username": _ec_user,
                     }
                     from pipeline.cases import _save_case
                     _save_case(case)
+                    # Notify EC immediately and generate invite
+                    if _ec_user:
+                        _bot = st.session_state.get("_bot_token", DISCORD_BOT_TOKEN)
+                        _ch  = st.session_state.get("_coord_channel", DISCORD_COORD_CHANNEL_ID)
+                        _ec_result = notify_ec_added(case, _ec_user, _bot, str(_ch))
+                        if _ec_result.get("invite_url"):
+                            st.session_state["_ec_invite_url"] = _ec_result["invite_url"]
+                        if _ec_result.get("dm_sent"):
+                            st.session_state["_ec_dm_sent"] = True
                 st.session_state["case_id"] = cid
                 st.session_state["case"] = case
                 st.session_state["onboarding_done"] = True
@@ -503,6 +514,22 @@ if st.session_state.get("show_welcome_back"):
 
     st.markdown("</div>", unsafe_allow_html=True)
     st.session_state.pop("show_welcome_back", None)
+
+# ── EC invite banner (shown once after onboarding if EC was added) ────────────
+_invite_url = st.session_state.pop("_ec_invite_url", None)
+_ec_dm_sent = st.session_state.pop("_ec_dm_sent", None)
+if _invite_url or _ec_dm_sent:
+    _ec_name = st.session_state.get("case", {}).get(
+        "emergency_contact", {}).get("name", "your emergency contact")
+    if _ec_dm_sent:
+        st.success(f"Discord DM sent to {_ec_name} — they've been notified.")
+    else:
+        st.info(
+            f"**Share this invite with {_ec_name}** so they can join the server "
+            f"and receive notifications when needed."
+        )
+        if _invite_url:
+            st.code(_invite_url)
 
 # ── Main query interface ──────────────────────────────────────────────────────
 query = st.text_area(
