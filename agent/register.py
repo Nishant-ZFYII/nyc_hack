@@ -13,30 +13,26 @@ from __future__ import annotations
 import json
 import sys
 import time
-import contextvars
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
-# Per-request trace. Set to a list by the caller (server endpoint) before
-# invoking the workflow; each tool call appends a record. Callers read it
-# out after the run completes. Default None means "no trace requested".
-_trace_ctx: contextvars.ContextVar = contextvars.ContextVar("nat_trace", default=None)
+# Module-level trace. Each request resets it via start_trace() before
+# invoking the workflow; tool calls append here. contextvars didn't propagate
+# through langgraph's task boundaries, so we use a module-level list —
+# safe because we only handle one agent request at a time per server instance.
+_current_trace: list = []
 
 
 def start_trace() -> list:
-    """Start trace capture for the current async context. Returns the list."""
-    trace = []
-    _trace_ctx.set(trace)
-    return trace
+    """Reset and return the module-level trace list for this request."""
+    global _current_trace
+    _current_trace = []
+    return _current_trace
 
 
 def _record_call(tool_name: str, inputs: dict, output: str, duration_ms: float):
-    trace = _trace_ctx.get()
-    if trace is None:
-        return
-    # Truncate big outputs so the trace stays small for the UI
     out_preview = output if len(output) <= 800 else output[:800] + "…"
-    trace.append({
+    _current_trace.append({
         "tool": tool_name,
         "inputs": inputs,
         "output_preview": out_preview,
