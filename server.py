@@ -730,6 +730,75 @@ async def agent_plan(req: AgentPlanRequest):
         raise HTTPException(500, f"Agent error: {e}")
 
 
+@app.post("/api/agent/openclaw")
+async def agent_openclaw(req: AgentPlanRequest):
+    """
+    Run the query through the actual OpenClaw agent framework.
+
+    This invokes `openclaw agent --local --json --message "..."` as a
+    subprocess. The OpenClaw agent runs with our nyc-caseworker skill
+    registered, uses Nemotron-3-Nano via Ollama, and returns a structured
+    response.
+
+    This proves OpenClaw is actually running (not just config files).
+    """
+    import subprocess, json as _json
+
+    t0 = time.time()
+
+    # Guardrails check first
+    guard = await check_safety_async(req.query, use_llm_fallback=False)
+    if not guard["allow"]:
+        return {
+            "answer": guard["replacement_response"],
+            "safety_block": True,
+            "reason": guard["reason"],
+            "via": "guardrails (pre-openclaw)",
+        }
+
+    # Build message with location context if provided
+    message = req.query
+    if req.location:
+        message += f" (location: {req.location.lat:.4f}, {req.location.lon:.4f})"
+
+    try:
+        # Run: openclaw agent --agent main --local --json --message "..."
+        result = subprocess.run(
+            ["openclaw", "agent", "--agent", "main", "--local", "--json",
+             "--message", message, "--timeout", "60"],
+            capture_output=True, text=True, timeout=90,
+        )
+
+        if result.returncode != 0:
+            return {
+                "error": "OpenClaw agent failed",
+                "stderr": result.stderr[:500],
+                "via": "openclaw-subprocess",
+            }
+
+        data = _json.loads(result.stdout)
+        total_time = time.time() - t0
+
+        return {
+            "answer": data.get("payloads", [{}])[0].get("text", ""),
+            "session_id": data.get("meta", {}).get("agentMeta", {}).get("sessionId", ""),
+            "model": data.get("meta", {}).get("agentMeta", {}).get("model", ""),
+            "provider": data.get("meta", {}).get("agentMeta", {}).get("provider", ""),
+            "tokens": data.get("meta", {}).get("agentMeta", {}).get("usage", {}),
+            "duration_ms": data.get("meta", {}).get("durationMs", 0),
+            "total_time_s": round(total_time, 2),
+            "via": "openclaw",
+            "skill_loaded": "nyc-caseworker",
+        }
+
+    except subprocess.TimeoutExpired:
+        return {"error": "OpenClaw agent timed out after 90s", "via": "openclaw-subprocess"}
+    except FileNotFoundError:
+        return {"error": "openclaw CLI not found — is it installed?", "via": "openclaw-subprocess"}
+    except Exception as e:
+        return {"error": f"OpenClaw error: {e}", "via": "openclaw-subprocess"}
+
+
 @app.post("/api/agent/pdf")
 async def agent_pdf(req: AgentPlanRequest):
     """
