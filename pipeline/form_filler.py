@@ -31,9 +31,19 @@ from PIL import Image
 # ── ID field extraction ──────────────────────────────────────────────────────
 
 def extract_id_fields(image_path: str | Path) -> dict:
-    """Run OCR on an ID image and extract structured fields."""
+    """Run OCR on an ID image and extract structured fields.
+
+    Parser is tuned for standard US driver's license layout. Uses line-aware
+    parsing + strict patterns to avoid false matches like "LICENSE" → city.
+    """
     img = Image.open(image_path)
     raw_text = pytesseract.image_to_string(img)
+    lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+
+    # Words we must NEVER confuse for first/last names or cities
+    _DENY = {"LICENSE", "DRIVER", "LICENCE", "CLASS", "STATE", "CALIFORNIA",
+             "NEW", "YORK", "CARD", "IDENTIFICATION", "DONOR", "VETERAN",
+             "FEDERAL", "LIMITS", "APPLY", "VEH", "REAL", "ID"}
 
     fields = {
         "raw_ocr": raw_text,
@@ -54,74 +64,116 @@ def extract_id_fields(image_path: str | Path) -> dict:
         "weight": "",
     }
 
-    # DL/ID number — matches patterns like "123456789" after "pt" or "DL"
-    m = re.search(r'(?:DL|pt)\s*(\d{6,12})', raw_text, re.IGNORECASE)
-    if m:
+    def _clean_token(s: str) -> str:
+        s = s.strip().rstrip(',').rstrip('.')
+        # Drop anything in deny list or with digits
+        if not s or s.upper() in _DENY:
+            return ""
+        if any(c.isdigit() for c in s):
+            return ""
+        return s.upper()
+
+    # DL/ID number — look for a 7-9 digit number on the DL; prefer after "DL"
+    m = re.search(r'\bDL\s*[:#]?\s*(\d{7,12})\b', raw_text, re.IGNORECASE)
+    if not m:
+        # Fallback: first standalone 7-9 digit number that isn't a DOB/EXP
+        for candidate in re.findall(r'\b(\d{7,12})\b', raw_text):
+            if len(candidate) in (7, 8, 9):
+                fields["id_number"] = candidate
+                break
+    else:
         fields["id_number"] = m.group(1)
 
-    # DOB — MM/DD/YYYY
-    m = re.search(r'(?:DOB|p08|008)\s*(\d{2}/\d{2}/\d{4})', raw_text, re.IGNORECASE)
+    # DOB — MM/DD/YYYY after DOB label
+    m = re.search(r'\bDOB\s*[:]?\s*(\d{2}/\d{2}/\d{4})\b', raw_text, re.IGNORECASE)
     if m:
         fields["dob"] = m.group(1)
 
-    # Expiration — EXP MM/DD/YYYY
-    m = re.search(r'(?:EXP|exe)\s*(\d{2}/\d{2}/\d{4})', raw_text, re.IGNORECASE)
+    # Expiration
+    m = re.search(r'\bEXP\s*[:]?\s*(\d{2}/\d{2}/\d{4})\b', raw_text, re.IGNORECASE)
     if m:
         fields["expiration"] = m.group(1)
 
-    # Last name — LN or ln
-    m = re.search(r'(?:LN|in|1n)\s*([A-Z]{2,}(?:[\s-]+[A-Z]{2,})*)', raw_text)
+    # Last name — LN at line boundary + word(s) after, line-aware
+    # Try same-line first: "LN DOE" or "LN: DOE"
+    m = re.search(r'\bLN\b[\s:]+([A-Z][A-Z\-\' ]{1,40})', raw_text)
     if m:
-        fields["last_name"] = m.group(1).strip()
+        candidate = _clean_token(m.group(1).split('\n')[0])
+        if candidate:
+            fields["last_name"] = candidate
 
-    # First name — FN or fn or rn
-    m = re.search(r'(?:FN|fn|rn|in)\s*([A-Z][A-Z]+)', raw_text)
+    # First name — FN on same or next line
+    m = re.search(r'\bFN\b[\s:]+([A-Z][A-Z\-\' ]{1,30})', raw_text)
     if m:
-        candidate = m.group(1).strip()
-        # Avoid duplicating with last name detection
-        if candidate != fields["last_name"]:
+        candidate = _clean_token(m.group(1).split('\n')[0])
+        if candidate and candidate != fields["last_name"]:
             fields["first_name"] = candidate
 
-    # Construct full name
-    parts = [fields["first_name"], fields["last_name"]]
-    fields["full_name"] = " ".join(p for p in parts if p).strip()
-
-    # Address — look for number + STREET pattern
-    m = re.search(r'(\d{2,5}\s+[A-Z]+(?:\s+[A-Z]+)*)\s*,?\s*', raw_text)
+    # Address — line starting with 2-5 digits + street words + common suffix
+    # or a number line followed by words
+    addr_pattern = re.compile(
+        r'\b(\d{1,5}\s+[A-Z][A-Z0-9 \-\.\']{3,60}?(?:STREET|ST|AVENUE|AVE|BLVD|BOULEVARD|ROAD|RD|LANE|LN|DRIVE|DR|WAY|COURT|CT|PLACE|PL|PARKWAY|PKWY|TERRACE|TER)\b)',
+        re.IGNORECASE,
+    )
+    m = addr_pattern.search(raw_text)
     if m:
-        fields["address"] = m.group(1).strip().rstrip(',')
+        fields["address"] = m.group(1).strip().upper()
+    else:
+        # Fallback: a line that starts with digits followed by all-caps words
+        for ln in lines:
+            m2 = re.match(r'^(\d{2,5}\s+[A-Z][A-Z\- ]{3,50})$', ln)
+            if m2:
+                fields["address"] = m2.group(1).strip().upper()
+                break
 
-    # City, State ZIP — anytown, ca012345
-    m = re.search(r'([A-Z][A-Z]+)\s*,?\s*([A-Z]{2})\s*(\d{5,9})', raw_text, re.IGNORECASE)
+    # City, State ZIP — MUST have comma OR state+zip pair preceded by a valid city word.
+    # Stricter: "CITY, ST 12345" or "CITY, ST 12345-6789"
+    m = re.search(r'([A-Z][A-Z \-]{2,30}),\s+([A-Z]{2})\s+(\d{5})(?:-?\d{4})?\b', raw_text)
     if m:
-        fields["city"] = m.group(1).strip().upper()
-        fields["state"] = m.group(2).strip().upper()
-        fields["zip"] = m.group(3).strip()
+        city = _clean_token(m.group(1))
+        state = m.group(2).upper()
+        # Reject obvious non-states (DL ID prefixes like "PT")
+        valid_us_states = {
+            "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+            "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+            "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+            "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+            "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+            "DC",
+        }
+        if city and state in valid_us_states:
+            fields["city"] = city
+            fields["state"] = state
+            fields["zip"] = m.group(3)
 
     # Sex
-    m = re.search(r'SEX\s*([MF])\b', raw_text, re.IGNORECASE)
+    m = re.search(r'\bSEX\b\s*[:]?\s*([MF])\b', raw_text, re.IGNORECASE)
     if m:
         fields["sex"] = m.group(1).upper()
 
     # Eye color
-    m = re.search(r'EYES\s*([A-Z]{3,5})', raw_text, re.IGNORECASE)
+    m = re.search(r'\bEYES?\b\s*[:]?\s*([A-Z]{3,5})', raw_text, re.IGNORECASE)
     if m:
         fields["eye_color"] = m.group(1).strip().upper()
 
     # Hair color
-    m = re.search(r'HAIR\s*([A-Z]{3,5})', raw_text, re.IGNORECASE)
+    m = re.search(r'\bHAIR\b\s*[:]?\s*([A-Z]{3,5})', raw_text, re.IGNORECASE)
     if m:
         fields["hair_color"] = m.group(1).strip().upper()
 
     # Height — 6'0"
-    m = re.search(r"HGT\s*(\d'\d{1,2}\")", raw_text, re.IGNORECASE)
+    m = re.search(r"\bHGT\b\s*[:]?\s*(\d'[\s]?\d{1,2}\"?)", raw_text, re.IGNORECASE)
     if m:
         fields["height"] = m.group(1).strip()
 
-    # Weight — "183 lb"
-    m = re.search(r"WGT\s*(\d{2,3})\s*lb", raw_text, re.IGNORECASE)
+    # Weight
+    m = re.search(r"\bWGT\b\s*[:]?\s*(\d{2,3})\s*lb", raw_text, re.IGNORECASE)
     if m:
         fields["weight"] = f"{m.group(1)} lb"
+
+    # Full name
+    parts = [fields["first_name"], fields["last_name"]]
+    fields["full_name"] = " ".join(p for p in parts if p).strip()
 
     return fields
 
