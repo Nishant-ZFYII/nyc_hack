@@ -1,38 +1,30 @@
-"""Inspect OutputArgsSchema and how nat validates tool I/O."""
+"""Inspect nat's middleware API for hooking tool calls."""
 import sys, inspect
 sys.path.insert(0, ".")
 
-from nat.builder.function_info import FunctionInfo
+from nat.builder.function import FunctionGroup
 
-
-# Simulate a real tool with return type str
-async def tool_str(query: str, lat: float = 0) -> str:
-    """doc"""
-    return "hello world"
-
-info = FunctionInfo.from_fn(tool_str)
-print("=== tool that returns str → single_output_schema ===")
-print(info.single_output_schema.model_json_schema() if info.single_output_schema else None)
-
-# And without return annotation
-async def tool_noret(query: str):
-    """doc"""
-    return "hello"
-
-info2 = FunctionInfo.from_fn(tool_noret)
+print("=== configure_middleware signature ===")
+print(inspect.signature(FunctionGroup.configure_middleware))
 print()
-print("=== tool with NO return annotation → single_output_schema ===")
-print(info2.single_output_schema.model_json_schema() if info2.single_output_schema else None)
-
-# Check if return annotation is lost by functools.wraps
-import functools
-@functools.wraps(tool_str)
-async def wrapped(*args, **kwargs):
-    return await tool_str(*args, **kwargs)
-
+print("=== configure_middleware source ===")
+print(inspect.getsource(FunctionGroup.configure_middleware))
 print()
-print("=== wrapped with functools.wraps signature ===", inspect.signature(wrapped))
-print("=== wrapped annotations ===", wrapped.__annotations__)
-info3 = FunctionInfo.from_fn(wrapped)
-print("=== wrapped single_output_schema ===")
-print(info3.single_output_schema.model_json_schema() if info3.single_output_schema else None)
+
+# Look for middleware base class / interface
+try:
+    from nat.builder import middleware as mw_mod
+    print("=== nat.builder.middleware ===")
+    for name in dir(mw_mod):
+        if not name.startswith("_"):
+            print(" -", name)
+except ImportError as e:
+    print("no nat.builder.middleware:", e)
+
+# Maybe middleware is elsewhere
+import pkgutil, nat
+print()
+print("=== nat submodules with 'middleware' ===")
+for m in pkgutil.walk_packages(nat.__path__, nat.__name__ + "."):
+    if "middleware" in m.name.lower():
+        print(" -", m.name)
