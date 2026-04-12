@@ -388,6 +388,8 @@ async def admin_agent_nat(req: AdminAgentRequest):
     except Exception as e:
         return {
             "error": f"nat admin agent error: {e}",
+            "trace": trace if 'trace' in locals() else [],
+            "tool_call_count": len(trace) if 'trace' in locals() else 0,
             "total_time_s": round(_time.time() - t0, 2),
             "via": "nat-react-agent",
         }

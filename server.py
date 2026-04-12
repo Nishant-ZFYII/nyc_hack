@@ -992,6 +992,8 @@ async def agent_nat(req: AgentPlanRequest):
     except Exception as e:
         return {
             "error": f"nat agent error: {e}",
+            "trace": trace if 'trace' in locals() else [],
+            "tool_call_count": len(trace) if 'trace' in locals() else 0,
             "total_time_s": round(time.time() - t0, 2),
             "via": "nat-react-agent",
         }
