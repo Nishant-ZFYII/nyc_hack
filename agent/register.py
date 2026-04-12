@@ -76,9 +76,15 @@ from pipeline.planner import generate_plan
 from pipeline.routing import get_directions as pipeline_get_directions
 from pipeline.eligibility import calculate_eligibility as pipeline_calc_elig, get_rights as pipeline_get_rights, get_stories as pipeline_get_stories
 from pipeline.cases import (
-    load_case, get_case_summary, get_progress, get_failed_resources,
-    choose_resource, checkin, add_destination_intent
+    load_case, list_cases, get_case_summary, get_progress, get_failed_resources,
+    choose_resource, checkin, add_destination_intent,
+    update_need_status, update_destination_state, save_admin_notes,
 )
+try:
+    from pipeline.briefing import generate_briefing, _estimate_urgency
+    _BRIEFING_AVAILABLE = True
+except Exception:
+    _BRIEFING_AVAILABLE = False
 
 import pandas as pd
 
@@ -309,4 +315,162 @@ async def nyc_case_tools(_config, _builder: Builder) -> AsyncGenerator[FunctionG
                        description=_choose_resource.__doc__)
     group.add_function(name="checkin_resource", fn=_traced("checkin_resource", _checkin_resource),
                        description=_checkin_resource.__doc__)
+    yield group
+
+
+# ── Tool Group 5: Admin / Supervisor Tools ───────────────────────────────────
+
+class AdminToolConfig(FunctionGroupBaseConfig, name="nyc_admin_tools"):
+    include: list[str] = Field(
+        default_factory=lambda: [
+            "list_all_cases", "get_case_details", "get_city_stats",
+            "find_critical_cases", "generate_case_briefing",
+            "update_case_need_status", "advance_destination_state",
+            "add_admin_note",
+        ],
+        description="Admin/supervisor tools for NYC Social Services dashboard",
+    )
+
+
+@register_function_group(config_type=AdminToolConfig)
+async def nyc_admin_tools(_config, _builder: Builder) -> AsyncGenerator[FunctionGroup, None]:
+    group = FunctionGroup(config=_config)
+
+    def _case_row(case):
+        needs = case.get("needs", [])
+        failed = []
+        for n in needs:
+            failed.extend(n.get("failed_resources", []))
+        open_needs = [n.get("category") for n in needs if n.get("status") != "resolved"]
+        urgency = _estimate_urgency(needs, failed) if _BRIEFING_AVAILABLE else "unknown"
+        active_dests = [i for i in case.get("destination_intents", [])
+                        if i.get("state") not in {"resolved", "cancelled"}]
+        return {
+            "case_id": case.get("case_id"),
+            "urgency": urgency,
+            "open_needs": open_needs,
+            "active_destinations": len(active_dests),
+            "failed_resources": len(failed),
+            "last_visit": case.get("last_visit"),
+            "visits": len(case.get("visits", [])),
+        }
+
+    async def _list_all_cases(filter_urgency: str = "", filter_open_need: str = "",
+                              limit: int = 20) -> str:
+        """List NYC Social Services cases for the dashboard. Filter by urgency (critical/high/medium/low) or by a specific open need category (housing/medical/benefits/safety/employment). Default returns top 20 most recent. USE THIS FIRST for any 'show me cases' or 'who needs help' question."""
+        out = []
+        for c_summary in list_cases():
+            case = load_case(c_summary["case_id"])
+            if not case:
+                continue
+            row = _case_row(case)
+            if filter_urgency and row["urgency"] != filter_urgency.lower():
+                continue
+            if filter_open_need and filter_open_need.lower() not in [n.lower() for n in row["open_needs"]]:
+                continue
+            out.append(row)
+        out.sort(key=lambda x: (x["urgency"] != "critical", x["urgency"] != "high"))
+        return json.dumps(_clean(out[:limit]), indent=2, default=str)
+
+    async def _get_case_details(case_id: str) -> str:
+        """Get full record for a single case including all needs, visits, destinations, and notes. Use after list_all_cases identifies a case of interest."""
+        case = load_case(case_id)
+        if not case:
+            return json.dumps({"error": f"Case '{case_id}' not found"})
+        # Strip verbose history fields to fit LLM context
+        trimmed = {
+            "case_id": case.get("case_id"),
+            "needs": case.get("needs", []),
+            "destination_intents": case.get("destination_intents", []),
+            "admin_notes": case.get("admin_notes", ""),
+            "current_location": case.get("current_location"),
+            "last_visit": case.get("last_visit"),
+            "visits": case.get("visits", [])[-5:],  # last 5 only
+            "emergency_contact": case.get("emergency_contact", {}),
+        }
+        return json.dumps(_clean(trimmed), indent=2, default=str)
+
+    async def _get_city_stats() -> str:
+        """Get aggregate stats across all cases: urgency breakdown, need category counts, total visits, resolved vs open needs. Use for dashboard summaries and 'how is the city doing' questions."""
+        urgency_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unknown": 0}
+        need_counts: dict = {}
+        resolved, open_ = 0, 0
+        total_visits = 0
+        for c_summary in list_cases():
+            case = load_case(c_summary["case_id"])
+            if not case:
+                continue
+            total_visits += len(case.get("visits", []))
+            for n in case.get("needs", []):
+                cat = n.get("category", "other")
+                need_counts[cat] = need_counts.get(cat, 0) + 1
+                if n.get("status") == "resolved":
+                    resolved += 1
+                else:
+                    open_ += 1
+            row = _case_row(case)
+            urgency_counts[row["urgency"]] = urgency_counts.get(row["urgency"], 0) + 1
+        return json.dumps(_clean({
+            "urgency_breakdown": urgency_counts,
+            "need_categories": need_counts,
+            "needs_resolved": resolved,
+            "needs_open": open_,
+            "total_visits": total_visits,
+            "total_cases": len(list_cases()),
+        }), indent=2, default=str)
+
+    async def _find_critical_cases(limit: int = 10) -> str:
+        """Shortcut: list only critical-urgency cases that need immediate dispatcher attention. Use for emergency response queries."""
+        return await _list_all_cases(filter_urgency="critical", limit=limit)
+
+    async def _generate_case_briefing(case_id: str, resource_name: str = "",
+                                       resource_type: str = "",
+                                       resource_address: str = "") -> str:
+        """Generate a structured AI briefing for a specific case + resource combination. Used when a dispatcher needs talking points before a client arrives. Returns diagnosis, urgency, document gaps, edge cases, and recommended approach."""
+        if not _BRIEFING_AVAILABLE:
+            return json.dumps({"error": "briefing pipeline unavailable"})
+        case = load_case(case_id)
+        if not case:
+            return json.dumps({"error": f"Case '{case_id}' not found"})
+        resource = {"name": resource_name, "resource_type": resource_type,
+                    "address": resource_address}
+        b = generate_briefing(case, resource)
+        return json.dumps(_clean(b), indent=2, default=str)
+
+    async def _update_case_need_status(case_id: str, category: str, status: str) -> str:
+        """Admin action: set a need's status to open / in_progress / resolved."""
+        result = update_need_status(case_id, category, status)
+        if result.get("error"):
+            return json.dumps(result)
+        return f"Updated case {case_id} need '{category}' to '{status}'."
+
+    async def _advance_destination_state(case_id: str, resource_name: str,
+                                          new_state: str) -> str:
+        """Admin action: advance a destination intent's state (intent_confirmed / en_route / arrived / resolved / cancelled)."""
+        update_destination_state(case_id, resource_name, new_state)
+        return f"Advanced destination '{resource_name}' on case {case_id} to state '{new_state}'."
+
+    async def _add_admin_note(case_id: str, notes: str) -> str:
+        """Admin action: save supervisor notes on a case."""
+        result = save_admin_notes(case_id, notes)
+        if result.get("error"):
+            return json.dumps(result)
+        return f"Saved admin notes to case {case_id}."
+
+    group.add_function(name="list_all_cases", fn=_traced("list_all_cases", _list_all_cases),
+                       description=_list_all_cases.__doc__)
+    group.add_function(name="get_case_details", fn=_traced("get_case_details", _get_case_details),
+                       description=_get_case_details.__doc__)
+    group.add_function(name="get_city_stats", fn=_traced("get_city_stats", _get_city_stats),
+                       description=_get_city_stats.__doc__)
+    group.add_function(name="find_critical_cases", fn=_traced("find_critical_cases", _find_critical_cases),
+                       description=_find_critical_cases.__doc__)
+    group.add_function(name="generate_case_briefing", fn=_traced("generate_case_briefing", _generate_case_briefing),
+                       description=_generate_case_briefing.__doc__)
+    group.add_function(name="update_case_need_status", fn=_traced("update_case_need_status", _update_case_need_status),
+                       description=_update_case_need_status.__doc__)
+    group.add_function(name="advance_destination_state", fn=_traced("advance_destination_state", _advance_destination_state),
+                       description=_advance_destination_state.__doc__)
+    group.add_function(name="add_admin_note", fn=_traced("add_admin_note", _add_admin_note),
+                       description=_add_admin_note.__doc__)
     yield group

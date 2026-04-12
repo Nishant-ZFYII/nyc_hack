@@ -34,6 +34,18 @@ from pipeline.briefing import generate_briefing, _estimate_urgency
 from pipeline.executor import load_state
 from pipeline.form_filler import fill_forms_from_id, extract_id_fields
 
+# nat (NeMo Agent Toolkit) — optional, degrades gracefully if missing
+import time as _time
+try:
+    import agent.register  # registers all 5 tool groups (incl. nyc_admin_tools)
+    from nat.runtime.loader import load_workflow as _nat_load_workflow
+    from agent.register import start_trace as _nat_start_trace
+    _NAT_AVAILABLE = True
+    _NAT_ADMIN_CONFIG = str(ROOT / "agent" / "config_admin.yml")
+except Exception as _nat_err:
+    _NAT_AVAILABLE = False
+    _NAT_IMPORT_ERROR = str(_nat_err)
+
 app = FastAPI(title="NYC Social Services — Admin Portal")
 app.add_middleware(
     CORSMiddleware,
@@ -328,3 +340,54 @@ async def ocr_id(id_image: UploadFile = File(...)):
     finally:
         os.unlink(tmp.name)
     return fields
+
+
+# ── nat (NeMo Agent Toolkit) Admin Agent ───────────────────
+
+class AdminAgentRequest(BaseModel):
+    query: str
+    case_id: str = ""
+
+
+@app.post("/api/admin/agent/nat")
+async def admin_agent_nat(req: AdminAgentRequest):
+    """
+    Run a supervisor query through the NeMo Agent Toolkit ReAct agent with
+    admin-tier tools (list_all_cases, get_city_stats, generate_case_briefing,
+    update_case_need_status, etc). Returns answer + tool-call trace.
+    """
+    if not _NAT_AVAILABLE:
+        raise HTTPException(500, f"nat not available: {_NAT_IMPORT_ERROR}")
+
+    t0 = _time.time()
+    message = req.query
+    if req.case_id:
+        message += f" (focus case_id: {req.case_id})"
+
+    try:
+        trace = _nat_start_trace()
+        async with _nat_load_workflow(_NAT_ADMIN_CONFIG) as workflow:
+            async with workflow.run(message) as runner:
+                if hasattr(runner, "result"):
+                    r = runner.result
+                    result = await r() if callable(r) else r
+                elif hasattr(runner, "get_result"):
+                    result = await runner.get_result()
+                else:
+                    result = runner
+        return {
+            "answer": str(result),
+            "trace": trace,
+            "tool_call_count": len(trace),
+            "total_time_s": round(_time.time() - t0, 2),
+            "via": "nat-react-agent",
+            "model": "nemotron-3-nano",
+            "framework": "NVIDIA NeMo Agent Toolkit",
+            "mode": "admin",
+        }
+    except Exception as e:
+        return {
+            "error": f"nat admin agent error: {e}",
+            "total_time_s": round(_time.time() - t0, 2),
+            "via": "nat-react-agent",
+        }
