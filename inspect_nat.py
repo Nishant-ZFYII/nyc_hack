@@ -1,34 +1,42 @@
-"""Inspect how nat builds input_schema from a function."""
+"""Inspect OutputArgsSchema and how nat validates tool I/O."""
 import sys, inspect
 sys.path.insert(0, ".")
 
+from nat.utils.type_utils import OutputArgsSchema
 from nat.builder.function_info import FunctionInfo
-import agent.register  # ensures our wrappers exist
 
-# Take one of our wrapped tools and see what schema nat infers
-from agent.register import _traced
+print("=== OutputArgsSchema ===")
+print(OutputArgsSchema.model_json_schema())
+print()
 
-async def sample(query: str, lat: float = 0, lon: float = 0, case_id: str = "") -> str:
-    """Test tool."""
-    return "ok"
+# Simulate a real tool with return type str
+async def tool_str(query: str, lat: float = 0) -> str:
+    """doc"""
+    return "hello world"
 
-wrapped = _traced("sample", sample)
-print("=== wrapped signature ===", inspect.signature(wrapped))
+info = FunctionInfo.from_fn(tool_str)
+print("=== tool that returns str → single_output_schema ===")
+print(info.single_output_schema.model_json_schema() if info.single_output_schema else None)
+
+# And without return annotation
+async def tool_noret(query: str):
+    """doc"""
+    return "hello"
+
+info2 = FunctionInfo.from_fn(tool_noret)
+print()
+print("=== tool with NO return annotation → single_output_schema ===")
+print(info2.single_output_schema.model_json_schema() if info2.single_output_schema else None)
+
+# Check if return annotation is lost by functools.wraps
+import functools
+@functools.wraps(tool_str)
+async def wrapped(*args, **kwargs):
+    return await tool_str(*args, **kwargs)
+
+print()
+print("=== wrapped with functools.wraps signature ===", inspect.signature(wrapped))
 print("=== wrapped annotations ===", wrapped.__annotations__)
-
-info = FunctionInfo.from_fn(wrapped)
-print()
-print("=== FunctionInfo ===")
-for attr in ("input_schema", "single_output_schema", "streaming_output_schema", "description"):
-    v = getattr(info, attr, "<none>")
-    print(f"  {attr}: {v}")
-
-print()
-print("=== input_schema fields ===")
-if info.input_schema:
-    print(info.input_schema.model_json_schema())
-
-print()
-print("=== Unwrapped (raw sample) ===")
-info2 = FunctionInfo.from_fn(sample)
-print("  input_schema:", info2.input_schema.model_json_schema() if info2.input_schema else None)
+info3 = FunctionInfo.from_fn(wrapped)
+print("=== wrapped single_output_schema ===")
+print(info3.single_output_schema.model_json_schema() if info3.single_output_schema else None)
