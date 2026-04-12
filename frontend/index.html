@@ -268,9 +268,10 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
       <!-- Query -->
       <div class="section-label fade-in-d1">What do you need?</div>
       <textarea id="queryInput" class="big-input fade-in-d2" rows="4" placeholder="e.g. I have 4 kids, income $28K, losing housing in Flatbush next week..."></textarea>
-      <div style="display:flex;gap:8px;margin-top:12px" class="fade-in-d2">
-        <button class="btn-primary" style="flex:1" id="sendBtn" onclick="sendQuery()">Find Help</button>
-        <button class="btn-primary" style="flex:1;background:var(--purple);color:#fff" onclick="runAgentPlan()" title="Get a full action plan across all needs">&#129504; Full Plan</button>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap" class="fade-in-d2">
+        <button class="btn-primary" style="flex:1;min-width:140px" id="sendBtn" onclick="sendQuery()">Find Help</button>
+        <button class="btn-primary" style="flex:1;min-width:140px;background:var(--purple);color:#fff" onclick="runAgentPlan()" title="Get a full action plan across all needs">&#129504; Full Plan</button>
+        <button class="btn-primary" style="flex:1;min-width:140px;background:linear-gradient(135deg,#76b900,#5a8f00);color:#fff" onclick="runOpenClaw()" title="Real NVIDIA OpenClaw agent running on Nemotron-3-Nano">&#9881;&#65039; OpenClaw Agent</button>
       </div>
 
       <hr class="divider">
@@ -327,6 +328,18 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
         <div class="map-legend-item"><span class="map-legend-dot" style="background:#81c784"></span> Childcare</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════ PAGE: OPENCLAW ═══════════ -->
+<div class="page" id="page-openclaw">
+  <div class="topbar">
+    <button class="topbar-back" onclick="goTo('page-ask')">&#8592; Back</button>
+    <span class="topbar-title">OpenClaw Agent</span>
+    <span class="topbar-right" id="openclawTrace"></span>
+  </div>
+  <div class="page-scroll">
+    <div class="centered-wide" id="openclawContent"></div>
   </div>
 </div>
 
@@ -1135,6 +1148,84 @@ function renderSafetyBlock(data){
 function safetyRedirect(query){
   document.getElementById('queryInput').value=query;
   sendQuery();
+}
+
+// ── OpenClaw Agent ─────────────────────────────────────────
+async function runOpenClaw(){
+  const q=document.getElementById('queryInput').value.trim();
+  if(!q){document.getElementById('queryInput').focus();return}
+  lastQuery=q;
+  goTo('page-openclaw');
+  const c=document.getElementById('openclawContent');
+  c.innerHTML=`<div style="text-align:center;padding:60px 20px">
+    <div style="font-size:56px;margin-bottom:18px;animation:pulse 2s infinite">&#9881;&#65039;</div>
+    <div style="font-family:var(--display);font-size:24px;font-weight:300;margin-bottom:8px">OpenClaw Agent is thinking...</div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:6px">Running <b>nyc-caseworker</b> skill on real Nemotron-3-Nano</div>
+    <div style="font-size:11px;color:var(--t3);font-family:var(--mono);margin-bottom:20px">via NVIDIA OpenClaw gateway &middot; local inference</div>
+    <div class="spinner" style="margin:0 auto"></div>
+    <div style="font-size:11px;color:var(--t3);margin-top:12px">This can take 30&ndash;60 seconds</div>
+  </div>`;
+
+  const start=Date.now();
+  try{
+    const resp=await fetch('/api/agent/openclaw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null,case_id:currentCaseId})});
+    const data=await resp.json();
+    renderOpenClawResult(data,Date.now()-start);
+  }catch(err){
+    c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error: ${err.message}</div>`;
+  }
+}
+
+function renderOpenClawResult(data,elapsed){
+  const c=document.getElementById('openclawContent');
+  const answer=(data.answer||data.message||'No response').replace(/\n/g,'<br>');
+  const via=data.via||'openclaw';
+  const provider=data.provider||'ollama';
+  const model=data.model||'nemotron-3-nano';
+  const sessionId=data.session_id||'';
+  const duration=data.duration_ms||elapsed;
+
+  let html=`<div style="margin-top:20px">`;
+
+  // Query
+  html+=`<div style="color:var(--t3);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">YOUR QUERY</div>`;
+  html+=`<div style="background:rgba(58,125,10,0.04);border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:20px">${lastQuery}</div>`;
+
+  // OpenClaw branding banner
+  html+=`<div style="background:linear-gradient(135deg,rgba(118,185,0,0.08),rgba(118,185,0,0.02));border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+    <div style="font-size:24px">&#9881;&#65039;</div>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:13px;color:var(--green)">NVIDIA OpenClaw Agent</div>
+      <div style="font-size:11px;color:var(--t3);font-family:var(--mono)">nyc-caseworker skill &middot; ${provider} &middot; ${model}</div>
+    </div>
+  </div>`;
+
+  // Answer
+  html+=`<div class="answer-box fade-in" style="font-size:14.5px;line-height:1.8">${answer}</div>`;
+
+  // Trace panel
+  html+=`<div style="margin-top:16px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;font-family:var(--mono);font-size:11px">
+    <div style="color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;font-size:10px">&#9881;&#65039; Execution Trace</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;color:var(--t2)">
+      <div style="color:var(--t3)">via:</div><div><b style="color:var(--green)">${via}</b></div>
+      <div style="color:var(--t3)">provider:</div><div>${provider}</div>
+      <div style="color:var(--t3)">model:</div><div>${model}</div>
+      ${sessionId?`<div style="color:var(--t3)">session:</div><div>${sessionId}</div>`:''}
+      <div style="color:var(--t3)">duration:</div><div>${(duration/1000).toFixed(2)}s</div>
+    </div>
+  </div>`;
+
+  // Actions
+  html+=`<div style="display:flex;gap:8px;margin-top:16px">
+    <button class="btn-secondary" style="padding:10px 16px;font-size:12px" onclick="goTo('page-ask')">&#8592; Ask another</button>
+    <button class="btn-primary" style="padding:10px 16px;font-size:12px;background:var(--purple);color:#fff;flex:1" onclick="runAgentPlan()">&#129504; Try Full Plan</button>
+  </div>`;
+
+  html+=`</div>`;
+  c.innerHTML=html;
+
+  // Show trace in topbar
+  document.getElementById('openclawTrace').textContent=`${(duration/1000).toFixed(1)}s · ${provider}`;
 }
 
 // ── Autonomous Agent Plan ──────────────────────────────────
