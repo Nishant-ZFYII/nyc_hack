@@ -90,6 +90,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 .rc-actions{display:flex;gap:6px;margin-top:10px}
 .rc-action{background:var(--bg4);border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:500;color:var(--t2);cursor:pointer;transition:all 0.2s;font-family:var(--ui);text-decoration:none}
 .rc-action:hover{border-color:var(--green);color:var(--green)}
+.collapsed{display:none!important}
 .rc-action.primary{background:rgba(118,185,0,0.08);border-color:var(--green-d);color:var(--green);font-weight:600}
 
 /* Clarify */
@@ -515,25 +516,48 @@ function renderResults(data){
   // Verification
   html+=makeVerifyHtml(data.verification);
 
-  // Resources
+  // Resources — grouped by type
   if(data.resources&&data.resources.length){
     lastResources=data.resources;
-    html+=`<div class="section-label" style="margin-top:20px">Resources found (${data.resources.length})</div>`;
+    // Group by type
+    const groups={};
     for(const r of data.resources){
-      const mr=getMatchReason(r);
-      const dist=r.distance_miles?`<div class="rc-distance"><span>${r.distance_miles} mi</span>${r.walk_min?` &middot; ~${r.walk_min} min walk`:''}</div>`:'';
-      const addr=r.address||'Address not listed';
-      const eName=(r.name||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
-      html+=`<div class="resource-card type-${r.type||'shelter'} fade-in">
-        <div class="rc-name">${r.name||'Unknown'}</div>
-        <div class="rc-addr">${addr}</div>${dist}
-        ${mr?`<div class="rc-match"><div class="rc-match-label">Why this matches</div><div class="rc-match-text">${mr}</div></div>`:''}
-        <div class="rc-tags"><span class="rc-tag type">${(r.type||'').replace(/_/g,' ')}</span>${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}</div>
-        <div class="rc-actions">
-          <span class="rc-action primary" onclick="event.stopPropagation();getDirections(${r.lat},${r.lon},'${eName}')">Directions</span>
-          <span class="rc-action" onclick="event.stopPropagation();flyToResult(${r.lat},${r.lon})">Show on map</span>
-        </div>
-      </div>`;
+      const t=r.type||'other';
+      if(!groups[t])groups[t]=[];
+      groups[t].push(r);
+    }
+    const typeLabels={shelter:'&#127968; Shelters',food_bank:'&#127822; Food Banks',hospital:'&#127973; Hospitals',clinic:'&#129658; Clinics',school:'&#128218; Schools',childcare:'&#128118; Childcare',benefits_center:'&#128203; Benefits Centers',community_center:'&#127963; Community Centers',youth_services:'&#127934; Youth Services',senior_services:'&#128116; Senior Services',library:'&#128214; Libraries',emergency_services:'&#128680; Emergency',education:'&#127891; Education',legal_aid:'&#9878;&#65039; Legal Aid'};
+    const typeColors={shelter:'var(--green)',food_bank:'var(--orange)',hospital:'var(--red)',clinic:'#e07878',school:'var(--blue)',childcare:'#5aaa5a',benefits_center:'var(--purple)',community_center:'#5a8cb4',youth_services:'#c9a73a'};
+
+    html+=`<div class="section-label" style="margin-top:20px">Resources found (${data.resources.length})</div>`;
+
+    for(const[type,resources]of Object.entries(groups)){
+      const gId='grp-'+type+'-'+Date.now();
+      const label=typeLabels[type]||type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+      const color=typeColors[type]||'var(--t2)';
+      html+=`<div style="margin-bottom:12px">`;
+      html+=`<div onclick="document.getElementById('${gId}').classList.toggle('collapsed')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow)">`;
+      html+=`<div style="font-weight:600;font-size:14px;color:${color}">${label} (${resources.length})</div>`;
+      html+=`<span style="font-size:12px;color:var(--t3);transition:transform 0.2s" id="${gId}-arrow">&#9660;</span>`;
+      html+=`</div>`;
+      html+=`<div id="${gId}" style="margin-top:6px">`;
+      for(const r of resources){
+        const mr=getMatchReason(r);
+        const dist=r.distance_miles?`<div class="rc-distance"><span>${r.distance_miles} mi</span>${r.walk_min?` &middot; ~${r.walk_min} min walk`:''}</div>`:'';
+        const addr=r.address||'Address not listed';
+        const eName=(r.name||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+        html+=`<div class="resource-card type-${r.type||'shelter'} fade-in">
+          <div class="rc-name">${r.name||'Unknown'}</div>
+          <div class="rc-addr">${addr}</div>${dist}
+          ${mr?`<div class="rc-match"><div class="rc-match-label">Why this matches</div><div class="rc-match-text">${mr}</div></div>`:''}
+          <div class="rc-tags"><span class="rc-tag type">${(r.type||'').replace(/_/g,' ')}</span>${r.borough?`<span class="rc-tag borough">${r.borough}</span>`:''}</div>
+          <div class="rc-actions">
+            <span class="rc-action primary" onclick="event.stopPropagation();getDirections(${r.lat},${r.lon},'${eName}')">Directions</span>
+            <span class="rc-action" onclick="event.stopPropagation();flyToResult(${r.lat},${r.lon})">Show on map</span>
+          </div>
+        </div>`;
+      }
+      html+=`</div></div>`;
     }
   }
 
