@@ -75,14 +75,20 @@ from nat.data_models.function import FunctionGroupBaseConfig
 
 # Middleware for trace capture — runs around every tool call in the group
 try:
-    from nat.middleware.middleware import Middleware, InvocationContext
+    from nat.middleware.function_middleware import FunctionMiddleware
+    from nat.middleware.middleware import InvocationContext
     _MIDDLEWARE_AVAILABLE = True
-except Exception:
-    _MIDDLEWARE_AVAILABLE = False
+except Exception as _e:
+    print(f"[trace] FunctionMiddleware import failed: {_e}")
+    try:
+        from nat.middleware.middleware import Middleware as FunctionMiddleware, InvocationContext
+        _MIDDLEWARE_AVAILABLE = True
+    except Exception:
+        _MIDDLEWARE_AVAILABLE = False
 
 
 if _MIDDLEWARE_AVAILABLE:
-    class _TraceMiddleware(Middleware):
+    class _TraceMiddleware(FunctionMiddleware):
         """Records each tool call's (name, args, output, duration) in the trace."""
 
         def __init__(self):
