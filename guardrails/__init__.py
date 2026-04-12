@@ -5,12 +5,10 @@ Hybrid approach:
   1. Fast regex pre-filter (< 1ms) — instant block for obvious PII/crisis
   2. NeMo Guardrails self-check (~500ms) — semantic topic/jailbreak detection
 
-Usage:
-    from guardrails import check_safety
-    result = check_safety(user_input="best restaurants in NYC")
-    if not result["allow"]:
-        return result["replacement_response"]
+Usage (sync):      check_safety(user_input)
+Usage (async):     await check_safety_async(user_input)
 """
+import asyncio
 import os
 from pathlib import Path
 
@@ -46,6 +44,55 @@ def _init_rails():
     except Exception as e:
         print(f"[guardrails] NeMo Guardrails init failed: {e}")
         return None
+
+
+async def check_safety_async(user_input: str, use_llm_fallback: bool = True) -> dict:
+    """Async version — use inside FastAPI endpoints."""
+    # Layer 1: fast regex
+    regex_result = apply_guardrails(user_input)
+    if not regex_result["allow"]:
+        regex_result["checked_by"] = "regex"
+        return regex_result
+
+    # Layer 2: NeMo Guardrails (async)
+    if use_llm_fallback and _nemo_available:
+        rails = _init_rails()
+        if rails is not None:
+            try:
+                response = await rails.generate_async(messages=[{
+                    "role": "user", "content": user_input
+                }])
+                if isinstance(response, dict):
+                    content = response.get("content", "")
+                else:
+                    content = str(response)
+
+                content_lower = content.lower()
+                is_block = any(phrase in content_lower for phrase in [
+                    "i can't", "i cannot", "i'm not able", "i am not able",
+                    "cannot help", "can't help", "cannot answer", "can't answer",
+                    "cannot provide", "can't provide", "unable to", "not able to",
+                    "not related to", "off-topic", "off topic",
+                    "outside my", "beyond my", "not my job", "not what i",
+                    "i apologize", "i'm sorry but", "i am sorry but",
+                    "my purpose is", "my role is",
+                ])
+                if is_block:
+                    return {
+                        "allow": False,
+                        "reason": "nemo_guardrails_block",
+                        "crisis_type": None,
+                        "replacement_response": content or (
+                            "I'm a NYC Social Services assistant — I help with shelter, "
+                            "food, healthcare, benefits, and safety. Can I help you with any of those?"
+                        ),
+                        "checked_by": "nemo_guardrails",
+                    }
+            except Exception as e:
+                print(f"[guardrails] NeMo async check failed: {e}")
+
+    regex_result["checked_by"] = "regex"
+    return regex_result
 
 
 def check_safety(user_input: str, use_llm_fallback: bool = True) -> dict:
@@ -125,7 +172,8 @@ def check_safety(user_input: str, use_llm_fallback: bool = True) -> dict:
 
 __all__ = [
     "check_safety",
-    "apply_guardrails",  # legacy, used by server.py
+    "check_safety_async",
+    "apply_guardrails",
     "detect_pii_regex",
     "detect_crisis",
     "detect_jailbreak",

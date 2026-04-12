@@ -31,7 +31,7 @@ from pipeline.cases import (load_case, create_case, add_visit, mark_resource_vis
                              choose_resource, checkin, get_failed_resources, get_progress)
 from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
 from pipeline.agent import run_autonomous_agent, generate_plan_pdf
-from guardrails import check_safety
+from guardrails import check_safety, check_safety_async
 from llm.client import get_active_provider
 import pandas as pd
 
@@ -112,7 +112,7 @@ async def query(req: QueryRequest):
     t0 = time.time()
 
     # ── Guardrails: two-layer safety check (regex + NeMo Guardrails) ─────────
-    guard = check_safety(req.query, use_llm_fallback=True)
+    guard = await check_safety_async(req.query, use_llm_fallback=True)
     if not guard["allow"]:
         checked_by = guard.get("checked_by", "regex")
         return {
