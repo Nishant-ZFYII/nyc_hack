@@ -80,13 +80,20 @@ Works on Linux/macOS. Tested on Ubuntu 22.04 and the NVIDIA DGX Spark.
 # Python 3.10 or newer (3.12 recommended)
 python3 --version                         # must print 3.10+
 
-# Tesseract — fallback OCR (primary uses llama3.2-vision)
-sudo apt-get install -y tesseract-ocr     # Ubuntu/Debian
-# or: brew install tesseract              # macOS
+# Ubuntu/Debian — full system deps (OCR, C++ compiler for annoy, image libs, curl)
+sudo apt-get update
+sudo apt-get install -y \
+    tesseract-ocr \
+    build-essential g++ python3-dev \
+    libgl1 libglib2.0-0 \
+    curl
 
-# curl (for health checks below)
-which curl || sudo apt-get install -y curl
+# macOS — Xcode tools (provides clang++) + Tesseract via Homebrew
+xcode-select --install 2>/dev/null || true
+brew install tesseract
 ```
+
+> **Why `build-essential`?** `nemoguardrails` transitively requires `annoy`, which compiles native C++ code. Without `g++` the `pip install` step will fail with `command 'g++' failed: No such file or directory`.
 
 #### 2. Install Ollama + pull the two models
 
