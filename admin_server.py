@@ -381,7 +381,7 @@ async def admin_agent_nat(req: AdminAgentRequest):
             "tool_call_count": len(trace),
             "total_time_s": round(_time.time() - t0, 2),
             "via": "nat-react-agent",
-            "model": "nemotron-3-nano",
+            "model": "llama3",
             "framework": "NVIDIA NeMo Agent Toolkit",
             "mode": "admin",
         }

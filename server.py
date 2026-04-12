@@ -986,7 +986,7 @@ async def agent_nat(req: AgentPlanRequest):
             "tool_call_count": len(trace),
             "total_time_s": round(time.time() - t0, 2),
             "via": "nat-react-agent",
-            "model": "nemotron-3-nano",
+            "model": "llama3",
             "framework": "NVIDIA NeMo Agent Toolkit",
         }
     except Exception as e:
