@@ -917,6 +917,18 @@ async function showNextSteps(){
     html+=`</div>`;
   }
 
+  // Location check
+  html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;margin:16px 0;box-shadow:var(--shadow)">`;
+  html+=`<div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">&#128205; Your current location</div>`;
+  if(userLocation){
+    html+=`<div style="color:var(--green);font-size:13px;font-weight:500" id="nxLocText">Location set (${userLocation.lat.toFixed(3)}, ${userLocation.lon.toFixed(3)})</div>`;
+    html+=`<div style="display:flex;gap:6px;margin-top:6px"><input type="text" id="nxLocInput" class="big-input" placeholder="Change address..." style="font-size:12px;padding:8px 12px;display:none"><button class="btn-secondary" style="padding:6px 10px;font-size:10px" onclick="document.getElementById('nxLocInput').style.display='block';this.textContent='Set';this.onclick=function(){setNxLoc()}">Change</button></div>`;
+  } else {
+    html+=`<div style="font-size:12px;color:var(--orange);margin-bottom:6px">Set your location to find resources nearby</div>`;
+    html+=`<div style="display:flex;gap:6px"><input type="text" id="nxLocInput" class="big-input" placeholder="Your address..." style="font-size:12px;padding:8px 12px" onkeydown="if(event.key==='Enter')setNxLoc()"><button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="setNxLoc()">Set</button><button class="btn-secondary" style="padding:8px 12px;font-size:11px" onclick="gpsNx()">&#128205; GPS</button></div>`;
+  }
+  html+=`</div>`;
+
   // What's next
   if(open.length>0){
     html+=`<div style="font-size:15px;font-weight:600;margin:20px 0 12px">What would you like to tackle next?</div>`;
@@ -955,6 +967,30 @@ async function showNextSteps(){
   c.innerHTML=html;
 }
 
+async function setNxLoc(){
+  const input=document.getElementById('nxLocInput');
+  const addr=input.value.trim();if(!addr)return;
+  try{
+    const resp=await fetch(`/api/geocode?q=${encodeURIComponent(addr)}`);
+    const results=await resp.json();
+    if(results&&results.length>0){
+      userLocation={lat:parseFloat(results[0].lat),lon:parseFloat(results[0].lon)};
+      const text=document.getElementById('nxLocText');
+      if(text){text.textContent='Location set: '+results[0].display_name.split(',').slice(0,2).join(',');text.style.color='var(--green)'}
+      input.style.display='none';
+    }
+  }catch(e){}
+}
+
+function gpsNx(){
+  if(!navigator.geolocation)return;
+  navigator.geolocation.getCurrentPosition(pos=>{
+    userLocation={lat:pos.coords.latitude,lon:pos.coords.longitude};
+    const text=document.getElementById('nxLocText');
+    if(text){text.textContent='GPS location set';text.style.color='var(--green)'}
+  },()=>{},{enableHighAccuracy:true,timeout:10000});
+}
+
 function sendNextStepQuery(){
   const input=document.getElementById('nextStepInput');
   const q=input.value.trim();if(!q)return;
@@ -963,8 +999,13 @@ function sendNextStepQuery(){
 }
 
 async function searchForNeed(category){
+  if(!userLocation){
+    // Highlight the location input
+    const input=document.getElementById('nxLocInput');
+    if(input){input.style.borderColor='var(--orange)';input.focus();input.placeholder='Set your location first!'}
+    return;
+  }
   const label=category.replace(/_/g,' ');
-  // Build a natural query from the need
   const queries={
     housing:'I need shelter or housing assistance',
     shelter:'I need a shelter tonight',
