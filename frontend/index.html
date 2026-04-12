@@ -900,13 +900,22 @@ async function showNextSteps(){
     </div>`;
   }
 
-  html+=`<div class="choice-card" onclick="goTo('page-ask')" style="margin-top:8px">
-    <div class="choice-icon" style="font-size:24px">&#128172;</div>
-    <div><div class="choice-title">Tell me something else</div><div class="choice-desc">Describe a new situation or ask a question</div></div>
+  // Free text input
+  html+=`<div style="margin-top:16px;padding:16px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow)">
+    <div style="font-size:12px;color:var(--t2);margin-bottom:8px">Or tell me anything else:</div>
+    <textarea id="nextStepInput" class="big-input" rows="2" placeholder="e.g. My kid has diabetes and needs a doctor..." style="font-size:14px;padding:12px 16px;margin-bottom:8px" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendNextStepQuery()}"></textarea>
+    <button class="btn-primary" style="font-size:13px;padding:12px" onclick="sendNextStepQuery()">Find Help</button>
   </div>`;
 
   html+=`</div>`;
   c.innerHTML=html;
+}
+
+function sendNextStepQuery(){
+  const input=document.getElementById('nextStepInput');
+  const q=input.value.trim();if(!q)return;
+  document.getElementById('queryInput').value=q;
+  sendQuery();
 }
 
 async function searchForNeed(category){
