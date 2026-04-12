@@ -95,9 +95,13 @@ def check_safety(user_input: str, use_llm_fallback: bool = True) -> dict:
                 # If NeMo blocked it, response contains a refusal / bot redirect
                 content_lower = content.lower()
                 is_block = any(phrase in content_lower for phrase in [
-                    "i can't help", "i cannot help", "i can't answer",
-                    "i'm not able", "i cannot provide", "off-topic",
-                    "not related to", "cannot answer", "unable to",
+                    "i can't", "i cannot", "i'm not able", "i am not able",
+                    "cannot help", "can't help", "cannot answer", "can't answer",
+                    "cannot provide", "can't provide", "unable to", "not able to",
+                    "not related to", "off-topic", "off topic",
+                    "outside my", "beyond my", "not my job", "not what i",
+                    "i apologize", "i'm sorry but", "i am sorry but",
+                    "my purpose is", "my role is",
                 ])
                 if is_block:
                     return {
