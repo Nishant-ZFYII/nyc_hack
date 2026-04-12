@@ -871,6 +871,53 @@ async function loadProgress(){
   }catch(e){return null}
 }
 
+async function refreshReturnFlow(){
+  const progress=await loadProgress();
+  if(!progress)return;
+  const resolved=progress.needs?.filter(n=>n.status==='resolved')||[];
+  const open=progress.needs?.filter(n=>n.status==='open')||[];
+  const inProgress=progress.needs?.find(n=>n.status==='in_progress');
+
+  // Update progress bar in place
+  const progContainer=document.querySelector('#nextStepsContent [style*="margin-bottom:16px"]');
+  // Simpler: just rebuild
+
+  // If all done, show completion screen
+  if(open.length===0&&!inProgress){
+    const c=document.getElementById('nextStepsContent');
+    let html=`<div style="margin-top:20px;text-align:center;padding:30px 20px">`;
+    html+=`<div style="font-size:56px;margin-bottom:16px">&#127881;</div>`;
+    html+=`<div style="font-family:var(--display);font-size:28px;font-weight:300;margin-bottom:12px">All set, ${currentUserName}!</div>`;
+    html+=`<div style="font-size:15px;color:var(--t2);line-height:1.7;margin-bottom:20px">You've addressed all <b>${resolved.length}</b> of your needs. Here's what you accomplished:</div>`;
+    html+=`<div style="background:var(--bg2);border:1px solid var(--green-d);border-radius:12px;padding:18px;margin:0 auto 24px;max-width:400px;text-align:left;box-shadow:var(--shadow)">`;
+    for(const n of resolved){
+      html+=`<div style="display:flex;align-items:center;gap:10px;padding:6px 0">`;
+      html+=`<span style="font-size:18px">&#9989;</span>`;
+      html+=`<div><div style="font-weight:600;font-size:14px">${(n.category||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</div>`;
+      html+=`<div style="font-size:12px;color:var(--t3)">${n.chosen_resource||''}</div></div>`;
+      html+=`</div>`;
+    }
+    html+=`</div>`;
+    html+=`<div style="font-size:14px;color:var(--t2);margin-bottom:20px">What would you like to do?</div>`;
+    html+=`<div style="display:flex;flex-direction:column;gap:10px;max-width:400px;margin:0 auto">`;
+    html+=`<button class="btn-primary" style="padding:14px 24px;font-size:14px" onclick="document.getElementById('queryInput').value='';goTo('page-ask')">&#128172; Tell me something new</button>`;
+    html+=`<button class="btn-secondary" style="padding:14px 24px;font-size:14px" onclick="closeCase()">&#9989; Close my case &mdash; I'm all done</button>`;
+    html+=`</div>`;
+    html+=`<div style="margin-top:30px;font-size:12px;color:var(--t3)">Your case ID <b style="font-family:var(--mono);color:var(--green)">${currentCaseId}</b> stays saved. Come back anytime.</div>`;
+    html+=`</div>`;
+    c.innerHTML=html;
+    return;
+  }
+
+  // Otherwise rebuild the flow
+  buildReturnFlow();
+}
+
+function closeCase(){
+  currentCaseId=null;currentUserName='';userLocation=null;userLocationLabel='';
+  goTo('page-welcome');
+}
+
 async function buildReturnFlow(){
   const c=document.getElementById('nextStepsContent');
   c.innerHTML='<div style="text-align:center;padding:40px"><div class="spinner" style="margin:0 auto"></div></div>';
@@ -991,12 +1038,9 @@ async function handleCheckin(arrived,resourceName){
     const resp=await fetch('/api/case/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,arrived:true,resource_name:resourceName,feedback:'',location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null})});
     const data=await resp.json();
     card.innerHTML=`<div style="text-align:center;padding:12px"><div style="font-size:28px;margin-bottom:8px">&#127881;</div><div style="font-weight:600;font-size:16px;color:var(--green);margin-bottom:4px">Great, glad you made it!</div><div style="font-size:13px;color:var(--t2)">${data.message||''}</div></div>`;
-    // Load next steps in place below
+    // Reload everything with fresh progress
     setTimeout(async()=>{
-      const prog=await loadProgress();
-      const open=prog?.needs?.filter(n=>n.status==='open')||[];
-      const cont=document.getElementById('returnFlowContinuation');
-      if(cont)cont.innerHTML=buildNextStepsHtml(open);
+      await refreshReturnFlow();
     },600);
   }catch(e){card.innerHTML='<div style="color:var(--red)">Error checking in</div>'}
 }
@@ -1022,10 +1066,7 @@ async function doReturnCheckinNo(resourceName,feedback){
     const data=await resp.json();
     card.innerHTML=`<div style="padding:12px"><div style="font-size:14px;color:var(--orange);margin-bottom:4px">Sorry that didn't work out.</div><div style="font-size:13px;color:var(--t2)">${data.message||'Let me find alternatives.'}</div></div>`;
     setTimeout(async()=>{
-      const prog=await loadProgress();
-      const open=prog?.needs?.filter(n=>n.status==='open')||[];
-      const cont=document.getElementById('returnFlowContinuation');
-      if(cont)cont.innerHTML=buildNextStepsHtml(open);
+      await refreshReturnFlow();
     },600);
   }catch(e){card.innerHTML='<div style="color:var(--red)">Error</div>'}
 }
