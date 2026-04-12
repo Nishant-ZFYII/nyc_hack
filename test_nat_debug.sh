@@ -10,3 +10,7 @@ curl -sS -X POST http://localhost:9000/api/agent/nat -H "Content-Type: applicati
 echo ""
 echo "=== 3. Admin nat agent (city stats) ==="
 curl -sS -X POST http://localhost:9001/api/admin/agent/nat -H "Content-Type: application/json" -d '{"query":"Give me city stats"}' | python3 -m json.tool
+
+echo ""
+echo "=== 4. Middleware trace lines from admin.log ==="
+grep "\[trace\]" /tmp/admin.log || echo "(no [trace] lines yet)"
