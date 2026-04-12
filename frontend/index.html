@@ -350,9 +350,23 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
     <button class="topbar-back" onclick="goTo('page-ask')">&#8592; Back</button>
     <span class="topbar-title">Your Full Plan</span>
     <button class="topbar-back" onclick="downloadPlanPDF()" style="margin-left:auto">&#128196; Save as PDF</button>
+    <button class="topbar-back" onclick="togglePlanMap()" id="planMapToggleBtn" style="margin-left:8px">&#128506; Map</button>
   </div>
-  <div class="page-scroll">
-    <div class="centered-wide" id="agentPlanContent"></div>
+  <div class="results-layout">
+    <div class="results-main" id="planMain">
+      <div class="page-scroll">
+        <div class="centered-wide" id="agentPlanContent"></div>
+      </div>
+    </div>
+    <div class="results-map" id="planMapPanel">
+      <div id="planMapEl" style="width:100%;height:100%"></div>
+      <div class="map-overlay map-legend">
+        <div class="map-legend-title">Plan Resources</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--red)"></span> Tonight</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--orange)"></span> This Week</div>
+        <div class="map-legend-item"><span class="map-legend-dot" style="background:var(--blue)"></span> Next 2 Weeks</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1523,6 +1537,7 @@ async function runAgentPlan(){
     const data=await resp.json();
     lastPlanData=data;
     renderAgentPlan(data);
+    if(planMapOpen)setTimeout(()=>updatePlanMapLayers(),200);
   }catch(err){
     c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error: ${err.message}</div>`;
   }
@@ -1672,6 +1687,57 @@ function renderPlanStep(step){
 
   html+=`</div>`;
   return html;
+}
+
+let planMap=null, planDeck=null, planMapOpen=false;
+
+function togglePlanMap(){
+  const panel=document.getElementById('planMapPanel');
+  planMapOpen=!planMapOpen;
+  if(planMapOpen){
+    panel.classList.add('open');
+    document.getElementById('planMapToggleBtn').innerHTML='&#10005; Close map';
+    if(!planMap)initPlanMap();
+    setTimeout(()=>{planMap.resize();updatePlanMapLayers()},350);
+  } else {
+    panel.classList.remove('open');
+    document.getElementById('planMapToggleBtn').innerHTML='&#128506; Map';
+  }
+}
+
+function initPlanMap(){
+  planMap=new maplibregl.Map({container:'planMapEl',style:'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',center:NYC,zoom:11,pitch:45});
+  planMap.addControl(new maplibregl.NavigationControl(),'top-left');
+  planMap.on('load',()=>planMap.resize());
+}
+
+function updatePlanMapLayers(){
+  if(!planMap||!lastPlanData)return;
+  const TF_COLORS={TONIGHT:[239,83,80],THIS_WEEK:[232,132,58],NEXT_2_WEEKS:[46,125,186]};
+  const markers=[];
+  for(const step of(lastPlanData.steps||[])){
+    const tfColor=TF_COLORS[step.timeframe]||[118,185,0];
+    const top=step.top_resource;
+    if(top&&top.latitude&&top.longitude){
+      markers.push({lat:top.latitude,lon:top.longitude,name:top.name,timeframe:step.timeframe||'',category:step.category,color:tfColor,primary:true});
+    }
+    for(const alt of(step.alternatives||[])){
+      if(alt.latitude&&alt.longitude){
+        markers.push({lat:alt.latitude,lon:alt.longitude,name:alt.name,timeframe:step.timeframe||'',category:step.category,color:tfColor,primary:false});
+      }
+    }
+  }
+  const layers=[
+    new deck.ScatterplotLayer({id:'plan-alts',data:markers.filter(m=>!m.primary),getPosition:d=>[d.lon,d.lat],getRadius:60,getFillColor:d=>[...d.color,150],radiusMinPixels:6,radiusMaxPixels:14,pickable:true,stroked:true,getLineColor:[255,255,255,200],lineWidthMinPixels:1,onHover:({object})=>{document.getElementById('planMapEl').title=object?`${object.name} (alt)`:''}}),
+    new deck.ScatterplotLayer({id:'plan-primary',data:markers.filter(m=>m.primary),getPosition:d=>[d.lon,d.lat],getRadius:120,getFillColor:d=>[...d.color,230],radiusMinPixels:10,radiusMaxPixels:22,pickable:true,stroked:true,getLineColor:[255,255,255,240],lineWidthMinPixels:3,onHover:({object})=>{document.getElementById('planMapEl').title=object?`${object.name} (${(object.timeframe||'').replace(/_/g,' ')})`:''}}),
+  ];
+  if(planDeck)planDeck.setProps({layers}); else {planDeck=new deck.MapboxOverlay({layers});planMap.addControl(planDeck)}
+  // Fit bounds to primary markers
+  const pts=markers.filter(m=>m.primary);
+  if(pts.length>0){
+    const lats=pts.map(m=>m.lat),lons=pts.map(m=>m.lon);
+    planMap.fitBounds([[Math.min(...lons)-0.01,Math.min(...lats)-0.01],[Math.max(...lons)+0.01,Math.max(...lats)+0.01]],{padding:60,duration:1000});
+  }
 }
 
 async function downloadPlanPDF(){
