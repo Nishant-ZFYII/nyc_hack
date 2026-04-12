@@ -29,6 +29,7 @@ from pipeline.cases import (
     update_destination_state,
     update_need_status,
     save_admin_notes,
+    get_tickets,
 )
 from pipeline.briefing import generate_briefing, _estimate_urgency
 from pipeline.executor import load_state
@@ -340,6 +341,28 @@ async def ocr_id(id_image: UploadFile = File(...)):
     finally:
         os.unlink(tmp.name)
     return fields
+
+
+# ── Tickets overview ───────────────────────────────────────
+
+@app.get("/api/admin/tickets")
+async def admin_tickets():
+    """Return all open tickets across all cases for dashboard overview."""
+    out = []
+    for c_summary in list_cases():
+        case = load_case(c_summary["case_id"])
+        if not case:
+            continue
+        for t in case.get("tickets", []):
+            if t.get("status") == "open":
+                out.append({
+                    "case_id": case.get("case_id"),
+                    "client_name": case.get("name", ""),
+                    **t,
+                })
+    # Most recent first
+    out.sort(key=lambda x: x.get("raised_at", ""), reverse=True)
+    return {"open_count": len(out), "tickets": out}
 
 
 # ── nat (NeMo Agent Toolkit) Admin Agent ───────────────────

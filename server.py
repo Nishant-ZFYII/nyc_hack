@@ -28,7 +28,8 @@ from pipeline.clarify import get_clarifying_question, merge_query
 from pipeline.feedback import parse_feedback
 from pipeline.cases import (load_case, create_case, add_visit, mark_resource_visited,
                              resolve_need, get_case_summary, list_cases,
-                             choose_resource, checkin, get_failed_resources, get_progress)
+                             choose_resource, checkin, get_failed_resources, get_progress,
+                             raise_ticket, get_tickets, has_open_ticket)
 from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
 from pipeline.agent import run_autonomous_agent, generate_plan_pdf
 from guardrails import check_safety, check_safety_async
@@ -556,6 +557,34 @@ async def case_progress(case_id: str):
 async def cases_list():
     """List all cases (admin view)."""
     return list_cases()
+
+
+# ── Tickets (unlock sponsored ride etc.) ─────────────────────────────────────
+
+class RaiseTicketRequest(BaseModel):
+    case_id: str
+    ticket_type: str = "sponsored_ride"
+    reason: str = ""
+
+
+@app.post("/api/ticket/raise")
+async def ticket_raise(req: RaiseTicketRequest):
+    """Raise a support ticket on a case. Used to unlock sponsored ride."""
+    result = raise_ticket(req.case_id, req.ticket_type, req.reason)
+    if result.get("error"):
+        raise HTTPException(404, result["error"])
+    return result
+
+
+@app.get("/api/ticket/status/{case_id}")
+async def ticket_status(case_id: str):
+    """Return all tickets for a case and whether sponsored ride is unlocked."""
+    tickets = get_tickets(case_id)
+    return {
+        "case_id": case_id,
+        "tickets": tickets,
+        "sponsored_ride_unlocked": has_open_ticket(case_id, "sponsored_ride"),
+    }
 
 
 # ── Eligibility / Rights / Stories ────────────────────────────────────────────

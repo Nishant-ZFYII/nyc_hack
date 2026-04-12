@@ -1229,6 +1229,52 @@ function renderOpenClawResult(data,elapsed){
   document.getElementById('openclawTrace').textContent=`${(duration/1000).toFixed(1)}s · ${provider}`;
 }
 
+// ── Tickets (unlock sponsored ride) ────────────────────────
+let _ticketStatus={sponsored_ride_unlocked:false,checked:false};
+
+async function refreshTicketStatus(){
+  if(!currentCaseId){_ticketStatus={sponsored_ride_unlocked:false,checked:true};return}
+  try{
+    const r=await fetch('/api/ticket/status/'+encodeURIComponent(currentCaseId));
+    const d=await r.json();
+    _ticketStatus={sponsored_ride_unlocked:!!d.sponsored_ride_unlocked,checked:true};
+    // Update any open button
+    const btn=document.getElementById('raiseTicketBtn');
+    if(btn&&_ticketStatus.sponsored_ride_unlocked){
+      btn.disabled=true;
+      btn.style.background='linear-gradient(135deg,#1b7a00,#0f4a00)';
+      btn.innerHTML='&#9989; Ticket Raised — Sponsored Ride Unlocked';
+    }
+  }catch(e){_ticketStatus.checked=true;}
+}
+
+function sponsoredRideLocked(){
+  const c=_activeContentContainer();
+  document.querySelectorAll('.sponsored-locked-msg').forEach(el=>el.remove());
+  c.insertAdjacentHTML('beforeend',`<div class="answer-box fade-in sponsored-locked-msg" style="border-color:var(--orange);background:rgba(255,152,0,0.05);margin-top:10px">
+    <div style="font-weight:600;color:var(--orange)">&#128274; Sponsored Ride locked</div>
+    <div style="font-size:13px;color:var(--t2);margin-top:4px">Please raise a ticket with your caseworker first — scroll up and click <b>Raise a Ticket for Sponsored Ride</b>.</div>
+  </div>`);
+}
+
+async function raiseTicket(){
+  if(!currentCaseId){alert('No active case. Please log in or start a case first.');return;}
+  const btn=document.getElementById('raiseTicketBtn');
+  if(btn){btn.disabled=true;btn.innerHTML='&#8987; Raising ticket...';}
+  try{
+    const r=await fetch('/api/ticket/raise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,ticket_type:'sponsored_ride',reason:'Transportation assistance needed'})});
+    const d=await r.json();
+    if(d.error){throw new Error(d.error);}
+    _ticketStatus.sponsored_ride_unlocked=true;
+    if(btn){btn.disabled=true;btn.style.background='linear-gradient(135deg,#1b7a00,#0f4a00)';btn.innerHTML='&#9989; Ticket Raised — Sponsored Ride Unlocked';}
+    // Quick inline confirmation
+    _activeContentContainer().insertAdjacentHTML('beforeend',`<div class="answer-box fade-in" style="border-color:var(--green-d);background:rgba(118,185,0,0.04);margin-top:12px"><div style="font-weight:600;color:var(--green)">&#9989; Ticket raised</div><div style="font-size:13px;color:var(--t2);margin-top:4px">Your sponsored ride is now unlocked. Click Directions on any resource and choose Sponsored Ride.</div></div>`);
+  }catch(err){
+    if(btn){btn.disabled=false;btn.innerHTML='&#127915; Raise a Ticket for Sponsored Ride';}
+    alert('Error raising ticket: '+err.message);
+  }
+}
+
 // ── NeMo Agent Toolkit (nat) — Full Plan View ──────────────
 async function runNatAgent(){
   const q=document.getElementById('queryInput').value.trim();
@@ -1292,6 +1338,25 @@ function renderNatFullPlan(data){
       <div style="font-family:var(--display);font-size:32px;font-weight:600;color:var(--green);margin-bottom:4px">$${data.total_monthly_benefits.toLocaleString()}/month</div>
       <div style="font-size:13px;color:var(--t2)">${(data.qualifying_programs||[]).join(' &middot; ')||'Benefits'}</div>
     </div>`;
+  }
+
+  // Ticket / Sponsored ride unlock
+  if(currentCaseId){
+    const tId='ticket-block-'+Date.now();
+    html+=`<div id="${tId}" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span style="font-size:22px">&#127915;</span>
+        <div style="font-weight:600;font-size:14px">Need help getting there?</div>
+      </div>
+      <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:12px">
+        Raise a ticket with your caseworker to unlock a <b>sponsored ride</b> to your chosen resource.
+      </div>
+      <button class="btn-primary" id="raiseTicketBtn" style="width:100%;background:linear-gradient(135deg,#ff9800,#e65100);color:#fff" onclick="raiseTicket()">
+        &#127915; Raise a Ticket for Sponsored Ride
+      </button>
+    </div>`;
+    // Kick off status check (async) — if already raised, swap button to "Raised"
+    setTimeout(()=>refreshTicketStatus(),100);
   }
 
   // Action plan
@@ -2015,7 +2080,9 @@ function _activeContentContainer(){
   return document.getElementById('resultsContent');
 }
 
-function getDirections(toLat,toLon,name){
+async function getDirections(toLat,toLon,name){
+  // Refresh ticket status before showing the budget picker
+  if(currentCaseId && !_ticketStatus.checked) await refreshTicketStatus();
   if(!userLocation){
     // Show location prompt inline
     document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt').forEach(el=>el.remove());
@@ -2030,7 +2097,11 @@ function getDirections(toLat,toLon,name){
   document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt').forEach(el=>el.remove());
   if(resultMap){try{if(resultMap.getSource('route'))resultMap.getSource('route').setData({type:'Feature',geometry:{type:'LineString',coordinates:[]}})}catch(e){}}
 
-  // Show budget picker inline
+  // Show budget picker inline. Sponsored ride is gated behind a raised ticket.
+  const sponsoredUnlocked=_ticketStatus.sponsored_ride_unlocked;
+  const sponsoredBtn=sponsoredUnlocked
+    ? `<button class="btn-secondary" onclick="fetchDirections('sponsored')" style="flex:1;text-align:center;border-color:var(--green-d);background:rgba(118,185,0,0.04)"><div style="font-size:16px">&#128663;</div>Sponsored Ride</button>`
+    : `<button class="btn-secondary" onclick="sponsoredRideLocked()" style="flex:1;text-align:center;opacity:0.55;cursor:not-allowed" title="Raise a ticket to unlock sponsored ride"><div style="font-size:16px">&#128274;</div>Sponsored Ride</button>`;
   const c=_activeContentContainer();
   c.insertAdjacentHTML('beforeend',`
   <div class="clarify-box fade-in directions-picker" id="budgetPicker">
@@ -2039,7 +2110,7 @@ function getDirections(toLat,toLon,name){
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn-secondary" onclick="fetchDirections(0)" style="flex:1;text-align:center"><div style="font-size:16px">&#128694;</div>$0 / Walk</button>
       <button class="btn-secondary" onclick="fetchDirections(2.9)" style="flex:1;text-align:center"><div style="font-size:16px">&#128647;</div>$2.90 / Subway</button>
-      <button class="btn-secondary" onclick="fetchDirections('sponsored')" style="flex:1;text-align:center;border-color:var(--green-d);background:rgba(118,185,0,0.04)"><div style="font-size:16px">&#128663;</div>Sponsored Ride</button>
+      ${sponsoredBtn}
       <button class="btn-secondary" onclick="fetchDirections(null)" style="flex:1;text-align:center"><div style="font-size:16px">&#128269;</div>Show all</button>
     </div>
   </div>`);
