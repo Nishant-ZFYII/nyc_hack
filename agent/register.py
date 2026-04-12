@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 import sys
 import time
+import functools
+import inspect
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -41,7 +43,12 @@ def _record_call(tool_name: str, inputs: dict, output: str, duration_ms: float):
 
 
 def _traced(name: str, fn):
-    """Wrap an async tool fn to record (name, inputs, output, duration) in the trace."""
+    """Wrap an async tool fn to record (name, inputs, output, duration) in the trace.
+
+    Preserves the wrapped function's signature so nat's pydantic schema
+    introspection sees the real parameters (not generic *args/**kwargs).
+    """
+    @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
         t0 = time.time()
         try:
@@ -53,7 +60,10 @@ def _traced(name: str, fn):
             _record_call(name, kwargs or {"_args": list(args)}, f"ERROR: {e}",
                          (time.time() - t0) * 1000)
             raise
-    wrapper.__doc__ = fn.__doc__
+    # Copy signature explicitly — functools.wraps alone doesn't do this reliably
+    # for pydantic/langchain introspection.
+    wrapper.__signature__ = inspect.signature(fn)
+    wrapper.__annotations__ = dict(getattr(fn, "__annotations__", {}))
     return wrapper
 
 from pydantic import Field
