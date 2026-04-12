@@ -347,10 +347,17 @@ def wipe_existing():
     print(f"Deleted {count} existing case files")
 
 
+def _safe_filename(case_id: str) -> str:
+    """Must match pipeline.cases._case_path() sanitization — lowercased."""
+    return "".join(c for c in case_id.lower().strip()
+                   if c.isalnum() or c in "-_").strip("_") + ".json"
+
+
 def seed_demo():
     CASES_DIR.mkdir(parents=True, exist_ok=True)
     for case in DEMO_CASES:
-        path = CASES_DIR / f"{case['case_id']}.json"
+        # IMPORTANT: filename must match _case_path() sanitization (lowercase)
+        path = CASES_DIR / _safe_filename(case["case_id"])
         with open(path, "w") as f:
             json.dump(case, f, indent=2)
     print(f"Seeded {len(DEMO_CASES)} demo cases into {CASES_DIR}:")
