@@ -1371,20 +1371,63 @@ async function raiseTicket(){
 }
 
 // ── NeMo Agent Toolkit (nat) — Full Plan View ──────────────
+// Rotating loading stories
+const LOADING_STORIES=[
+  '"I thought I had to be homeless to get help. Turns out I qualified for $400/month in SNAP just from my income." — <b>Maria, Brooklyn</b>',
+  '"I didn\'t know NYC guarantees shelter. I walked into an intake center at 11pm and had a bed by midnight." — <b>James, Bronx</b>',
+  '"My kids enrolled in school without a permanent address. McKinney-Vento covers families in shelter." — <b>Rosa, Queens</b>',
+  '"Lost my job, thought I was alone. The caseworker found me Medicaid, SNAP, and a free MetroCard program." — <b>David, Manhattan</b>',
+  '"I was worried about ID. They let me apply with a \'Request for Proof\' form and helped me get documents later." — <b>Amara, Brooklyn</b>',
+  '"I thought undocumented meant no help. Emergency shelter, food pantries, and health clinics are open to everyone." — <b>Carlos, Queens</b>',
+  '"As a senior, I got SCRIE rent assistance plus Meals on Wheels. $300/month back in my pocket." — <b>Helen, Bronx</b>',
+  '"Fair Fares gave me 50% off MetroCards. It doesn\'t sound like much until you count every trip." — <b>Tina, Brooklyn</b>',
+  '"Free mental health clinics exist. No insurance, no income requirement — just walk in." — <b>Marcus, Staten Island</b>',
+  '"HRA helped me fill out SNAP, Medicaid, and cash assistance in one visit. 30 days later, I had all three." — <b>Priya, Queens</b>',
+];
+let _loadingStoryTimer=null;
+
+function startLoadingStories(){
+  let idx=Math.floor(Math.random()*LOADING_STORIES.length);
+  const el=document.getElementById('loadingStoryText');
+  if(!el)return;
+  el.innerHTML=LOADING_STORIES[idx];
+  el.parentElement.style.opacity='1';
+  if(_loadingStoryTimer)clearInterval(_loadingStoryTimer);
+  _loadingStoryTimer=setInterval(()=>{
+    const box=document.getElementById('loadingStoryText');
+    if(!box){clearInterval(_loadingStoryTimer);return}
+    box.parentElement.style.opacity='0';
+    setTimeout(()=>{
+      idx=(idx+1)%LOADING_STORIES.length;
+      if(document.getElementById('loadingStoryText')){
+        document.getElementById('loadingStoryText').innerHTML=LOADING_STORIES[idx];
+        document.getElementById('loadingStoryText').parentElement.style.opacity='1';
+      }
+    },400);
+  },4500);
+}
+
+function stopLoadingStories(){
+  if(_loadingStoryTimer){clearInterval(_loadingStoryTimer);_loadingStoryTimer=null}
+}
+
 async function runNatAgent(){
   const q=document.getElementById('queryInput').value.trim();
   if(!q){document.getElementById('queryInput').focus();return}
   lastQuery=q;
   goTo('page-openclaw');
   const c=document.getElementById('openclawContent');
-  c.innerHTML=`<div style="text-align:center;padding:60px 20px">
-    <div style="font-size:56px;margin-bottom:18px;animation:pulse 2s infinite">&#129302;</div>
-    <div style="font-family:var(--display);font-size:24px;font-weight:300;margin-bottom:8px">NeMo Agent is reasoning...</div>
-    <div style="font-size:13px;color:var(--t2);margin-bottom:6px">ReAct loop on <b>llama3</b> via <b>NVIDIA NeMo Agent Toolkit</b></div>
-    <div style="font-size:11px;color:var(--t3);font-family:var(--mono);margin-bottom:20px">dispatching real tools: find_resources · calculate_eligibility · get_rights · get_directions</div>
-    <div class="spinner" style="margin:0 auto"></div>
-    <div style="font-size:11px;color:var(--t3);margin-top:12px">Building comprehensive action plan...</div>
+  c.innerHTML=`<div style="text-align:center;padding:60px 20px;max-width:560px;margin:0 auto">
+    <div style="font-size:56px;margin-bottom:18px;animation:pulse 2s infinite">&#127775;</div>
+    <div style="font-family:var(--display);font-size:26px;font-weight:300;margin-bottom:10px">Finding what's possible for you...</div>
+    <div style="font-size:14px;color:var(--t2);margin-bottom:32px;line-height:1.6">We're checking every program you might qualify for, finding nearby resources, and building your action plan.</div>
+    <div class="spinner" style="margin:0 auto 24px"></div>
+    <div id="loadingStory" style="min-height:80px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:var(--shadow);transition:opacity 0.4s ease">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">&#128172; Story while you wait</div>
+      <div id="loadingStoryText" style="font-size:13.5px;color:var(--t1);line-height:1.7;font-style:italic"></div>
+    </div>
   </div>`;
+  startLoadingStories();
   const payload={query:q,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null,case_id:currentCaseId};
   try{
     // Run both in parallel: nat for the narrative, /api/agent/plan for the rich structured view
@@ -1397,9 +1440,11 @@ async function runNatAgent(){
     // Merge: nat answer becomes the narrative summary; plan provides the rich structured body
     const merged={...planData, nat_answer: natData.answer||'', nat_framework:true};
     lastPlanData=merged;
+    stopLoadingStories();
     renderNatFullPlan(merged);
     if(natMapOpen)setTimeout(()=>updateNatMapLayers(),200);
   }catch(err){
+    stopLoadingStories();
     c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error: ${err.message}</div>`;
   }
 }
