@@ -27,15 +27,120 @@ from typing import Any
 import pytesseract
 from PIL import Image
 
+# Local Ollama multimodal extraction (preferred)
+try:
+    import base64 as _b64
+    import requests as _requests
+    _VISION_AVAILABLE = True
+except ImportError:
+    _VISION_AVAILABLE = False
+
+OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
+VISION_MODEL = "llama3.2-vision:11b"
+VISION_PROMPT = """You are an OCR assistant. Read this US driver's license / state ID image carefully.
+
+Extract the following fields and return ONLY a JSON object (no prose, no markdown):
+
+{
+  "first_name": "",
+  "last_name": "",
+  "full_name": "",
+  "dob": "MM/DD/YYYY",
+  "address": "",
+  "city": "",
+  "state": "",
+  "zip": "",
+  "sex": "M or F",
+  "id_number": "",
+  "expiration": "MM/DD/YYYY",
+  "eye_color": "",
+  "hair_color": "",
+  "height": "",
+  "weight": ""
+}
+
+If a field is not visible, use "". Do not invent data. Return ONLY the JSON."""
+
+
+def _extract_id_fields_vision(image_path: str | Path) -> dict | None:
+    """Use local llama3.2-vision via Ollama to extract ID fields.
+
+    Returns None on any failure so caller can fall back to Tesseract.
+    """
+    if not _VISION_AVAILABLE:
+        return None
+    try:
+        with open(image_path, "rb") as f:
+            b64 = _b64.b64encode(f.read()).decode("utf-8")
+        resp = _requests.post(
+            OLLAMA_CHAT_URL,
+            json={
+                "model": VISION_MODEL,
+                "messages": [
+                    {"role": "user", "content": VISION_PROMPT, "images": [b64]},
+                ],
+                "format": "json",
+                "stream": False,
+                "options": {"temperature": 0.1},
+            },
+            timeout=180,
+        )
+        resp.raise_for_status()
+        content = resp.json().get("message", {}).get("content", "")
+        parsed = json.loads(content)
+        # Normalize to match Tesseract parser's output shape: uppercase, trim.
+        fields = {
+            "raw_ocr": content,
+            "first_name": (parsed.get("first_name") or "").strip().upper(),
+            "last_name": (parsed.get("last_name") or "").strip().upper(),
+            "full_name": (parsed.get("full_name") or "").strip().upper(),
+            "dob": (parsed.get("dob") or "").strip(),
+            "address": (parsed.get("address") or "").strip().upper(),
+            "city": (parsed.get("city") or "").strip().upper(),
+            "state": (parsed.get("state") or "").strip().upper(),
+            "zip": (parsed.get("zip") or "").strip(),
+            "id_number": (parsed.get("id_number") or "").strip(),
+            "expiration": (parsed.get("expiration") or "").strip(),
+            "sex": (parsed.get("sex") or "").strip().upper()[:1],
+            "eye_color": (parsed.get("eye_color") or "").strip().upper(),
+            "hair_color": (parsed.get("hair_color") or "").strip().upper(),
+            "height": (parsed.get("height") or "").strip(),
+            "weight": (parsed.get("weight") or "").strip(),
+            "_extraction_method": "vision-llama3.2",
+        }
+        # Strip the full address down to just the street part if it contains city/state
+        # (e.g. "0123 ANYSTREET, ANYTOWN, CA 012345" → "0123 ANYSTREET")
+        addr = fields["address"]
+        if "," in addr:
+            fields["address"] = addr.split(",", 1)[0].strip()
+        # Construct full_name if missing
+        if not fields["full_name"] and (fields["first_name"] or fields["last_name"]):
+            fields["full_name"] = f"{fields['first_name']} {fields['last_name']}".strip()
+        return fields
+    except Exception:
+        return None
+
 
 # ── ID field extraction ──────────────────────────────────────────────────────
 
 def extract_id_fields(image_path: str | Path) -> dict:
-    """Run OCR on an ID image and extract structured fields.
+    """Extract structured ID fields from an image.
 
-    Parser is tuned for standard US driver's license layout. Uses line-aware
-    parsing + strict patterns to avoid false matches like "LICENSE" → city.
+    Primary: local llama3.2-vision via Ollama (multimodal AI, far more
+    accurate than regex-OCR).
+    Fallback: Tesseract + regex parser (used if Ollama/vision is unreachable).
     """
+    # Try vision model first
+    vision_result = _extract_id_fields_vision(image_path)
+    if vision_result and vision_result.get("first_name"):
+        return vision_result
+
+    # Fall back to Tesseract + regex
+    return _extract_id_fields_tesseract(image_path)
+
+
+def _extract_id_fields_tesseract(image_path: str | Path) -> dict:
+    """Tesseract + regex fallback parser."""
     img = Image.open(image_path)
     raw_text = pytesseract.image_to_string(img)
     lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
