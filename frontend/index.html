@@ -1258,7 +1258,15 @@ function sponsoredRideLocked(){
 }
 
 async function raiseTicket(){
-  if(!currentCaseId){alert('No active case. Please log in or start a case first.');return;}
+  // Auto-create an anonymous case if none exists (demo-friendly)
+  if(!currentCaseId){
+    try{
+      const tempId='anon-'+Date.now();
+      const r=await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:tempId,name:'Anonymous'})});
+      if(r.ok){currentCaseId=tempId;}
+    }catch(e){/* fall through */}
+    if(!currentCaseId){alert('Could not create a case. Please log in first.');return;}
+  }
   const btn=document.getElementById('raiseTicketBtn');
   if(btn){btn.disabled=true;btn.innerHTML='&#8987; Raising ticket...';}
   try{
@@ -1340,24 +1348,20 @@ function renderNatFullPlan(data){
     </div>`;
   }
 
-  // Ticket / Sponsored ride unlock
-  if(currentCaseId){
-    const tId='ticket-block-'+Date.now();
-    html+=`<div id="${tId}" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <span style="font-size:22px">&#127915;</span>
-        <div style="font-weight:600;font-size:14px">Need help getting there?</div>
-      </div>
-      <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:12px">
-        Raise a ticket with your caseworker to unlock a <b>sponsored ride</b> to your chosen resource.
-      </div>
-      <button class="btn-primary" id="raiseTicketBtn" style="width:100%;background:linear-gradient(135deg,#ff9800,#e65100);color:#fff" onclick="raiseTicket()">
-        &#127915; Raise a Ticket for Sponsored Ride
-      </button>
-    </div>`;
-    // Kick off status check (async) — if already raised, swap button to "Raised"
-    setTimeout(()=>refreshTicketStatus(),100);
-  }
+  // Ticket / Sponsored ride unlock — always visible
+  html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:22px">&#127915;</span>
+      <div style="font-weight:600;font-size:14px">Need help getting there?</div>
+    </div>
+    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:12px">
+      Raise a ticket with your caseworker to unlock a <b>sponsored ride</b> to your chosen resource.
+    </div>
+    <button class="btn-primary" id="raiseTicketBtn" style="width:100%;background:linear-gradient(135deg,#ff9800,#e65100);color:#fff" onclick="raiseTicket()">
+      &#127915; Raise a Ticket for Sponsored Ride
+    </button>
+  </div>`;
+  setTimeout(()=>refreshTicketStatus(),100);
 
   // Action plan
   if(data.steps&&data.steps.length){
