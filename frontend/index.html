@@ -268,9 +268,15 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
       <!-- Query -->
       <div class="section-label fade-in-d1">What do you need?</div>
       <textarea id="queryInput" class="big-input fade-in-d2" rows="4" placeholder="e.g. I have 4 kids, income $28K, losing housing in Flatbush next week..."></textarea>
-      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap" class="fade-in-d2">
-        <button class="btn-primary" style="flex:1;min-width:140px" id="sendBtn" onclick="sendQuery()">Find Help</button>
-        <button class="btn-primary" style="flex:1;min-width:140px;background:linear-gradient(135deg,#1b7a00,#0f4a00);color:#fff" onclick="runNatAgent()" title="NVIDIA NeMo Agent Toolkit ReAct agent dispatching real tools">&#129302; NeMo ReAct</button>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px" class="fade-in-d2">
+        <button class="btn-primary" style="padding:14px 20px;text-align:left;display:flex;flex-direction:column;gap:3px;align-items:flex-start" id="sendBtn" onclick="sendQuery()">
+          <span style="font-size:15px">&#128269; Find Help</span>
+          <span style="font-size:11px;opacity:0.85;font-weight:500;font-family:var(--ui);text-transform:none;letter-spacing:0">Know what you need? Search for it directly.</span>
+        </button>
+        <button class="btn-primary" style="padding:14px 20px;text-align:left;display:flex;flex-direction:column;gap:3px;align-items:flex-start;background:linear-gradient(135deg,#1b7a00,#0f4a00);color:#fff" onclick="runNatAgent()" title="AI figures out what you qualify for">
+          <span style="font-size:15px">&#127775; Not Sure Where to Start?</span>
+          <span style="font-size:11px;opacity:0.85;font-weight:500;font-family:var(--ui);text-transform:none;letter-spacing:0">Let our AI figure out what help exists for you.</span>
+        </button>
       </div>
 
       <hr class="divider">
