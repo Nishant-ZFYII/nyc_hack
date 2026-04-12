@@ -42,53 +42,6 @@ def _record_call(tool_name: str, inputs: dict, output: str, duration_ms: float):
     })
 
 
-# Middleware that captures tool invocations into _current_trace. Installed on
-# every function group below via group.configure_middleware([...]).
-if _MIDDLEWARE_AVAILABLE:
-    class _TraceMiddleware(Middleware):
-        """Records each tool call's (name, args, output, duration) in the trace."""
-
-        def __init__(self):
-            super().__init__(is_final=False)
-            self._start_times: dict = {}
-
-        @property
-        def enabled(self) -> bool:
-            return True
-
-        async def pre_invoke(self, context: InvocationContext):
-            # Stash start time keyed by the context's id
-            self._start_times[id(context)] = time.time()
-            return None
-
-        async def post_invoke(self, context: InvocationContext):
-            t0 = self._start_times.pop(id(context), time.time())
-            duration_ms = (time.time() - t0) * 1000
-            name = getattr(context.function_context, "name", "unknown")
-            # Strip group prefix (resource_tools__find_resources -> find_resources)
-            if "__" in name:
-                name = name.split("__", 1)[1]
-            # Inputs come in as kwargs dict (pydantic model dump) or args tuple
-            try:
-                inputs = dict(context.modified_kwargs) if context.modified_kwargs else {}
-                if not inputs and context.modified_args:
-                    inputs = {"_args": list(context.modified_args)}
-            except Exception:
-                inputs = {"_repr": repr(context.modified_kwargs)}
-            _record_call(name, inputs, str(context.output), duration_ms)
-            return None
-
-    def _install_trace(group: FunctionGroup):
-        """Attach the trace middleware to a function group."""
-        try:
-            group.configure_middleware([_TraceMiddleware()])
-        except Exception:
-            pass  # If nat API changes, silently skip — agent still works
-else:
-    def _install_trace(group):  # no-op fallback
-        return
-
-
 def _traced(name: str, fn):
     """Wrap an async tool fn to record (name, inputs, output, duration) in the trace.
 
@@ -126,6 +79,47 @@ try:
     _MIDDLEWARE_AVAILABLE = True
 except Exception:
     _MIDDLEWARE_AVAILABLE = False
+
+
+if _MIDDLEWARE_AVAILABLE:
+    class _TraceMiddleware(Middleware):
+        """Records each tool call's (name, args, output, duration) in the trace."""
+
+        def __init__(self):
+            super().__init__(is_final=False)
+            self._start_times: dict = {}
+
+        @property
+        def enabled(self) -> bool:
+            return True
+
+        async def pre_invoke(self, context: "InvocationContext"):
+            self._start_times[id(context)] = time.time()
+            return None
+
+        async def post_invoke(self, context: "InvocationContext"):
+            t0 = self._start_times.pop(id(context), time.time())
+            duration_ms = (time.time() - t0) * 1000
+            name = getattr(context.function_context, "name", "unknown")
+            if "__" in name:
+                name = name.split("__", 1)[1]
+            try:
+                inputs = dict(context.modified_kwargs) if context.modified_kwargs else {}
+                if not inputs and context.modified_args:
+                    inputs = {"_args": list(context.modified_args)}
+            except Exception:
+                inputs = {"_repr": repr(context.modified_kwargs)}
+            _record_call(name, inputs, str(context.output), duration_ms)
+            return None
+
+    def _install_trace(group: FunctionGroup):
+        try:
+            group.configure_middleware([_TraceMiddleware()])
+        except Exception:
+            pass
+else:
+    def _install_trace(group):
+        return
 
 # Add project root to path so pipeline imports work
 ROOT = Path(__file__).resolve().parent.parent
