@@ -73,41 +73,57 @@ def extract_id_fields(image_path: str | Path) -> dict:
             return ""
         return s.upper()
 
-    # DL/ID number — look for a 7-9 digit number on the DL; prefer after "DL"
-    m = re.search(r'\bDL\s*[:#]?\s*(\d{7,12})\b', raw_text, re.IGNORECASE)
-    if not m:
-        # Fallback: first standalone 7-9 digit number that isn't a DOB/EXP
+    # DL/ID number — tesseract commonly misreads "DL" as "pt", "DI", "D|"
+    # Accept common prefixes; the value is 7-12 digits
+    m = re.search(r'(?:\bDL\b|\bpt\b|\bDI\b|\bD\|)\s*[:#]?\s*(\d{7,12})\b', raw_text, re.IGNORECASE)
+    if m:
+        fields["id_number"] = m.group(1)
+    else:
         for candidate in re.findall(r'\b(\d{7,12})\b', raw_text):
             if len(candidate) in (7, 8, 9):
                 fields["id_number"] = candidate
                 break
-    else:
-        fields["id_number"] = m.group(1)
 
-    # DOB — MM/DD/YYYY after DOB label
-    m = re.search(r'\bDOB\s*[:]?\s*(\d{2}/\d{2}/\d{4})\b', raw_text, re.IGNORECASE)
+    # DOB — tesseract misreads "DOB" as "p08", "008", "DOP", "pos"
+    m = re.search(r'(?:\bDOB\b|\bp08\b|\b008\b|\bDOP\b|\bpos\b)\s*[:]?\s*(\d{2}/\d{2}/\d{4})\b', raw_text, re.IGNORECASE)
     if m:
         fields["dob"] = m.group(1)
 
-    # Expiration
-    m = re.search(r'\bEXP\s*[:]?\s*(\d{2}/\d{2}/\d{4})\b', raw_text, re.IGNORECASE)
+    # Expiration — "EXP" misread as "exe", "EXe", "£XP"
+    m = re.search(r'(?:\bEXP\b|\bexe\b|\b£XP\b)\s*[:]?\s*(\d{2}/\d{2}/\d{4})\b', raw_text, re.IGNORECASE)
     if m:
         fields["expiration"] = m.group(1)
 
-    # Last name — LN at line boundary + word(s) after, line-aware
-    # Try same-line first: "LN DOE" or "LN: DOE"
-    m = re.search(r'\bLN\b[\s:]+([A-Z][A-Z\-\' ]{1,40})', raw_text)
+    # Last name — "LN" is commonly misread as "in", "1n", "LN"
+    # The label + name may have NO space between them: "inDOE"
+    # Match: (ln|in|1n)[space or nothing][UPPERCASE WORD]
+    m = re.search(r'(?:\bLN\b|\bin\b|\b1n\b|(?<=\n)in|(?<=^)in)\s*([A-Z][A-Z\-\' ]{1,40})', raw_text)
     if m:
         candidate = _clean_token(m.group(1).split('\n')[0])
         if candidate:
             fields["last_name"] = candidate
+    else:
+        # Fallback: tight pattern "inWORD" (no space, common tesseract issue)
+        m = re.search(r'\b[il1]n([A-Z]{2,})\b', raw_text)
+        if m:
+            candidate = _clean_token(m.group(1))
+            if candidate:
+                fields["last_name"] = candidate
 
-    # First name — FN on same or next line
-    m = re.search(r'\bFN\b[\s:]+([A-Z][A-Z\-\' ]{1,30})', raw_text)
+    # First name — "FN" misread as "rn", "Fn", "FR", "FIN"
+    # Similar no-space issue: "rnJOHN"
+    m = re.search(r'(?:\bFN\b|\brn\b|\bFR\b|\bFIN\b)\s*([A-Z][A-Z\-\' ]{1,30})', raw_text)
     if m:
         candidate = _clean_token(m.group(1).split('\n')[0])
         if candidate and candidate != fields["last_name"]:
             fields["first_name"] = candidate
+    else:
+        # Fallback: tight "rnWORD" pattern
+        m = re.search(r'\brn([A-Z]{2,})\b', raw_text)
+        if m:
+            candidate = _clean_token(m.group(1))
+            if candidate and candidate != fields["last_name"]:
+                fields["first_name"] = candidate
 
     # Address — line starting with 2-5 digits + street words + common suffix
     # or a number line followed by words
@@ -126,9 +142,9 @@ def extract_id_fields(image_path: str | Path) -> dict:
                 fields["address"] = m2.group(1).strip().upper()
                 break
 
-    # City, State ZIP — MUST have comma OR state+zip pair preceded by a valid city word.
-    # Stricter: "CITY, ST 12345" or "CITY, ST 12345-6789"
-    m = re.search(r'([A-Z][A-Z \-]{2,30}),\s+([A-Z]{2})\s+(\d{5})(?:-?\d{4})?\b', raw_text)
+    # City, State ZIP — "CITY, ST 12345" OR "CITY, ST012345" (no space, common on DLs)
+    # Accept 5-9 digit zip to handle OCR smushing state+zip together
+    m = re.search(r'([A-Z][A-Z \-]{2,30}),\s+([A-Z]{2})\s*(\d{5,9})', raw_text)
     if m:
         city = _clean_token(m.group(1))
         state = m.group(2).upper()
