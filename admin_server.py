@@ -11,12 +11,13 @@ Run:
 User portal (server.py) runs on port 9000.
 """
 from __future__ import annotations
+import io
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parent
@@ -31,6 +32,7 @@ from pipeline.cases import (
 )
 from pipeline.briefing import generate_briefing, _estimate_urgency
 from pipeline.executor import load_state
+from pipeline.form_filler import fill_forms_from_id, extract_id_fields
 
 app = FastAPI(title="NYC Social Services — Admin Portal")
 app.add_middleware(
@@ -248,3 +250,81 @@ async def admin_stats():
         "urgency_counts": urgency_counts,
         "top_need_categories": [{"category": k, "count": v} for k, v in top_needs],
     }
+
+
+# ── Form Filler — OCR + pre-filled PDFs ───────────────────────────────────────
+
+@app.post("/api/admin/fill_forms")
+async def fill_forms(case_id: str = Form(...),
+                     forms: str = Form("snap,medicaid,proof"),
+                     id_image: UploadFile = File(...)):
+    """
+    Upload an ID photo + case_id. Returns a ZIP of pre-filled PDFs.
+
+    The flow:
+      1. OCR the uploaded ID (tesseract)
+      2. Load case data (household size, income)
+      3. Generate requested forms as PDFs
+      4. Return ZIP
+    """
+    import zipfile, tempfile, os
+
+    # Save uploaded image
+    tmp_dir = tempfile.mkdtemp()
+    id_path = os.path.join(tmp_dir, id_image.filename or "id.jpg")
+    with open(id_path, "wb") as f:
+        f.write(await id_image.read())
+
+    # Load case data for household + income
+    case = load_case(case_id) or {}
+    visits = case.get("visits", [])
+    # Try to extract profile from latest visit's plan
+    profile = {}
+    if visits:
+        last_plan = visits[-1].get("plan", {}) or {}
+        profile = last_plan.get("client_profile", {}) or {}
+
+    case_data = {
+        "household_size": profile.get("household_size", 1),
+        "annual_income": profile.get("income", 0) or profile.get("annual_income", 0),
+        "has_children": profile.get("has_children", False),
+        "housing_status": profile.get("housing_status", ""),
+        "snap_estimate": 598,  # demo placeholder; real eligibility calc happens in form
+    }
+
+    form_types = [f.strip() for f in forms.split(",") if f.strip()]
+    result = fill_forms_from_id(id_path, case_data=case_data, forms=form_types)
+
+    # Bundle PDFs into a ZIP
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for form_type, pdf_bytes in result["forms"].items():
+            zf.writestr(f"{form_type}_{case_id}.pdf", pdf_bytes)
+        # Also include extracted ID fields as JSON
+        import json as _json
+        zf.writestr("extracted_id_fields.json",
+                    _json.dumps(result["id_fields"], indent=2))
+
+    zip_buf.seek(0)
+    return StreamingResponse(
+        iter([zip_buf.read()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="forms_{case_id}.zip"'},
+    )
+
+
+@app.post("/api/admin/ocr_id")
+async def ocr_id(id_image: UploadFile = File(...)):
+    """
+    OCR an ID image without generating forms.
+    Returns extracted fields as JSON. Useful for preview before form-fill.
+    """
+    import tempfile, os
+    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+    tmp.write(await id_image.read())
+    tmp.close()
+    try:
+        fields = extract_id_fields(tmp.name)
+    finally:
+        os.unlink(tmp.name)
+    return fields
