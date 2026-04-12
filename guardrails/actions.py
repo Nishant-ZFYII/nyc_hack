@@ -150,7 +150,7 @@ STRONG_ON_TOPIC = [
     r'\b(?:domestic\s+violence|dv\s+(?:shelter|services))\b',
     r'\b(?:my\s+(?:kids?|children|family)\s+(?:need|are))\b',
     r'\blosing\s+(?:my|our)\s+(?:home|apartment|house)\b',
-    r'\bi\s+(?:am|'m)\s+homeless\b',
+    r"\bi\s+(?:am|'m)\s+homeless\b",
     r'\bapply\s+for\s+(?:snap|medicaid|benefits|wic)\b',
     r'\b(?:hra|human\s+resources)\b',
 ]
