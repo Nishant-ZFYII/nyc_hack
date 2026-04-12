@@ -23,8 +23,10 @@ WORKDIR /app
 
 # Copy requirements first so Docker caches the layer when code changes but deps don't
 COPY requirements.txt ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Use uv — pip's resolver chokes on nvidia-nat-langchain + cuda deps with "resolution-too-deep".
+# uv is a drop-in pip replacement that handles complex graphs in ~60s.
+RUN pip install --no-cache-dir --upgrade pip uv && \
+    uv pip install --system --no-cache -r requirements.txt
 
 # Copy application code
 COPY . .
