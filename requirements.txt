@@ -22,6 +22,10 @@ sodapy>=2.2.0
 scikit-learn>=1.3.0
 tqdm>=4.65.0
 
+# Safety / Guardrails
+# nemoguardrails>=0.11.0    # Full NVIDIA NeMo Guardrails (optional, for Colang flows)
+# Our lightweight apply_guardrails() in guardrails/actions.py works without this
+
 # Knowledge Graph Embeddings (optional — uses PyTorch)
 # pykeen>=1.10.0
 

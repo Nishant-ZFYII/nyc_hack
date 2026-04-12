@@ -31,6 +31,7 @@ from pipeline.cases import (load_case, create_case, add_visit, mark_resource_vis
                              choose_resource, checkin, get_failed_resources, get_progress)
 from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
 from pipeline.agent import run_autonomous_agent, generate_plan_pdf
+from guardrails import apply_guardrails
 from llm.client import get_active_provider
 import pandas as pd
 
@@ -109,6 +110,25 @@ async def status():
 @app.post("/api/query")
 async def query(req: QueryRequest):
     t0 = time.time()
+
+    # ── Guardrails: input safety check ───────────────────────────────────────
+    guard = apply_guardrails(req.query)
+    if not guard["allow"]:
+        # Short-circuit: return safe response without calling LLM
+        return {
+            "answer": guard["replacement_response"],
+            "plan": {"intent": "safety_block", "_reason": guard["reason"]},
+            "resources": [],
+            "timing": {"total": round(time.time() - t0, 2), "plan": 0, "execute": 0, "synth": 0, "verify": 0},
+            "llm": get_active_provider(),
+            "verification": {"verified": True, "confidence": "SAFETY_BLOCK"},
+            "clarify_question": "",
+            "reasoning": [{"hop": 1, "fact": f"Safety guardrail triggered: {guard['reason']}",
+                           "confidence": 1.0, "source": "NeMo_Guardrails", "cumulative": 1.0}],
+            "reasoning_summary": f"Safety check: {guard['reason']}. Showing crisis resources instead.",
+            "safety_block": True,
+            "crisis_type": guard.get("crisis_type"),
+        }
 
     # Combine global exclusions + case-specific failed resources
     excluded = list(_excluded)

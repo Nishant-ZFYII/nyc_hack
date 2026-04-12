@@ -1,0 +1,61 @@
+# NYC Social Services — Guardrail Flows (Colang)
+
+# ── Input Rails ───────────────────────────────────────────────────────────────
+
+# Detect and block PII (SSN, credit cards, bank accounts)
+define flow check_pii
+  $pii_detected = execute detect_pii_regex(text=$user_message)
+  if $pii_detected
+    bot refuse pii
+    stop
+
+define bot refuse pii
+  "For your safety, don't share sensitive info like SSN or credit card numbers here. Just tell me what you need help with — we can verify identity later through official channels."
+
+# Detect crisis language (self-harm, abuse, suicide)
+define flow check_crisis
+  $crisis = execute detect_crisis(text=$user_message)
+  if $crisis == "suicide"
+    bot respond suicide crisis
+    stop
+  if $crisis == "abuse"
+    bot respond abuse crisis
+    stop
+
+define bot respond suicide crisis
+  "I hear you, and you're not alone. Please call or text 988 — the Suicide & Crisis Lifeline. It's free, 24/7, and confidential. They can also text you back if talking is hard. You matter, and help is available right now."
+
+define bot respond abuse crisis
+  "If you're in danger right now, call 911. For help leaving an abusive situation safely, call the NYC DV Hotline: 1-800-621-HOPE (4673). It's 24/7 and free. You don't have to give your name. If English is hard, they have interpreters."
+
+# Detect jailbreak attempts
+define flow check_jailbreak
+  $jailbreak = execute detect_jailbreak(text=$user_message)
+  if $jailbreak
+    bot refuse jailbreak
+    stop
+
+define bot refuse jailbreak
+  "I'm here to help you find NYC social services. I can't change my instructions or pretend to be something else. What do you need help with?"
+
+# ── Output Rails ──────────────────────────────────────────────────────────────
+
+# Block harmful output
+define flow check_harmful_output
+  $harmful = execute detect_harmful(text=$bot_message)
+  if $harmful
+    bot refuse harmful
+    stop
+
+define bot refuse harmful
+  "I can't help with that request. If you're in danger, call 911. For confidential support, the 988 lifeline is available 24/7."
+
+# Detect likely hallucinations in resource names
+define flow check_hallucination
+  $suspect = execute detect_invented_resource(text=$bot_message)
+  if $suspect
+    bot refuse uncertain
+    stop
+
+define bot refuse uncertain
+  "I want to make sure I give you real resources. Let me check the NYC Open Data database more carefully — can you tell me which borough you're in?"
