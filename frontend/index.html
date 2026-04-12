@@ -602,6 +602,10 @@ function renderResults(data){
     }
   }
 
+  // Refine panel (eligibility + rights + resources)
+  html+=`<div id="refineResults"></div>`;
+  html+=renderRefinePanel();
+
   // Feedback
   html+=`<div class="feedback-box"><input class="feedback-input" type="text" placeholder="Report issue: e.g. 'Shelter at 66 Boerum is full'" onkeydown="if(event.key==='Enter')sendFeedback(this)"><button class="feedback-send" onclick="sendFeedback(this.previousElementSibling)">Report</button></div>`;
 
@@ -891,6 +895,168 @@ async function loadProgress(){
     const resp=await fetch(`/api/case/progress/${currentCaseId}`);
     return await resp.json();
   }catch(e){return null}
+}
+
+// ── Refine Panel ───────────────────────────────────────────
+function renderRefinePanel(){
+  return `<div style="margin-top:20px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;box-shadow:var(--shadow)">
+    <div style="font-weight:700;font-size:16px;margin-bottom:4px">&#128269; Help us understand your needs better</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:16px">Check anything that applies &mdash; we'll update your results, eligibility, and rights</div>
+
+    <div style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">About you</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      ${refineCheckbox('cb-has-id','I have an ID',true)}
+      ${refineCheckbox('cb-has-children','I have children',false)}
+      ${refineCheckbox('cb-pregnant',"I'm pregnant",false)}
+      ${refineCheckbox('cb-has-insurance','I have insurance',true)}
+      ${refineCheckbox('cb-senior',"I'm 65 or older",false)}
+      ${refineCheckbox('cb-disabled','I have a disability',false)}
+      ${refineCheckbox('cb-veteran','Veteran',false)}
+      ${refineCheckbox('cb-undoc','Undocumented',false)}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div>
+        <label style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Household size</label>
+        <input type="number" id="household-size" min="1" max="20" value="1" class="big-input" style="font-size:13px;padding:8px 12px">
+      </div>
+      <div>
+        <label style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Monthly income ($)</label>
+        <input type="number" id="monthly-income" min="0" placeholder="e.g. 2400" class="big-input" style="font-size:13px;padding:8px 12px">
+      </div>
+    </div>
+
+    <label style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Anything else we should know?</label>
+    <textarea id="refine-additional" class="big-input" rows="2" placeholder='e.g. "my kid has diabetes"' style="font-size:13px;padding:10px 14px;margin-bottom:12px"></textarea>
+
+    <button class="btn-primary" style="width:100%;padding:12px;font-size:13px" onclick="submitRefine()">Update My Results</button>
+  </div>`;
+}
+
+function refineCheckbox(id,label,defaultChecked){
+  return `<label style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;cursor:pointer;transition:all 0.2s;font-size:13px" onmouseover="this.style.borderColor='var(--green-d)'" onmouseout="this.style.borderColor='var(--border)'">
+    <input type="checkbox" id="${id}" ${defaultChecked?'checked':''} style="accent-color:var(--green);width:16px;height:16px;flex-shrink:0">
+    <span>${label}</span>
+  </label>`;
+}
+
+async function submitRefine(){
+  const getVal=(id)=>document.getElementById(id);
+  const payload={
+    original_query:lastQuery,
+    case_id:currentCaseId,
+    location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null,
+    has_id:getVal('cb-has-id')?.checked||false,
+    has_children:getVal('cb-has-children')?.checked||false,
+    has_pregnant:getVal('cb-pregnant')?.checked||false,
+    has_disabled:getVal('cb-disabled')?.checked||false,
+    has_senior:getVal('cb-senior')?.checked||false,
+    has_insurance:getVal('cb-has-insurance')?.checked||false,
+    is_veteran:getVal('cb-veteran')?.checked||false,
+    is_undocumented:getVal('cb-undoc')?.checked||false,
+    household_size:parseInt(getVal('household-size')?.value)||1,
+    annual_income:(parseFloat(getVal('monthly-income')?.value)||0)*12,
+    additional_info:getVal('refine-additional')?.value.trim()||'',
+  };
+
+  const target=document.getElementById('refineResults');
+  target.innerHTML='<div style="text-align:center;padding:20px"><div class="spinner" style="margin:0 auto"></div><div style="margin-top:8px;font-size:12px;color:var(--t3)">Updating...</div></div>';
+
+  try{
+    const resp=await fetch('/api/refine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await resp.json();
+    if(data.safety_block){target.innerHTML=renderSafetyBlock(data);return}
+    renderRefineResults(data,target);
+  }catch(err){
+    target.innerHTML=`<div style="color:var(--red);padding:12px">Error: ${err.message}</div>`;
+  }
+}
+
+function renderRefineResults(data,target){
+  let html='';
+
+  // Eligibility card
+  if(data.eligibility){
+    const e=data.eligibility;
+    const progs=e.programs||{};
+    const progKeys=Object.keys(progs).filter(k=>progs[k]?.qualifies!==false);
+    const shown=progKeys.slice(0,5);
+    const rest=progKeys.slice(5);
+
+    html+=`<div style="margin-top:20px;background:linear-gradient(135deg,rgba(58,125,10,0.08),rgba(58,125,10,0.02));border:2px solid var(--green-d);border-radius:14px;padding:20px;box-shadow:var(--shadow)">`;
+    if(e.monthly_benefits>0){
+      html+=`<div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">You qualify for</div>
+        <div style="font-family:var(--display);font-size:30px;font-weight:600;color:var(--green)">&#128176; $${e.monthly_benefits.toLocaleString()}/month</div>
+        <div style="font-size:12px;color:var(--t2);margin-top:2px">in benefits</div>
+      </div>`;
+    } else {
+      html+=`<div style="font-weight:700;font-size:16px;margin-bottom:12px;color:var(--green)">&#128176; Your eligibility</div>`;
+    }
+
+    for(const k of shown){
+      html+=renderProgram(progs[k]);
+    }
+
+    if(rest.length>0){
+      const expId='exp-'+Date.now();
+      html+=`<div id="${expId}" class="collapsed" style="margin-top:6px">`;
+      for(const k of rest)html+=renderProgram(progs[k]);
+      html+=`</div>`;
+      html+=`<button onclick="document.getElementById('${expId}').classList.toggle('collapsed')" class="btn-secondary" style="width:100%;margin-top:10px;padding:10px;font-size:12px">Expand ${rest.length} more program${rest.length>1?'s':''} &#9660;</button>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Rights
+  if(data.rights&&data.rights.length){
+    html+=`<div style="margin-top:14px;background:rgba(46,125,186,0.06);border:2px solid rgba(46,125,186,0.25);border-radius:14px;padding:18px;box-shadow:var(--shadow)">`;
+    html+=`<div style="font-weight:700;font-size:15px;margin-bottom:12px;color:var(--blue)">&#128737;&#65039; Your rights</div>`;
+    for(const r of data.rights){
+      html+=`<div style="padding:10px 0;border-bottom:1px solid rgba(46,125,186,0.1)">
+        <div style="font-weight:600;font-size:13px;color:var(--t1);margin-bottom:3px">&#9989; ${r.right||''}</div>
+        <div style="font-size:12px;color:var(--t2);line-height:1.6">${r.detail||''}</div>
+      </div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Updated resources (simple list with a header)
+  if(data.resources&&data.resources.length){
+    html+=`<div style="margin-top:14px"><div style="font-size:11px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">&#128269; Refined resources (${data.resources.length})</div>`;
+    for(const r of data.resources.slice(0,6)){
+      const dist=r.distance_miles?` &middot; ${r.distance_miles} mi`:'';
+      const eName=(r.name||'').replace(/'/g,'&#39;');
+      html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:6px">
+        <div style="font-weight:600;font-size:13px">${r.name||'Unknown'}</div>
+        <div style="font-size:11px;color:var(--t3);font-family:var(--mono);margin-top:2px">${r.address||''}${dist}</div>
+        ${r.lat&&r.lon?`<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-secondary" style="padding:4px 10px;font-size:10px" onclick="getDirections(${r.lat},${r.lon},'${eName}')">Directions</button></div>`:''}
+      </div>`;
+    }
+    html+=`</div>`;
+    // Update map
+    if(data.resources.length>0){
+      lastResources=data.resources;
+      if(mapOpen)setTimeout(()=>updateResultMapLayers(),100);
+    }
+  }
+
+  target.innerHTML=html;
+}
+
+function renderProgram(p){
+  if(!p)return '';
+  let html=`<div style="padding:10px 0;border-bottom:1px solid rgba(58,125,10,0.1)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+      <div style="font-weight:600;font-size:13px;color:var(--t1)">&#9989; ${p.program||''}</div>`;
+  if(p.monthly_estimate)html+=`<div style="font-size:12px;color:var(--green);font-weight:600;font-family:var(--mono)">$${p.monthly_estimate}/mo</div>`;
+  html+=`</div>`;
+  if(p.notes)html+=`<div style="font-size:11.5px;color:var(--t2);line-height:1.5;margin-bottom:3px">${p.notes}</div>`;
+  if(p.where_to_apply)html+=`<div style="font-size:11px;color:var(--t3);margin-top:2px"><b>Apply at:</b> ${p.where_to_apply}</div>`;
+  if(p.how_long)html+=`<div style="font-size:11px;color:var(--t3)"><b>Timeline:</b> ${p.how_long}</div>`;
+  if(p.documents_needed&&p.documents_needed.length)html+=`<div style="font-size:11px;color:var(--t3)"><b>Bring:</b> ${p.documents_needed.join(', ')}</div>`;
+  html+=`</div>`;
+  return html;
 }
 
 // ── Safety Block Rendering ─────────────────────────────────
