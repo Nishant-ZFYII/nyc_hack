@@ -32,6 +32,16 @@ from pipeline.cases import (load_case, create_case, add_visit, mark_resource_vis
 from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
 from pipeline.agent import run_autonomous_agent, generate_plan_pdf
 from guardrails import check_safety, check_safety_async
+
+# nat (NeMo Agent Toolkit) — lazy so server still starts if nat missing
+try:
+    import agent.register  # registers our 4 tool groups
+    from nat.runtime.loader import load_workflow as _nat_load_workflow
+    _NAT_AVAILABLE = True
+    _NAT_CONFIG = str(Path(__file__).parent / "agent" / "config.yml")
+except Exception as _nat_err:
+    _NAT_AVAILABLE = False
+    _NAT_IMPORT_ERROR = str(_nat_err)
 from llm.client import get_active_provider
 import pandas as pd
 
@@ -921,6 +931,64 @@ async def agent_openclaw(req: AgentPlanRequest):
         return {"error": "openclaw CLI not found — is it installed?", "via": "openclaw-subprocess"}
     except Exception as e:
         return {"error": f"OpenClaw error: {e}", "via": "openclaw-subprocess"}
+
+
+@app.post("/api/agent/nat")
+async def agent_nat(req: AgentPlanRequest):
+    """
+    Run the query through the NeMo Agent Toolkit (`nat`) ReAct agent.
+
+    The agent is configured in agent/config.yml with 4 tool groups
+    (resources, eligibility, directions, cases) registered in agent/register.py.
+    Nemotron-3-Nano drives the ReAct loop via Ollama.
+
+    Proves nat is actually running, not just instruction-based.
+    """
+    if not _NAT_AVAILABLE:
+        raise HTTPException(500, f"nat not available: {_NAT_IMPORT_ERROR}")
+
+    t0 = time.time()
+
+    # Guardrails first
+    guard = await check_safety_async(req.query, use_llm_fallback=False)
+    if not guard["allow"]:
+        return {
+            "answer": guard["replacement_response"],
+            "safety_block": True,
+            "reason": guard["reason"],
+            "via": "guardrails (pre-nat)",
+        }
+
+    message = req.query
+    if req.location:
+        message += f" (user location: lat={req.location.lat:.4f}, lon={req.location.lon:.4f})"
+    if req.case_id:
+        message += f" (case_id: {req.case_id})"
+
+    try:
+        async with _nat_load_workflow(_NAT_CONFIG) as workflow:
+            async with workflow.run(message) as runner:
+                if hasattr(runner, "result"):
+                    r = runner.result
+                    result = await r() if callable(r) else r
+                elif hasattr(runner, "get_result"):
+                    result = await runner.get_result()
+                else:
+                    result = runner
+
+        return {
+            "answer": str(result),
+            "total_time_s": round(time.time() - t0, 2),
+            "via": "nat-react-agent",
+            "model": "nemotron-3-nano",
+            "framework": "NVIDIA NeMo Agent Toolkit",
+        }
+    except Exception as e:
+        return {
+            "error": f"nat agent error: {e}",
+            "total_time_s": round(time.time() - t0, 2),
+            "via": "nat-react-agent",
+        }
 
 
 @app.post("/api/agent/pdf")
