@@ -1285,20 +1285,53 @@ async function raiseTicket(){
     const d=await r.json();
     if(d.error)throw new Error(d.error);
     _ticketStatus.sponsored_ride_unlocked=true;
+
     if(btn){
       btn.disabled=true;
       btn.style.background='linear-gradient(135deg,#1b7a00,#0f4a00)';
       btn.innerHTML='&#9989; Case Registered & Sponsored Ride Unlocked';
     }
-    // Inline confirmation with the new case ID
-    const caseIdDisplay=isNewRegistration
-      ? `<div style="background:rgba(118,185,0,0.08);border:1px dashed var(--green-d);border-radius:6px;padding:8px 12px;margin-top:8px;font-family:var(--mono);font-size:12px">Your case ID: <b style="color:var(--green)">${currentCaseId}</b> &mdash; save this to check progress later.</div>`
-      : '';
+
+    // 1. Sticky banner at TOP showing the case ID
+    if(isNewRegistration){
+      const container=_activeContentContainer();
+      const existing=document.getElementById('caseIdBanner');
+      if(existing)existing.remove();
+      const banner=document.createElement('div');
+      banner.id='caseIdBanner';
+      banner.style.cssText='position:sticky;top:0;z-index:50;background:linear-gradient(135deg,#1b7a00,#0f4a00);color:#fff;border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,0.15)';
+      banner.innerHTML=`
+        <div style="font-size:24px">&#127915;</div>
+        <div style="flex:1">
+          <div style="font-size:11px;font-family:var(--mono);opacity:0.85;letter-spacing:0.5px">CASE REGISTERED &middot; SAVE THIS ID</div>
+          <div style="font-size:20px;font-weight:700;font-family:var(--mono);letter-spacing:1px">${currentCaseId}</div>
+        </div>
+        <button style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:6px;padding:8px 14px;font-size:12px;cursor:pointer;font-family:var(--mono)" onclick="navigator.clipboard.writeText('${currentCaseId}');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy ID',1500)">Copy ID</button>
+      `;
+      container.insertBefore(banner, container.firstChild);
+      banner.scrollIntoView({behavior:'smooth',block:'start'});
+    }
+
+    // 2. Inline confirmation lower down
     _activeContentContainer().insertAdjacentHTML('beforeend',`<div class="answer-box fade-in" style="border-color:var(--green-d);background:rgba(118,185,0,0.04);margin-top:12px">
       <div style="font-weight:600;color:var(--green)">&#9989; ${isNewRegistration?'Case registered &middot; Ticket raised':'Ticket raised'}</div>
-      <div style="font-size:13px;color:var(--t2);margin-top:4px">A caseworker will review your case shortly. In the meantime, your sponsored ride is unlocked — click Directions on any resource and choose Sponsored Ride.</div>
-      ${caseIdDisplay}
+      <div style="font-size:13px;color:var(--t2);margin-top:4px">A caseworker will review your case shortly. Your sponsored ride is unlocked — use any <b>Directions</b> button and pick <b>Sponsored Ride</b>.</div>
     </div>`);
+
+    // 3. If a budget picker is already on screen, live-update the sponsored ride button from locked to unlocked
+    const existingPicker=document.getElementById('budgetPicker');
+    if(existingPicker){
+      const lockedBtn=existingPicker.querySelector('button[onclick="sponsoredRideLocked()"]');
+      if(lockedBtn){
+        lockedBtn.setAttribute('onclick',"fetchDirections('sponsored')");
+        lockedBtn.style.opacity='1';
+        lockedBtn.style.cursor='pointer';
+        lockedBtn.style.borderColor='var(--green-d)';
+        lockedBtn.style.background='rgba(118,185,0,0.04)';
+        lockedBtn.innerHTML='<div style="font-size:16px">&#128663;</div>Sponsored Ride';
+      }
+    }
+
   }catch(err){
     if(btn){btn.disabled=false;btn.innerHTML=isNewRegistration?'&#127915; Raise a Ticket for Sponsored Ride':'&#127915; Raise a Ticket & Register My Case';}
     alert('Error raising ticket: '+err.message);
@@ -2110,8 +2143,8 @@ function _activeContentContainer(){
 }
 
 async function getDirections(toLat,toLon,name){
-  // Refresh ticket status before showing the budget picker
-  if(currentCaseId && !_ticketStatus.checked) await refreshTicketStatus();
+  // Always refresh ticket status so the sponsored-ride button reflects current state
+  if(currentCaseId) await refreshTicketStatus();
   if(!userLocation){
     // Show location prompt inline
     document.querySelectorAll('.directions-result,.directions-picker,.directions-locprompt').forEach(el=>el.remove());
@@ -2161,7 +2194,11 @@ async function fetchDirections(budget){
   try{
     const resp=await fetch('/api/directions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from_lat:userLocation.lat,from_lon:userLocation.lon,to_lat:toLat,to_lon:toLon,budget:budget})});
     const data=await resp.json();
+    // Build external map links (Google Maps + Apple Maps) as fallback for pages without the inline map
+    const gmapsUrl=`https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lon}&destination=${toLat},${toLon}&travelmode=${budget===2.9?'transit':'walking'}`;
+    const openMapsBtn=`<a href="${gmapsUrl}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;padding:6px 12px;background:rgba(118,185,0,0.08);border:1px solid var(--green-d);border-radius:6px;color:var(--green);font-size:12px;font-weight:600;text-decoration:none">&#128506;&#65039; Open in Google Maps</a>`;
     let html=`<div class="answer-box fade-in directions-result"><div style="font-weight:600;margin-bottom:6px">Directions to ${name}</div>`;
+    html+=`<div style="margin-bottom:10px">${openMapsBtn}</div>`;
     if(data.recommendation)html+=`<div style="color:var(--green);margin-bottom:10px;font-size:13px">${data.recommendation}</div>`;
     if(data.free_metrocard_location){
       const h=data.free_metrocard_location;
