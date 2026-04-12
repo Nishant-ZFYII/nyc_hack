@@ -8,7 +8,7 @@ llms:
     base_url: http://localhost:11434/v1
     api_key: ollama
     temperature: 0.1
-    max_tokens: 2048
+    max_tokens: 4096
 
 function_groups:
   resource_tools:
