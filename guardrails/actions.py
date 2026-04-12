@@ -117,18 +117,42 @@ ON_TOPIC_KEYWORDS = [
 OFF_TOPIC_MARKERS = [
     # Books, authors, entertainment
     r'\b(?:book|novel|author|kafka|shakespeare|tolstoy|hemingway)\b',
-    r'\b(?:movie|film|actor|actress|netflix|hollywood)\b',
-    r'\b(?:song|music|album|artist|spotify|band)\b',
+    r'\b(?:movie|film|actor|actress|netflix|hollywood|tv\s+show)\b',
+    r'\b(?:song|music|album|artist|spotify|band|concert)\b',
     # Coding
     r'\b(?:python|javascript|code|programming|function|algorithm|api|regex)\b',
     r'\b(?:write|build|debug|fix)\s+(?:a|the|my)\s+(?:function|script|program|code)\b',
     # Generic trivia
     r'\bwho\s+(?:is|was|wrote|invented|discovered)\b',
-    r'\bwhat\s+is\s+the\s+(?:capital|population|history)\s+of\b',
+    r'\bwhat\s+is\s+the\s+(?:capital|population|history|weather)\s+of\b',
     # Homework/essay
     r'\b(?:essay|homework|assignment|paper|thesis)\b',
-    # Recipe/cooking (off topic unless about food banks)
+    # Recreation / leisure (not social services)
+    r'\b(?:restaurant|dinner|lunch\s+out|brunch|bar|pub|club|nightclub)\b',
+    r'\b(?:tourist|tourism|sightseeing|attraction|museum|gallery)\b',
+    r'\b(?:dating|date\s+night|relationship\s+advice)\b',
+    r'\b(?:shopping|shop|mall|store)\s+(?:for|near)\b',
+    r'\b(?:vacation|travel|hotel|flight|airline)\b',
+    r'\bbest\s+(?:places?|spots?)\s+(?:for|to)\s+(?:eat|dine|drink|party|hangout)\b',
+    # Recipe/cooking (not about food banks)
     r'\b(?:recipe|cook|bake)\s+(?:a|the|for)\b',
+    # Sports
+    r'\b(?:sports?|game|team|nfl|nba|yankees|mets|knicks|giants)\b',
+    # News/politics (not NYC services)
+    r'\b(?:election|president|politics|politician|senator|congress)\b',
+]
+
+# Strong on-topic markers — these almost guarantee on-topic even if other markers match
+STRONG_ON_TOPIC = [
+    r'\b(?:shelter|homeless|eviction|evicted)\b',
+    r'\b(?:food\s+(?:bank|pantry|stamps))\b',
+    r'\b(?:snap|medicaid|wic|cash\s+assistance|benefits)\b',
+    r'\b(?:domestic\s+violence|dv\s+(?:shelter|services))\b',
+    r'\b(?:my\s+(?:kids?|children|family)\s+(?:need|are))\b',
+    r'\blosing\s+(?:my|our)\s+(?:home|apartment|house)\b',
+    r'\bi\s+(?:am|'m)\s+homeless\b',
+    r'\bapply\s+for\s+(?:snap|medicaid|benefits|wic)\b',
+    r'\b(?:hra|human\s+resources)\b',
 ]
 
 
@@ -140,12 +164,16 @@ def detect_off_topic(text: str) -> bool:
     if len(t.split()) < 3:
         return False
 
-    # If any off-topic marker is present, check if on-topic signal also present
+    # First: if any STRONG on-topic marker is present, it's on-topic regardless
+    for pattern in STRONG_ON_TOPIC:
+        if re.search(pattern, t):
+            return False
+
+    # Then: if any off-topic marker is present, BLOCK (even if generic keywords like "nyc" appear)
     for pattern in OFF_TOPIC_MARKERS:
         if re.search(pattern, t):
-            # Allow if the query ALSO contains a social services keyword
-            if not any(kw in t for kw in ON_TOPIC_KEYWORDS):
-                return True
+            return True
+
     return False
 
 
