@@ -1301,11 +1301,29 @@ async function raiseTicket(){
   // If no active case, REGISTER the user — this creates their case_id for the first time.
   if(!currentCaseId){
     isNewRegistration=true;
+
+    // Resolve the client's name: prefer homepage input, then stored name, else prompt.
+    let clientName='';
+    const nameInput=document.getElementById('newNameInput');
+    if(nameInput&&nameInput.value.trim()){
+      clientName=nameInput.value.trim();
+    }else if(currentUserName){
+      clientName=currentUserName;
+    }else{
+      if(btn){btn.disabled=false;btn.innerHTML='&#127915; Raise a Ticket & Register My Case';}
+      const entered=prompt('What name should your case be registered under?\n(First name is fine; a caseworker can add more later.)','');
+      if(btn){btn.disabled=true;btn.innerHTML='&#8987; Registering your case...';}
+      clientName=(entered && entered.trim()) ? entered.trim() : 'Anonymous';
+    }
+    currentUserName=clientName;
+    const userLabel=document.getElementById('userLabel');
+    if(userLabel)userLabel.textContent=clientName;
+
     // Generate a human-readable case id (e.g., NYC-A4F2X1)
     const suffix=Math.random().toString(36).substring(2,8).toUpperCase();
     const newId='NYC-'+suffix;
     try{
-      const loginResp=await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:newId,name:'New Client'})});
+      const loginResp=await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:newId,name:clientName})});
       if(!loginResp.ok)throw new Error('registration failed');
       currentCaseId=newId;
     }catch(e){
