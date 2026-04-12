@@ -28,8 +28,12 @@ from pipeline.cases    import (create_case, load_case, add_visit, mark_resource_
 from pipeline.case_notify      import schedule_followup
 from pipeline.destination_notify import (confirm_destination_intent,
                                           notify_ec_added,
-                                          DISCORD_BOT_TOKEN, DISCORD_COORD_CHANNEL_ID)
+                                          TELEGRAM_BOT_TOKEN, TELEGRAM_COORD_CHAT_ID)
+from pipeline.tg_poller        import start_polling
 from llm.client        import get_active_provider
+
+# Start Telegram long-poll listener (daemon thread, no-op if already running)
+start_polling(TELEGRAM_BOT_TOKEN)
 import importlib.util
 _spec = importlib.util.spec_from_file_location(
     "kg_embeddings",
@@ -343,30 +347,19 @@ with st.sidebar:
                       "query_input", "excluded_resources", "feedback_log"]:
                 st.session_state.pop(k, None)
             st.rerun()
-        with st.expander("Discord Follow-Up", expanded=False):
-            dw = st.text_input("Webhook URL", type="password", key="_discord_webhook",
-                               placeholder="https://discord.com/api/webhooks/...")
-            if dw:
-                st.session_state["_discord_webhook_url"] = dw
-
-        with st.expander("Discord Coordination", expanded=False):
-            st.caption("For 'I'm going here' notifications and thread creation.")
-            _dest_wh = st.text_input("Destination webhook URL", type="password",
-                                     key="_dest_webhook_input",
-                                     placeholder="Webhook for the service provider")
-            _bot_tok = st.text_input("Bot token", type="password",
-                                     key="_bot_token_input",
-                                     placeholder="Discord bot token")
-            _coord_ch = st.text_input("Coordination channel ID", key="_coord_channel_input",
-                                      placeholder="Channel ID for coordination threads")
+        with st.expander("Telegram Coordination", expanded=False):
+            st.caption("Bot must be a member of the coordination group.")
+            _tg_tok = st.text_input("Bot token", type="password",
+                                    key="_tg_token_input",
+                                    placeholder="From @BotFather")
+            _tg_cid = st.text_input("Coord group chat ID", key="_tg_chat_input",
+                                    placeholder="-1001234567890")
             _sla = st.number_input("SLA (minutes before escalation)", min_value=1,
                                    max_value=120, value=15, key="_sla_min_input")
-            if _dest_wh:
-                st.session_state["_dest_webhook"] = _dest_wh
-            if _bot_tok:
-                st.session_state["_bot_token"] = _bot_tok
-            if _coord_ch:
-                st.session_state["_coord_channel"] = _coord_ch
+            if _tg_tok:
+                st.session_state["_tg_bot_token"] = _tg_tok
+            if _tg_cid:
+                st.session_state["_coord_chat_id"] = _tg_cid
             st.session_state["_sla_min"] = int(_sla)
 
     # Tech details tucked away
@@ -385,20 +378,16 @@ with st.sidebar:
             pass
 
 
-# ── Pre-populate Discord config from Streamlit secrets (once per session) ────
-if "_discord_secrets_loaded" not in st.session_state:
+# ── Pre-populate Telegram config from Streamlit secrets (once per session) ────
+if "_tg_secrets_loaded" not in st.session_state:
     try:
-        if "DISCORD_DEST_WEBHOOK" in st.secrets and not st.session_state.get("_dest_webhook"):
-            st.session_state["_dest_webhook"] = st.secrets["DISCORD_DEST_WEBHOOK"]
-        if "DISCORD_BOT_TOKEN" in st.secrets and not st.session_state.get("_bot_token"):
-            st.session_state["_bot_token"] = st.secrets["DISCORD_BOT_TOKEN"]
-        if "DISCORD_COORD_CHANNEL_ID" in st.secrets and not st.session_state.get("_coord_channel"):
-            st.session_state["_coord_channel"] = st.secrets["DISCORD_COORD_CHANNEL_ID"]
-        if "DISCORD_FOLLOWUP_WEBHOOK" in st.secrets and not st.session_state.get("_discord_webhook_url"):
-            st.session_state["_discord_webhook_url"] = st.secrets["DISCORD_FOLLOWUP_WEBHOOK"]
+        if "TELEGRAM_BOT_TOKEN" in st.secrets and not st.session_state.get("_tg_bot_token"):
+            st.session_state["_tg_bot_token"] = st.secrets["TELEGRAM_BOT_TOKEN"]
+        if "TELEGRAM_COORD_CHAT_ID" in st.secrets and not st.session_state.get("_coord_chat_id"):
+            st.session_state["_coord_chat_id"] = str(st.secrets["TELEGRAM_COORD_CHAT_ID"])
     except Exception:
         pass
-    st.session_state["_discord_secrets_loaded"] = True
+    st.session_state["_tg_secrets_loaded"] = True
 
 # ── Block A: Onboarding Phase Gate ───────────────────────────────────────────
 if not st.session_state.get("onboarding_done"):
@@ -421,9 +410,9 @@ if not st.session_state.get("onboarding_done"):
                                  placeholder="e.g. Maria")
         new_ec_name = st.text_input("Emergency contact name (optional)", key="_ob_ec_name",
                                     placeholder="e.g. Ana (sister)")
-        new_ec_discord = st.text_input("Their Discord username (optional)",
-                                       key="_ob_ec_discord",
-                                       placeholder="e.g. ana_nyc  (no @ needed)")
+        new_ec_telegram = st.text_input("Their Telegram username (optional)",
+                                        key="_ob_ec_telegram",
+                                        placeholder="e.g. @ana_nyc")
         if st.button("Get Started", type="primary", use_container_width=True, key="_ob_create"):
             if not new_name.strip():
                 st.error("Please enter your first name.")
@@ -431,21 +420,22 @@ if not st.session_state.get("onboarding_done"):
                 import uuid
                 cid = new_name.strip().lower().replace(" ", "_") + "_" + uuid.uuid4().hex[:6]
                 case = create_case(cid, name=new_name.strip())
-                if new_ec_name.strip() or new_ec_discord.strip():
-                    _ec_user = new_ec_discord.strip().lstrip("@")
+                if new_ec_name.strip() or new_ec_telegram.strip():
+                    _ec_user = new_ec_telegram.strip().lstrip("@")
                     case["emergency_contact"] = {
                         "name": new_ec_name.strip(),
-                        "discord_username": _ec_user,
+                        "telegram_username": _ec_user,
+                        "telegram_chat_id": None,
                     }
                     from pipeline.cases import _save_case
                     _save_case(case)
-                    # Notify EC immediately and generate invite
+                    # Notify EC — DM if registered, else post deep link to coord group
                     if _ec_user:
-                        _bot = st.session_state.get("_bot_token", DISCORD_BOT_TOKEN)
-                        _ch  = st.session_state.get("_coord_channel", DISCORD_COORD_CHANNEL_ID)
+                        _bot = st.session_state.get("_tg_bot_token", TELEGRAM_BOT_TOKEN)
+                        _ch  = st.session_state.get("_coord_chat_id", TELEGRAM_COORD_CHAT_ID)
                         _ec_result = notify_ec_added(case, _ec_user, _bot, str(_ch))
-                        if _ec_result.get("invite_url"):
-                            st.session_state["_ec_invite_url"] = _ec_result["invite_url"]
+                        if _ec_result.get("deep_link"):
+                            st.session_state["_ec_deep_link"] = _ec_result["deep_link"]
                         if _ec_result.get("dm_sent"):
                             st.session_state["_ec_dm_sent"] = True
                 st.session_state["case_id"] = cid
@@ -516,12 +506,19 @@ if st.session_state.get("show_welcome_back"):
     st.session_state.pop("show_welcome_back", None)
 
 # ── EC notification status (shown once after onboarding) ─────────────────────
-st.session_state.pop("_ec_invite_url", None)
-_ec_dm_sent = st.session_state.pop("_ec_dm_sent", None)
+_ec_deep_link = st.session_state.pop("_ec_deep_link", None)
+_ec_dm_sent   = st.session_state.pop("_ec_dm_sent", None)
 if _ec_dm_sent:
     _ec_name = st.session_state.get("case", {}).get(
         "emergency_contact", {}).get("name", "your emergency contact")
-    st.success(f"Discord DM sent to {_ec_name} — they've been notified.")
+    st.success(f"Telegram DM sent to {_ec_name} — they've been notified.")
+elif _ec_deep_link:
+    _ec_name = st.session_state.get("case", {}).get(
+        "emergency_contact", {}).get("name", "your emergency contact")
+    st.info(
+        f"Ask **{_ec_name}** to click this link and press Start in Telegram so "
+        f"they can receive notifications: [{_ec_deep_link}]({_ec_deep_link})"
+    )
 
 # ── Main query interface ──────────────────────────────────────────────────────
 query = st.text_area(
@@ -879,19 +876,13 @@ if (run or _clarify_rerun) and query.strip():
                 # Record intent to case
                 _case2 = add_destination_intent(_cid2, _pdest)
                 st.session_state["case"] = _case2
-                # Build Discord config
-                _ec2 = _case2.get("emergency_contact", {})
-                _ec_username = (_ec2.get("discord_username", "")
-                                if isinstance(_ec2, dict) else "")
-                _discord_cfg = {
-                    "dest_webhook": st.session_state.get("_dest_webhook", ""),
-                    "ec_discord_username": _ec_username,
-                    "bot_token": st.session_state.get("_bot_token", DISCORD_BOT_TOKEN),
-                    "coord_channel_id": st.session_state.get("_coord_channel",
-                                                               DISCORD_COORD_CHANNEL_ID),
+                # Build Telegram config
+                _tg_cfg = {
+                    "bot_token": st.session_state.get("_tg_bot_token", TELEGRAM_BOT_TOKEN),
+                    "coord_chat_id": st.session_state.get("_coord_chat_id", TELEGRAM_COORD_CHAT_ID),
                     "sla_minutes": st.session_state.get("_sla_min", 15),
                 }
-                _notif = confirm_destination_intent(_case2, _pdest, _discord_cfg)
+                _notif = confirm_destination_intent(_case2, _pdest, _tg_cfg)
                 st.session_state["_last_dest_notif"] = _notif
                 st.session_state.pop("_confirm_dest_pending", None)
                 # Refresh case from disk (state may have advanced to "notified")
@@ -908,14 +899,11 @@ if (run or _clarify_rerun) and query.strip():
         if st.session_state.get("_last_dest_notif"):
             _ln = st.session_state.pop("_last_dest_notif")
             _sent = _ln.get("notifications_sent", [])
-            _turl = _ln.get("thread_url")
             if _sent:
-                _labels = {"destination": "Destination", "emergency_contact": "Emergency Contact",
-                           "thread_created": "Coordination Thread"}
-                st.success("Confirmed! Notified: " +
+                _labels = {"coord_group": "Coordination Group",
+                           "emergency_contact": "Emergency Contact"}
+                st.success("Confirmed! Notified via Telegram: " +
                            ", ".join(_labels.get(s, s) for s in _sent))
-            if _turl:
-                st.markdown(f"[Open coordination thread]({_turl})")
 
         # ── Block D2: Active Destinations tracker ─────────────────────────────
         if st.session_state.get("case_id"):
@@ -975,11 +963,12 @@ if (run or _clarify_rerun) and query.strip():
         _open_count = len([n for n in _refreshed_needs if n.get("status") == "open"])
         _total_needs = len(_refreshed_needs)
         if not st.session_state.get("_followup_scheduled"):
-            _webhook = st.session_state.get("_discord_webhook_url", "")
+            _tg_cid = st.session_state.get("_coord_chat_id", TELEGRAM_COORD_CHAT_ID)
             if _total_needs > 0 and _open_count == 0:
                 st.balloons()
                 st.success("You're all set! All your needs have been addressed.")
-                schedule_followup(st.session_state["case"], delay_minutes=60, webhook_url=_webhook)
+                schedule_followup(st.session_state["case"], delay_minutes=60,
+                                  coord_chat_id=str(_tg_cid))
             elif _open_count > 0:
                 _highest = sorted(
                     [n for n in _refreshed_needs if n.get("status") == "open"],
@@ -989,7 +978,8 @@ if (run or _clarify_rerun) and query.strip():
                     f"Next priority: **{_highest['category'].replace('_', ' ').title()}** — "
                     "use the tracking cards above to update your status."
                 )
-                schedule_followup(st.session_state["case"], delay_minutes=30, webhook_url=_webhook)
+                schedule_followup(st.session_state["case"], delay_minutes=30,
+                                  coord_chat_id=str(_tg_cid))
             st.session_state["_followup_scheduled"] = True
 
     # ── Multi-turn clarification ──────────────────────────────────────────────

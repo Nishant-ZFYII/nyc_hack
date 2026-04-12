@@ -1,16 +1,16 @@
 """
-pipeline/destination_notify.py — Emergency contact + destination coordination.
+pipeline/destination_notify.py — Telegram-based emergency contact + destination coordination.
 
 When a user confirms "I'm going here", this module:
-1. POSTs a notification embed to the destination's Discord webhook
-2. POSTs a notification embed to the emergency contact's Discord webhook
-3. Optionally creates a coordination thread via the Discord bot API
-4. Schedules an SLA check — if the destination doesn't advance state
-   within sla_minutes, fires an orange escalation embed.
+1. Posts a message to the Telegram coordination group
+2. DMs the emergency contact if they have registered their chat_id
+3. Schedules an SLA check — if no state advance within sla_minutes, escalates
 
-All Discord steps degrade gracefully — if no config is provided the intent
-is still recorded to the case JSON; only the notifications are skipped.
+All steps degrade gracefully — if no config is provided the intent is still
+recorded to the case JSON; only the notifications are skipped.
 """
+from __future__ import annotations
+
 import os
 import threading
 import time
@@ -22,181 +22,132 @@ try:
 except ImportError:
     _HAS_REQUESTS = False
 
-DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
-DISCORD_COORD_CHANNEL_ID = os.environ.get("DISCORD_COORD_CHANNEL_ID", "")
+TELEGRAM_BOT_TOKEN     = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_COORD_CHAT_ID = os.environ.get("TELEGRAM_COORD_CHAT_ID", "")
+TELEGRAM_BOT_NAME      = os.environ.get("TELEGRAM_BOT_NAME", "")
+
+_TG_BASE = "https://api.telegram.org/bot{token}"
 
 _sla_scheduled: set = set()
 _sla_lock = threading.Lock()
 
-
-def notify_ec_added(case: dict, ec_username: str,
-                    bot_token: str, channel_id: str) -> dict:
-    """
-    Called immediately when an EC username is saved during onboarding.
-
-    - If EC is already in the server: DMs them right away.
-    - Always generates a one-time server invite link to share with the EC.
-
-    Returns:
-        {
-          "dm_sent": bool,
-          "invite_url": str | None,
-          "already_in_server": bool,
-        }
-    """
-    result = {"dm_sent": False, "invite_url": None, "already_in_server": False}
-    if not _HAS_REQUESTS or not bot_token or not channel_id:
-        return result
-
-    headers = {"Authorization": f"Bot {bot_token}", "Content-Type": "application/json"}
-    name = case.get("name", "Someone")
-
-    # Resolve guild_id from channel
-    guild_id = _get_guild_id_from_channel(channel_id, bot_token)
-
-    ec_embed = {
-        "title": "You've been added as an emergency contact",
-        "description": (
-            f"**{name}** has added you as their emergency contact on NYC Help Finder.\n\n"
-            f"If they confirm they are heading to a service location, "
-            f"you'll receive a private message here so you can check in on them."
-        ),
-        "color": 0x76B900,
-        "footer": {"text": "NYC Help Finder · You won't be contacted unless needed"},
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
-
-    # Try to DM the EC if they're already in the server
-    if guild_id:
-        result["dm_sent"] = _dm_user_by_username(
-            ec_username, ec_embed, bot_token, guild_id,
-        )
-        if result["dm_sent"]:
-            result["already_in_server"] = True
-
-    # If not in server, generate a single-use invite and post it in the
-    # coordination channel so the bot handles delivery autonomously
-    if not result["already_in_server"]:
-        invite_url = None
-        try:
-            r = _req.post(
-                f"https://discord.com/api/v10/channels/{channel_id}/invites",
-                json={"max_age": 0, "max_uses": 1, "unique": True},
-                headers=headers,
-                timeout=10,
-            )
-            if r.status_code in (200, 201):
-                code = r.json().get("code", "")
-                if code:
-                    invite_url = f"https://discord.gg/{code}"
-                    result["invite_url"] = invite_url
-        except Exception:
-            pass
-
-        # Post invite + instructions into the coordination channel
-        if invite_url:
-            try:
-                _req.post(
-                    f"https://discord.com/api/v10/channels/{channel_id}/messages",
-                    json={"embeds": [{
-                        "title": f"Invite for emergency contact: {ec_username}",
-                        "description": (
-                            f"**{name}** registered **{ec_username}** as their emergency contact, "
-                            f"but they haven't joined the server yet.\n\n"
-                            f"**Forward this invite to them:** {invite_url}\n\n"
-                            f"Once they join, they will automatically receive notifications "
-                            f"whenever {name} confirms a destination."
-                        ),
-                        "color": 0xFF9800,
-                        "footer": {"text": "NYC Help Finder · Single-use invite"},
-                        "timestamp": datetime.utcnow().isoformat() + "Z",
-                    }]},
-                    headers=headers,
-                    timeout=10,
-                )
-            except Exception:
-                pass
-
-    return result
-
-# Lifecycle order — used for display; terminal states filtered in cases.py
 LIFECYCLE = ["intent_confirmed", "notified", "acknowledged",
              "en_route", "arrived", "resolved"]
 
 
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def notify_ec_added(case: dict, ec_username: str,
+                    bot_token: str, coord_chat_id: str) -> dict:
+    """
+    Called immediately when an EC username is saved during onboarding.
+
+    - If EC already has telegram_chat_id: DMs them directly.
+    - If not: generates a deep link and posts it to the coord group.
+
+    Returns: {"dm_sent": bool, "deep_link": str | None}
+    """
+    result: dict = {"dm_sent": False, "deep_link": None}
+    token = bot_token or TELEGRAM_BOT_TOKEN
+    chat_id = str(coord_chat_id or TELEGRAM_COORD_CHAT_ID)
+    if not token:
+        return result
+
+    name = case.get("name", "Someone")
+    case_id = case.get("case_id", "")
+    ec = case.get("emergency_contact", {})
+    if isinstance(ec, str):
+        ec = {}
+
+    existing_chat_id = ec.get("telegram_chat_id")
+
+    # EC already registered — DM directly
+    if existing_chat_id:
+        text = (
+            f"Hi! You are the emergency contact for <b>{name}</b> on NYC Help Finder.\n\n"
+            f"You will receive a message here if they confirm they are heading to a service location."
+        )
+        result["dm_sent"] = _tg_send(token, existing_chat_id, text)
+        return result
+
+    # EC not yet registered — generate deep link and post to coord group
+    bot_name = TELEGRAM_BOT_NAME
+    if not bot_name:
+        # Try to fetch it from the API
+        try:
+            r = _req.get(f"{_TG_BASE.format(token=token)}/getMe", timeout=10)
+            if r.status_code == 200:
+                bot_name = r.json().get("result", {}).get("username", "")
+        except Exception:
+            pass
+
+    if bot_name and case_id:
+        deep_link = _deep_link_url(bot_name, f"ec_{case_id}")
+        result["deep_link"] = deep_link
+        if chat_id:
+            ec_display = ec_username.lstrip("@") or "the emergency contact"
+            text = (
+                f"<b>Emergency Contact Registration</b>\n\n"
+                f"<b>{name}</b> has added <b>@{ec_display}</b> as their emergency contact.\n\n"
+                f"Please forward this link to them so they can register:\n"
+                f"{deep_link}\n\n"
+                f"Once they click Start, they will automatically receive notifications "
+                f"whenever {name} confirms a destination."
+            )
+            _tg_send(token, chat_id, text)
+
+    return result
+
+
 def confirm_destination_intent(case: dict, resource: dict,
-                                config: dict = None) -> dict:
+                                config: dict | None = None) -> dict:
     """
     Orchestrator called when the user clicks "Yes, I'm going there".
 
     config keys (all optional):
-        dest_webhook      — Discord webhook URL for the service provider
-        ec_webhook        — Discord webhook URL override for emergency contact
-        bot_token         — Discord bot token for thread creation
-        coord_channel_id  — Channel ID to create the coordination thread in
-        sla_minutes       — How long to wait before escalating (default 15)
+        bot_token      — Telegram bot token
+        coord_chat_id  — Telegram group chat ID (negative int as string)
+        sla_minutes    — How long before escalating (default 15)
 
-    Returns:
-        {notifications_sent: list, thread_id: str|None, thread_url: str|None}
+    Returns: {"notifications_sent": list}
     """
     cfg = config or {}
-    result: dict = {"notifications_sent": [], "thread_id": None, "thread_url": None}
+    result: dict = {"notifications_sent": []}
 
+    token = cfg.get("bot_token", TELEGRAM_BOT_TOKEN)
+    coord_chat_id = str(cfg.get("coord_chat_id", TELEGRAM_COORD_CHAT_ID))
+    sla_minutes = int(cfg.get("sla_minutes", 15))
     case_id = case.get("case_id", "")
     resource_name = resource.get("name", "Unknown")
 
-    # ── 1. Notify destination ──────────────────────────────────────────────────
-    dest_webhook = cfg.get("dest_webhook", "")
-    if dest_webhook:
-        payload = {"embeds": [_build_destination_embed(case, resource)]}
-        if _post_webhook(payload, dest_webhook):
-            result["notifications_sent"].append("destination")
+    # ── 1. Post to coordination group ─────────────────────────────────────────
+    if token and coord_chat_id:
+        text = _build_coord_group_text(case, resource)
+        if _tg_send(token, coord_chat_id, text):
+            result["notifications_sent"].append("coord_group")
 
-    # ── 2. Notify emergency contact via DM (only when they're actually involved) ─
+    # ── 2. DM emergency contact if chat_id registered ─────────────────────────
     ec = case.get("emergency_contact", {})
     if isinstance(ec, str):
-        ec = {"name": ec}
-    ec_username = cfg.get("ec_discord_username", "") or ec.get("discord_username", "")
-    bot_token_for_dm = cfg.get("bot_token", DISCORD_BOT_TOKEN)
-    channel_id_for_dm = cfg.get("coord_channel_id", DISCORD_COORD_CHANNEL_ID)
-    if ec_username and bot_token_for_dm:
-        # Resolve actual guild_id from the channel_id
-        guild_id_for_dm = _get_guild_id_from_channel(channel_id_for_dm, bot_token_for_dm)
-        dm_sent = _dm_user_by_username(
-            ec_username, _build_ec_embed(case, resource),
-            bot_token_for_dm, guild_id_for_dm,
-        )
-        if dm_sent:
+        ec = {}
+    ec_chat_id = ec.get("telegram_chat_id")
+
+    if token and ec_chat_id:
+        text = _build_ec_dm_text(case, resource)
+        if _tg_send(token, ec_chat_id, text):
             result["notifications_sent"].append("emergency_contact")
+    elif token and coord_chat_id:
+        # EC hasn't registered yet — post reminder to group
+        ec_user = ec.get("telegram_username", "")
+        if ec_user:
+            reminder = (
+                f"<b>Note:</b> Emergency contact <b>@{ec_user}</b> has not yet registered "
+                f"with the bot and cannot be reached directly. "
+                f"Please ensure they click the registration link sent earlier."
+            )
+            _tg_send(token, coord_chat_id, reminder)
 
-    # ── 3. Create coordination thread (requires bot token + channel ID) ────────
-    bot_token = cfg.get("bot_token", DISCORD_BOT_TOKEN)
-    channel_id = cfg.get("coord_channel_id", DISCORD_COORD_CHANNEL_ID)
-    if bot_token and channel_id:
-        thread_data = _create_thread(case, resource, bot_token, channel_id)
-        result["thread_id"] = thread_data.get("id")
-        result["thread_url"] = thread_data.get("url")
-        if result["thread_id"]:
-            result["notifications_sent"].append("thread_created")
-            # Write thread URL back to the case (best-effort)
-            try:
-                from pipeline.cases import load_case, _save_case
-                c = load_case(case_id)
-                if c:
-                    for intent in c.get("destination_intents", []):
-                        if intent.get("resource_name") == resource_name:
-                            intent["thread_id"] = result["thread_id"]
-                            intent["thread_url"] = result["thread_url"]
-                    _save_case(c)
-            except Exception:
-                pass
-
-    # ── 4. Schedule SLA check ──────────────────────────────────────────────────
-    sla_minutes = int(cfg.get("sla_minutes", 15))
-    if sla_minutes > 0 and (dest_webhook or ec_username):
-        _schedule_sla_check(case_id, resource_name, sla_minutes, cfg)
-
-    # Advance state to "notified" if at least one notification was sent
+    # ── 3. Advance case state to "notified" ───────────────────────────────────
     if result["notifications_sent"]:
         try:
             from pipeline.cases import update_destination_state
@@ -204,163 +155,72 @@ def confirm_destination_intent(case: dict, resource: dict,
         except Exception:
             pass
 
+    # ── 4. Schedule SLA check ─────────────────────────────────────────────────
+    if sla_minutes > 0 and result["notifications_sent"]:
+        _schedule_sla_check(case_id, resource_name, sla_minutes, token, coord_chat_id)
+
     return result
 
 
-# ── Embed builders ────────────────────────────────────────────────────────────
+# ── Message builders ──────────────────────────────────────────────────────────
 
-def _build_destination_embed(case: dict, resource: dict) -> dict:
-    """Red embed for the service provider — user is incoming."""
+def _build_coord_group_text(case: dict, resource: dict) -> str:
     name = case.get("name", "User")
     case_id = case.get("case_id", "")
     needs = case.get("needs", [])
     open_cats = [n["category"].replace("_", " ").title()
                  for n in needs if n.get("status") != "resolved"]
+    resource_name = resource.get("name", "")
+    address = resource.get("address", "NYC")
+    rtype = resource.get("resource_type", resource.get("type", "")).replace("_", " ").title()
+    now = datetime.now().strftime("%b %d at %I:%M %p")
 
-    return {
-        "title": f"Incoming: {name} is on their way",
-        "description": (
-            f"A user has confirmed they are heading to **{resource.get('name', '')}**.\n\n"
-            f"**Situation:** {', '.join(open_cats) if open_cats else 'General assistance needed'}"
-        ),
-        "color": 0xFF6347,
-        "fields": [
-            {"name": "Resource", "value": resource.get("name", ""), "inline": True},
-            {"name": "Type",
-             "value": resource.get("resource_type", resource.get("type", "")).replace("_", " ").title(),
-             "inline": True},
-            {"name": "Address", "value": resource.get("address", "NYC"), "inline": False},
-            {"name": "Intent Time",
-             "value": datetime.now().strftime("%b %d at %I:%M %p"), "inline": True},
-        ],
-        "footer": {"text": f"Case ID: {case_id} · NYC Help Finder"},
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
+    needs_line = ", ".join(open_cats) if open_cats else "General assistance"
+
+    return (
+        f"<b>Incoming: {name} is heading to {resource_name}</b>\n\n"
+        f"<b>Needs:</b> {needs_line}\n"
+        f"<b>Destination:</b> {resource_name} ({rtype})\n"
+        f"<b>Address:</b> {address}\n"
+        f"<b>Time:</b> {now}\n"
+        f"<b>Case ID:</b> <code>{case_id}</code>"
+    )
 
 
-def _build_ec_embed(case: dict, resource: dict) -> dict:
-    """Blue informational embed for the emergency contact."""
+def _build_ec_dm_text(case: dict, resource: dict) -> str:
     name = case.get("name", "User")
-    ec = case.get("emergency_contact", {})
-    if isinstance(ec, str):
-        ec_name = ec
-    else:
-        ec_name = ec.get("name", "")
-
     case_id = case.get("case_id", "")
+    ec = case.get("emergency_contact", {})
+    ec_name = ec.get("name", "") if isinstance(ec, dict) else ""
     greeting = f"Hi {ec_name}, " if ec_name else ""
+    resource_name = resource.get("name", "")
+    address = resource.get("address", "NYC")
+    now = datetime.now().strftime("%b %d at %I:%M %p")
 
-    return {
-        "title": f"Update: {name} is heading to get help",
-        "description": (
-            f"{greeting}**{name}** has confirmed they are heading to a service location "
-            f"through NYC Help Finder."
-        ),
-        "color": 0x2196F3,
-        "fields": [
-            {"name": "Destination", "value": resource.get("name", ""), "inline": True},
-            {"name": "Type",
-             "value": resource.get("resource_type", resource.get("type", "")).replace("_", " ").title(),
-             "inline": True},
-            {"name": "Address", "value": resource.get("address", "NYC"), "inline": False},
-            {"name": "Time",
-             "value": datetime.now().strftime("%b %d at %I:%M %p"), "inline": True},
-        ],
-        "footer": {
-            "text": (
-                f"Case ID: {case_id} · "
-                f"Please check in with {name} to confirm they arrived safely."
-            )
-        },
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
+    return (
+        f"{greeting}<b>{name}</b> has confirmed they are heading to "
+        f"<b>{resource_name}</b> ({address}) to get help.\n\n"
+        f"<b>Time:</b> {now}\n"
+        f"Please check in with them to confirm they arrived safely.\n"
+        f"<b>Case ID:</b> <code>{case_id}</code>"
+    )
 
 
-def _build_thread_starter(case: dict, resource: dict) -> dict:
-    """Coordination thread starter embed — three parties visible."""
-    name = case.get("name", "User")
-    case_id = case.get("case_id", "")
-    needs = case.get("needs", [])
-    open_cats = [n["category"].replace("_", " ").title()
-                 for n in needs if n.get("status") != "resolved"]
-    ec = case.get("emergency_contact", {})
-    ec_name = ec.get("name", "") if isinstance(ec, dict) else str(ec)
-
-    desc = "\n".join([
-        f"**{name}** is heading to **{resource.get('name', '')}**.",
-        "",
-        f"**Open needs:** {', '.join(open_cats) if open_cats else 'General assistance'}",
-        f"**Address:** {resource.get('address', 'NYC')}",
-        "",
-        "This thread is the single coordination layer for this interaction.",
-        f"Emergency contact on file: **{ec_name or 'Not provided'}**",
-    ])
-
-    return {
-        "title": f"Coordination: {name} → {resource.get('name', '')}",
-        "description": desc,
-        "color": 0xFF6347,
-        "fields": [
-            {"name": "Status", "value": "En Route", "inline": True},
-            {"name": "Case ID", "value": case_id, "inline": True},
-        ],
-        "footer": {
-            "text": "Update this thread with arrivals, acknowledgments, and outcomes."
-        },
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
-
-
-# ── Discord bot API ───────────────────────────────────────────────────────────
-
-def _create_thread(case: dict, resource: dict,
-                   bot_token: str, channel_id: str) -> dict:
-    """
-    Create a Discord public thread via bot API.
-    Returns {id, url} on success, {} on failure.
-    """
-    if not _HAS_REQUESTS or not bot_token or not channel_id:
-        return {}
-
-    name = case.get("name", "User")
-    resource_name = resource.get("name", "Service")
-    thread_name = f"{name} → {resource_name}"[:100]
-
-    headers = {
-        "Authorization": f"Bot {bot_token}",
-        "Content-Type": "application/json",
-    }
-    url = f"https://discord.com/api/v10/channels/{channel_id}/threads"
-    payload = {
-        "name": thread_name,
-        "type": 11,               # PUBLIC_THREAD
-        "auto_archive_duration": 1440,
-        "message": {"embeds": [_build_thread_starter(case, resource)]},
-    }
-
-    try:
-        resp = _req.post(url, json=payload, headers=headers, timeout=10)
-        if resp.status_code in (200, 201):
-            data = resp.json()
-            thread_id = data.get("id", "")
-            guild_id = data.get("guild_id", "")
-            return {
-                "id": thread_id,
-                "url": f"https://discord.com/channels/{guild_id}/{thread_id}",
-            }
-    except Exception:
-        pass
-    return {}
+def _build_sla_text(case_id: str, resource_name: str,
+                    name: str, sla_minutes: int) -> str:
+    return (
+        f"<b>SLA Alert</b>\n\n"
+        f"<b>{resource_name}</b> has not acknowledged <b>{name}</b> "
+        f"after {sla_minutes} minutes.\n\n"
+        f"Consider suggesting alternative resources.\n"
+        f"<b>Case:</b> <code>{case_id}</code>"
+    )
 
 
 # ── SLA escalation ────────────────────────────────────────────────────────────
 
 def _schedule_sla_check(case_id: str, resource_name: str,
-                         sla_minutes: int, cfg: dict):
-    """
-    After sla_minutes, re-reads the case. If the destination intent is still
-    in intent_confirmed / notified, fires an orange escalation embed.
-    """
+                         sla_minutes: int, token: str, coord_chat_id: str):
     key = f"{case_id}:{resource_name}"
     with _sla_lock:
         if key in _sla_scheduled:
@@ -378,33 +238,15 @@ def _schedule_sla_check(case_id: str, resource_name: str,
                 if intent.get("resource_name") != resource_name:
                     continue
                 if intent.get("state") not in ("intent_confirmed", "notified"):
-                    return  # already advanced — no escalation needed
+                    return
                 name = case.get("name", "User")
-                sla_embed = {
-                    "title": f"SLA Alert — No acknowledgment from {resource_name}",
-                    "description": (
-                        f"**{resource_name}** has not acknowledged the incoming user "
-                        f"**{name}** after {sla_minutes} minutes.\n\n"
-                        "Consider suggesting alternative resources."
-                    ),
-                    "color": 0xFF9800,
-                    "fields": [
-                        {"name": "Case ID", "value": case_id, "inline": True},
-                        {"name": "SLA", "value": f"{sla_minutes} min", "inline": True},
-                    ],
-                    "footer": {"text": "NYC Help Finder · Automated SLA check"},
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                }
-                dest_wh = cfg.get("dest_webhook", "")
-                if dest_wh:
-                    _post_webhook({"embeds": [sla_embed]}, dest_wh)
-                # Also DM the EC if they're on file
-                ec_username = cfg.get("ec_discord_username", "")
-                bot_token = cfg.get("bot_token", DISCORD_BOT_TOKEN)
-                channel_id = cfg.get("coord_channel_id", DISCORD_COORD_CHANNEL_ID)
-                if ec_username and bot_token:
-                    guild_id = _get_guild_id_from_channel(channel_id, bot_token)
-                    _dm_user_by_username(ec_username, sla_embed, bot_token, guild_id)
+                sla_text = _build_sla_text(case_id, resource_name, name, sla_minutes)
+                if coord_chat_id:
+                    _tg_send(token, coord_chat_id, sla_text)
+                ec = case.get("emergency_contact", {})
+                ec_chat_id = ec.get("telegram_chat_id") if isinstance(ec, dict) else None
+                if ec_chat_id:
+                    _tg_send(token, ec_chat_id, sla_text)
         except Exception:
             pass
 
@@ -412,105 +254,23 @@ def _schedule_sla_check(case_id: str, resource_name: str,
     t.start()
 
 
-# ── Discord DM utility ────────────────────────────────────────────────────────
+# ── Telegram utilities ────────────────────────────────────────────────────────
 
-def _get_guild_id_from_channel(channel_id: str, bot_token: str) -> str:
-    """Fetch the guild_id that owns a given channel_id via the bot API."""
-    if not _HAS_REQUESTS or not channel_id or not bot_token:
-        return ""
-    try:
-        r = _req.get(
-            f"https://discord.com/api/v10/channels/{channel_id}",
-            headers={"Authorization": f"Bot {bot_token}"},
-            timeout=10,
-        )
-        if r.status_code == 200:
-            return r.json().get("guild_id", "")
-    except Exception:
-        pass
-    return ""
-
-
-def _dm_user_by_username(username: str, embed: dict,
-                          bot_token: str, guild_id: str = "") -> bool:
-    """
-    Send a DM embed to a Discord user identified by username.
-
-    Flow:
-      1. If guild_id is set: search guild members for the username to get user ID.
-      2. Open a DM channel via POST /users/@me/channels.
-      3. POST the embed to that channel.
-
-    Returns True if the DM was sent successfully.
-    """
-    if not _HAS_REQUESTS or not bot_token or not username:
+def _tg_send(token: str, chat_id: int | str, text: str,
+              parse_mode: str = "HTML") -> bool:
+    """POST a message to a Telegram chat. Returns True on success."""
+    if not _HAS_REQUESTS or not token or not chat_id:
         return False
-
-    headers = {
-        "Authorization": f"Bot {bot_token}",
-        "Content-Type": "application/json",
-    }
-    username = username.lstrip("@").strip()
-    user_id = None
-
-    # Step 1 — resolve username → user ID via guild member search
-    if guild_id:
-        try:
-            r = _req.get(
-                f"https://discord.com/api/v10/guilds/{guild_id}/members/search",
-                params={"query": username, "limit": 5},
-                headers=headers,
-                timeout=10,
-            )
-            if r.status_code == 200:
-                for member in r.json():
-                    u = member.get("user", {})
-                    # Match on username or global_name (display name)
-                    if (u.get("username", "").lower() == username.lower() or
-                            u.get("global_name", "").lower() == username.lower()):
-                        user_id = u.get("id")
-                        break
-        except Exception:
-            pass
-
-    if not user_id:
-        return False
-
-    # Step 2 — open DM channel
     try:
         r = _req.post(
-            "https://discord.com/api/v10/users/@me/channels",
-            json={"recipient_id": user_id},
-            headers=headers,
+            f"{_TG_BASE.format(token=token)}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": parse_mode},
             timeout=10,
         )
-        if r.status_code not in (200, 201):
-            return False
-        dm_channel_id = r.json().get("id")
-    except Exception:
-        return False
-
-    # Step 3 — send the message
-    try:
-        r = _req.post(
-            f"https://discord.com/api/v10/channels/{dm_channel_id}/messages",
-            json={"embeds": [embed]},
-            headers=headers,
-            timeout=10,
-        )
-        return r.status_code in (200, 201)
+        return r.status_code == 200 and r.json().get("ok", False)
     except Exception:
         return False
 
 
-# ── Webhook utility ───────────────────────────────────────────────────────────
-
-def _post_webhook(payload: dict, url: str) -> bool:
-    """POST JSON payload to a Discord webhook. Returns True on success."""
-    if not _HAS_REQUESTS or not url:
-        return False
-    try:
-        resp = _req.post(url, json=payload, timeout=10)
-        return resp.status_code in (200, 204)
-    except Exception:
-        return False
+def _deep_link_url(bot_name: str, payload: str) -> str:
+    return f"https://t.me/{bot_name}?start={payload}"
