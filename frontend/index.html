@@ -1371,26 +1371,33 @@ async function raiseTicket(){
 }
 
 // ── NeMo Agent Toolkit (nat) — Full Plan View ──────────────
-// Rotating loading stories
+// Rotating loading stories — full cards with name, situation, quote, outcome
 const LOADING_STORIES=[
-  '"I thought I had to be homeless to get help. Turns out I qualified for $400/month in SNAP just from my income." — <b>Maria, Brooklyn</b>',
-  '"I didn\'t know NYC guarantees shelter. I walked into an intake center at 11pm and had a bed by midnight." — <b>James, Bronx</b>',
-  '"My kids enrolled in school without a permanent address. McKinney-Vento covers families in shelter." — <b>Rosa, Queens</b>',
-  '"Lost my job, thought I was alone. The caseworker found me Medicaid, SNAP, and a free MetroCard program." — <b>David, Manhattan</b>',
-  '"I was worried about ID. They let me apply with a \'Request for Proof\' form and helped me get documents later." — <b>Amara, Brooklyn</b>',
-  '"I thought undocumented meant no help. Emergency shelter, food pantries, and health clinics are open to everyone." — <b>Carlos, Queens</b>',
-  '"As a senior, I got SCRIE rent assistance plus Meals on Wheels. $300/month back in my pocket." — <b>Helen, Bronx</b>',
-  '"Fair Fares gave me 50% off MetroCards. It doesn\'t sound like much until you count every trip." — <b>Tina, Brooklyn</b>',
-  '"Free mental health clinics exist. No insurance, no income requirement — just walk in." — <b>Marcus, Staten Island</b>',
-  '"HRA helped me fill out SNAP, Medicaid, and cash assistance in one visit. 30 days later, I had all three." — <b>Priya, Queens</b>',
+  {name:'James',situation:'Just released from prison, no ID, no money, no family in NYC',quote:"I didn't think anyone would help a guy like me. They did.",outcome:'Moved into transitional housing same day. HRA got him new ID in 3 weeks. Started job training program.'},
+  {name:'Maria',situation:'Single mom, 2 kids, just lost her job at a restaurant',quote:"I thought I had to be homeless before anyone would help me.",outcome:'Qualified for $598/mo SNAP, Medicaid for her and the kids, Fair Fares MetroCard. Kept her apartment with emergency rent assistance.'},
+  {name:'Rosa',situation:'Fleeing domestic violence with 3 kids, mid-school-year',quote:"I was scared my kids would lose their school. They didn't.",outcome:'DV shelter placement same night. Kids stayed in their school via McKinney-Vento Act. Free meals + transport arranged.'},
+  {name:'David',situation:'Laid off after 15 years, too proud to ask for help',quote:"I thought SNAP was for other people. It was for me.",outcome:'Got $291/mo SNAP, Medicaid, and referral to job training. Back to work in 4 months with no gap in coverage.'},
+  {name:'Amara',situation:'Just arrived from Ghana, no English, no ID, pregnant',quote:"I didn't know where to go. Someone walked me in and stayed with me.",outcome:'WIC enrolled, prenatal care at free clinic, emergency housing with interpreter. Filed for benefits with "Request for Proof" form.'},
+  {name:'Carlos',situation:'Undocumented father of 2, construction accident, no work',quote:"I thought being undocumented meant no help at all.",outcome:'Emergency shelter, food pantry, free clinic treatment. Kids got school meals and free healthcare through Child Health Plus.'},
+  {name:'Helen',situation:'82-year-old widow, rent going up, fixed Social Security',quote:"I thought I\'d have to leave the apartment I\'ve had for 40 years.",outcome:'SCRIE rent freeze saved her $340/mo. Meals on Wheels 5x/week. Free transport to doctors. Still in her home.'},
+  {name:'Tina',situation:'Working 2 jobs, 4 kids, still couldn\'t make rent',quote:"I was working harder than ever and still falling behind.",outcome:'SNAP, emergency rent assistance, Fair Fares, free afterschool, summer camp for kids. $1,210/mo in benefits plus childcare.'},
+  {name:'Marcus',situation:'Veteran with PTSD, drinking too much, isolated',quote:"I didn\'t want therapy. Someone made it feel safe to try.",outcome:'Free VA mental health + outpatient group. VA housing voucher after 3 months. Connected with other vets.'},
+  {name:'Priya',situation:'Student, chronic illness, parents can\'t support her',quote:"I didn\'t know I could get Medicaid as an adult student.",outcome:'Medicaid, SNAP ($240/mo), CUNY emergency grant, free mental health. Graduated on time, debt-free on essentials.'},
 ];
 let _loadingStoryTimer=null;
+
+function renderStoryCard(s){
+  return `<div style="font-weight:700;font-size:17px;color:var(--t1);margin-bottom:4px">${s.name}</div>
+    <div style="font-size:12.5px;color:var(--t2);margin-bottom:10px;line-height:1.6">${s.situation}</div>
+    <div style="font-style:italic;color:var(--t1);font-size:13.5px;padding:10px 14px;background:rgba(58,125,10,0.04);border-left:3px solid var(--green-d);border-radius:4px;margin-bottom:10px;line-height:1.6">&ldquo;${s.quote}&rdquo;</div>
+    <div style="font-size:12px;color:var(--t2);line-height:1.6"><span style="color:var(--green);font-weight:700;font-size:10px;font-family:var(--mono);letter-spacing:0.5px">OUTCOME:</span> ${s.outcome}</div>`;
+}
 
 function startLoadingStories(){
   let idx=Math.floor(Math.random()*LOADING_STORIES.length);
   const el=document.getElementById('loadingStoryText');
   if(!el)return;
-  el.innerHTML=LOADING_STORIES[idx];
+  el.innerHTML=renderStoryCard(LOADING_STORIES[idx]);
   el.parentElement.style.opacity='1';
   if(_loadingStoryTimer)clearInterval(_loadingStoryTimer);
   _loadingStoryTimer=setInterval(()=>{
@@ -1399,12 +1406,10 @@ function startLoadingStories(){
     box.parentElement.style.opacity='0';
     setTimeout(()=>{
       idx=(idx+1)%LOADING_STORIES.length;
-      if(document.getElementById('loadingStoryText')){
-        document.getElementById('loadingStoryText').innerHTML=LOADING_STORIES[idx];
-        document.getElementById('loadingStoryText').parentElement.style.opacity='1';
-      }
+      const t=document.getElementById('loadingStoryText');
+      if(t){t.innerHTML=renderStoryCard(LOADING_STORIES[idx]);t.parentElement.style.opacity='1'}
     },400);
-  },4500);
+  },6000);
 }
 
 function stopLoadingStories(){
@@ -1422,9 +1427,9 @@ async function runNatAgent(){
     <div style="font-family:var(--display);font-size:26px;font-weight:300;margin-bottom:10px">Finding what's possible for you...</div>
     <div style="font-size:14px;color:var(--t2);margin-bottom:32px;line-height:1.6">We're checking every program you might qualify for, finding nearby resources, and building your action plan.</div>
     <div class="spinner" style="margin:0 auto 24px"></div>
-    <div id="loadingStory" style="min-height:80px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:var(--shadow);transition:opacity 0.4s ease">
-      <div style="font-size:10px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">&#128172; Story while you wait</div>
-      <div id="loadingStoryText" style="font-size:13.5px;color:var(--t1);line-height:1.7;font-style:italic"></div>
+    <div id="loadingStory" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;box-shadow:var(--shadow);transition:opacity 0.4s ease;text-align:left">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px;text-align:center">&#128172; Stories while you wait</div>
+      <div id="loadingStoryText"></div>
     </div>
   </div>`;
   startLoadingStories();
