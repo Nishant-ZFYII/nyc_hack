@@ -268,7 +268,10 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
       <!-- Query -->
       <div class="section-label fade-in-d1">What do you need?</div>
       <textarea id="queryInput" class="big-input fade-in-d2" rows="4" placeholder="e.g. I have 4 kids, income $28K, losing housing in Flatbush next week..."></textarea>
-      <button class="btn-primary fade-in-d2" style="margin-top:12px" id="sendBtn" onclick="sendQuery()">Find Help</button>
+      <div style="display:flex;gap:8px;margin-top:12px" class="fade-in-d2">
+        <button class="btn-primary" style="flex:1" id="sendBtn" onclick="sendQuery()">Find Help</button>
+        <button class="btn-primary" style="flex:1;background:var(--purple);color:#fff" onclick="runAgentPlan()" title="Get a full action plan across all needs">&#129504; Full Plan</button>
+      </div>
 
       <hr class="divider">
       <div class="section-label">Quick options</div>
@@ -324,6 +327,18 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
         <div class="map-legend-item"><span class="map-legend-dot" style="background:#81c784"></span> Childcare</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════ PAGE: AGENT PLAN (autonomous) ═══════════ -->
+<div class="page" id="page-agentplan">
+  <div class="topbar">
+    <button class="topbar-back" onclick="goTo('page-ask')">&#8592; Back</button>
+    <span class="topbar-title">Your Full Plan</span>
+    <button class="topbar-back" onclick="downloadPlanPDF()" style="margin-left:auto">&#128196; Save as PDF</button>
+  </div>
+  <div class="page-scroll">
+    <div class="centered-wide" id="agentPlanContent"></div>
   </div>
 </div>
 
@@ -869,6 +884,190 @@ async function loadProgress(){
     const resp=await fetch(`/api/case/progress/${currentCaseId}`);
     return await resp.json();
   }catch(e){return null}
+}
+
+// ── Autonomous Agent Plan ──────────────────────────────────
+let lastPlanData=null;
+
+async function runAgentPlan(){
+  const q=document.getElementById('queryInput').value.trim();
+  if(!q){document.getElementById('queryInput').focus();return}
+  lastQuery=q;
+  goTo('page-agentplan');
+  const c=document.getElementById('agentPlanContent');
+  c.innerHTML=`<div style="text-align:center;padding:60px 20px">
+    <div style="font-size:48px;margin-bottom:16px;animation:pulse 2s infinite">&#129504;</div>
+    <div style="font-family:var(--display);font-size:22px;font-weight:300;margin-bottom:8px">Agent is thinking...</div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:20px">Analyzing your situation, finding resources, checking eligibility, optimizing routes.</div>
+    <div class="spinner" style="margin:0 auto"></div>
+  </div>`;
+  try{
+    const resp=await fetch('/api/agent/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,location:userLocation?{lat:userLocation.lat,lon:userLocation.lon}:null,case_id:currentCaseId})});
+    const data=await resp.json();
+    lastPlanData=data;
+    renderAgentPlan(data);
+  }catch(err){
+    c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error: ${err.message}</div>`;
+  }
+}
+
+function renderAgentPlan(data){
+  const c=document.getElementById('agentPlanContent');
+  let html=`<div style="margin-top:20px">`;
+
+  // Query echo
+  html+=`<div style="color:var(--t3);font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">YOUR SITUATION</div>`;
+  html+=`<div style="background:rgba(58,125,10,0.04);border:1px solid var(--green-d);border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:20px">${lastQuery}</div>`;
+
+  // Summary
+  if(data.summary){
+    html+=`<div class="answer-box fade-in" style="font-size:15px;line-height:1.8">${data.summary.replace(/\n/g,'<br>')}</div>`;
+  }
+
+  // Benefits banner
+  if(data.total_monthly_benefits>0){
+    html+=`<div style="background:linear-gradient(135deg,rgba(58,125,10,0.08),rgba(58,125,10,0.02));border:1px solid var(--green-d);border-radius:12px;padding:18px;margin-bottom:20px;text-align:center;box-shadow:var(--shadow)">
+      <div style="font-size:11px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">You qualify for</div>
+      <div style="font-family:var(--display);font-size:32px;font-weight:600;color:var(--green);margin-bottom:4px">$${data.total_monthly_benefits.toLocaleString()}/month</div>
+      <div style="font-size:13px;color:var(--t2)">${(data.qualifying_programs||[]).join(' · ')||'Benefits'}</div>
+    </div>`;
+  }
+
+  // Timeline
+  if(data.steps&&data.steps.length){
+    html+=`<div class="section-label" style="margin-top:24px">Your action plan</div>`;
+    for(const step of data.steps){
+      html+=renderPlanStep(step);
+    }
+  }
+
+  // Stories
+  if(data.stories&&data.stories.length){
+    html+=`<div class="section-label" style="margin-top:24px">Others like you</div>`;
+    for(const s of data.stories){
+      html+=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:10px;box-shadow:var(--shadow)">
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px">${s.name||'Someone'}</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:8px;line-height:1.6">${s.situation||''}</div>
+        ${s.quote?`<div style="font-style:italic;color:var(--t2);font-size:13px;padding:8px 12px;border-left:3px solid var(--green-d);margin-bottom:8px">&ldquo;${s.quote}&rdquo;</div>`:''}
+        ${s.outcome?`<div style="font-size:12px;color:var(--green)"><b>Outcome:</b> ${s.outcome}</div>`:''}
+      </div>`;
+    }
+  }
+
+  // Trace (collapsed)
+  if(data.trace&&data.trace.length){
+    const tId='trace-'+Date.now();
+    html+=`<div style="margin-top:24px">
+      <div onclick="document.getElementById('${tId}').classList.toggle('collapsed')" style="cursor:pointer;font-size:11px;color:var(--t3);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;padding:8px 0">&#9881;&#65039; Agent steps (${data.trace.length}) &nbsp;&#9660;</div>
+      <div id="${tId}" class="collapsed" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);font-size:11px;color:var(--t2)">`;
+    for(const t of data.trace){
+      html+=`<div style="padding:3px 0">#${t.step} ${t.action||''} <span style="color:var(--t3)">(${t.duration_s||0}s)</span></div>`;
+    }
+    html+=`</div></div>`;
+  }
+
+  html+=`</div>`;
+  c.innerHTML=html;
+}
+
+function renderPlanStep(step){
+  const timeframes={TONIGHT:{color:'var(--red)',icon:'&#127769;'},THIS_WEEK:{color:'var(--orange)',icon:'&#128197;'},NEXT_2_WEEKS:{color:'var(--blue)',icon:'&#128197;'}};
+  const tf=timeframes[step.timeframe]||{color:'var(--green)',icon:'&#10003;'};
+  const cat=(step.category||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  const top=step.top_resource||{};
+  const dir=step.directions||{};
+
+  let html=`<div style="background:var(--bg2);border:1px solid var(--border);border-left:4px solid ${tf.color};border-radius:12px;padding:18px;margin-bottom:12px;box-shadow:var(--shadow)">`;
+
+  // Timeframe header
+  html+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div>
+      <div style="font-size:10px;font-family:var(--mono);color:${tf.color};font-weight:700;letter-spacing:1px;text-transform:uppercase">${(step.timeframe||'').replace(/_/g,' ')}</div>
+      <div style="font-size:18px;font-weight:700;margin-top:2px">${tf.icon} ${cat}</div>
+    </div>
+    <div style="font-size:10px;color:var(--t3);font-family:var(--mono)">Step ${step.priority||'?'}</div>
+  </div>`;
+
+  // Top resource
+  if(top.name){
+    const eName=(top.name||'').replace(/'/g,'&#39;');
+    html+=`<div style="background:var(--bg3);border-radius:8px;padding:12px;margin-bottom:10px">
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px">${top.name}</div>
+      <div style="font-size:12px;color:var(--t3);font-family:var(--mono);margin-bottom:6px">${top.address||'Address not listed'}</div>`;
+    if(dir.walk_min||dir.distance_miles){
+      html+=`<div style="font-size:12px;color:var(--t2);font-family:var(--mono)">`;
+      if(dir.distance_miles)html+=`${dir.distance_miles} mi`;
+      if(dir.walk_min)html+=` &middot; ~${dir.walk_min} min walk`;
+      html+=`</div>`;
+    }
+    if(dir.recommendation)html+=`<div style="font-size:12px;color:var(--green);margin-top:6px">${dir.recommendation}</div>`;
+    if(top.latitude&&top.longitude){
+      html+=`<div style="display:flex;gap:6px;margin-top:10px">`;
+      if(currentCaseId)html+=`<button class="btn-secondary" style="padding:6px 10px;font-size:11px;background:rgba(58,125,10,0.08);color:var(--green);border-color:var(--green-d)" onclick="chooseResource('${step.category}','${eName}','${top.address||''}','${top.resource_type||''}',${top.latitude},${top.longitude})">&#9989; Choose this</button>`;
+      html+=`<button class="btn-secondary" style="padding:6px 10px;font-size:11px" onclick="getDirections(${top.latitude},${top.longitude},'${eName}')">Directions</button>`;
+      html+=`</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Alternatives
+  if(step.alternatives&&step.alternatives.length){
+    const altId='alt-'+(step.priority||0)+'-'+Date.now();
+    html+=`<div onclick="document.getElementById('${altId}').classList.toggle('collapsed')" style="cursor:pointer;font-size:11px;color:var(--t3);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.5px;padding:6px 0">${step.alternatives.length} alternative${step.alternatives.length>1?'s':''} &nbsp;&#9660;</div>`;
+    html+=`<div id="${altId}" class="collapsed" style="margin-top:6px">`;
+    for(const alt of step.alternatives){
+      const eAlt=(alt.name||'').replace(/'/g,'&#39;');
+      html+=`<div style="background:var(--bg3);border-radius:6px;padding:10px;margin:4px 0;font-size:12px">
+        <div style="font-weight:600">${alt.name||'Unknown'}</div>
+        <div style="color:var(--t3);font-family:var(--mono);font-size:11px">${alt.address||''}</div>`;
+      if(alt.walk_min)html+=`<div style="color:var(--t2);font-size:11px;margin-top:4px">~${alt.walk_min} min walk</div>`;
+      if(alt.latitude&&alt.longitude){
+        html+=`<div style="display:flex;gap:6px;margin-top:8px">`;
+        if(currentCaseId)html+=`<button class="btn-secondary" style="padding:4px 8px;font-size:10px" onclick="chooseResource('${step.category}','${eAlt}','${alt.address||''}','${alt.resource_type||''}',${alt.latitude},${alt.longitude})">Choose</button>`;
+        html+=`<button class="btn-secondary" style="padding:4px 8px;font-size:10px" onclick="getDirections(${alt.latitude},${alt.longitude},'${eAlt}')">Directions</button>`;
+        html+=`</div>`;
+      }
+      html+=`</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Rights
+  if(step.rights&&step.rights.length){
+    html+=`<div style="margin-top:10px;padding:10px;background:rgba(66,165,245,0.06);border-radius:6px;border-left:3px solid var(--blue)">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--blue);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Your rights</div>`;
+    for(const r of step.rights){
+      html+=`<div style="font-size:12px;color:var(--t2);margin:3px 0"><b>${r.right||''}</b>${r.detail?' — '+r.detail:''}</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  // Eligibility
+  if(step.eligibility&&step.eligibility.length){
+    html+=`<div style="margin-top:10px;padding:10px;background:rgba(58,125,10,0.06);border-radius:6px;border-left:3px solid var(--green)">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">You qualify for</div>`;
+    for(const e of step.eligibility){
+      if(typeof e==='string')html+=`<div style="font-size:12px;color:var(--t2);margin:3px 0">${e}</div>`;
+      else html+=`<div style="font-size:12px;color:var(--t2);margin:3px 0"><b>${e.program||e.name||''}</b>${e.amount?' — $'+e.amount+'/mo':''}${e.detail?' — '+e.detail:''}</div>`;
+    }
+    html+=`</div>`;
+  }
+
+  html+=`</div>`;
+  return html;
+}
+
+async function downloadPlanPDF(){
+  if(!lastPlanData){alert('Generate a plan first');return}
+  try{
+    const resp=await fetch('/api/agent/pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastPlanData)});
+    const html=await resp.text();
+    const blob=new Blob([html],{type:'text/html'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='nyc-services-plan.html';a.click();
+    URL.revokeObjectURL(url);
+  }catch(e){alert('Download failed: '+e.message)}
 }
 
 async function refreshReturnFlow(){
