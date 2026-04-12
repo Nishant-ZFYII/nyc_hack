@@ -31,6 +31,13 @@ from pipeline.cases import (
     save_admin_notes,
     get_tickets,
 )
+
+# Real NeMo Guardrails — same library the user portal uses
+try:
+    from guardrails import check_safety_async
+    _GUARDRAILS_AVAILABLE = True
+except Exception:
+    _GUARDRAILS_AVAILABLE = False
 from pipeline.briefing import generate_briefing, _estimate_urgency
 from pipeline.executor import load_state
 from pipeline.form_filler import fill_forms_from_id, extract_id_fields
@@ -383,6 +390,18 @@ async def admin_agent_nat(req: AdminAgentRequest):
         raise HTTPException(500, f"nat not available: {_NAT_IMPORT_ERROR}")
 
     t0 = _time.time()
+
+    # NeMo Guardrails (real nemoguardrails) — same protection as user portal
+    if _GUARDRAILS_AVAILABLE:
+        guard = await check_safety_async(req.query, use_llm_fallback=False)
+        if not guard["allow"]:
+            return {
+                "answer": guard["replacement_response"],
+                "safety_block": True,
+                "reason": guard["reason"],
+                "via": "guardrails (pre-nat admin)",
+            }
+
     message = req.query
     if req.case_id:
         message += f" (focus case_id: {req.case_id})"
