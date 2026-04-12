@@ -237,14 +237,30 @@ def run_autonomous_agent(
     t = time.time()
     steps = []
 
+    # Import TYPE_EXPANSION to map categories to resource types
+    try:
+        from pipeline.executor import TYPE_EXPANSION
+    except ImportError:
+        TYPE_EXPANSION = {}
+
     # Add each need as a step, ordered by priority
     for need in sorted(needs, key=lambda n: n.get("priority", 99)):
         cat = need.get("category", "")
         resources = resources_by_need.get(cat, [])
+
         if not resources:
-            # Try to find by expanded type
+            # Try mapped resource types for this category
+            mapped_types = TYPE_EXPANSION.get(cat.lower(), [cat])
             for key, rlist in resources_by_need.items():
-                if cat in key:
+                # Match if any mapped type is in the key
+                if any(t in key for t in mapped_types):
+                    resources = rlist
+                    break
+
+        if not resources:
+            # Last resort: substring match
+            for key, rlist in resources_by_need.items():
+                if cat in key or key in cat:
                     resources = rlist
                     break
 
