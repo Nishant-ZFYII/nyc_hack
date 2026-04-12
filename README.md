@@ -1,152 +1,244 @@
 # NYC Social Services Intelligence Engine
 
-An AI-powered caseworker system for NYC Department of Social Services. Built for NVIDIA Spark Hack NYC (April 10-12, 2026).
+An AI-powered caseworker + kiosk system for NYC Department of Social Services. Built for **NVIDIA Spark Hack NYC 2026**.
 
-The system performs comprehensive needs assessments — decomposing life situations into prioritized needs across housing, food, healthcare, legal aid, benefits eligibility, and safety — using a bounded DSL architecture that prevents hallucination.
+The system performs comprehensive needs assessments across housing, food, healthcare, legal aid, benefits eligibility, school continuity, and safety — using a **bounded DSL architecture** that prevents LLM hallucination. It tracks people across multiple visits (like a real caseworker), finds resources sorted by distance from where they are, and guides them step-by-step through their journey.
 
 ## Architecture
 
 ```
-User query → LLM Planner (Nemotron/Claude) → JSON Plan
-  → Executor (cuDF/cuGraph on DGX, pandas/networkx locally)
+User query → LLM Planner (Nemotron) → JSON Plan
+  → Executor (cuDF/cuGraph/cuOpt on DGX)
   → Synthesizer (natural language answer)
   → Verifier (per-claim fact-checking)
+  → Case tracker (persistent across visits)
   → User feedback loop (ground truth correction)
 ```
 
-**Key principle:** The LLM never answers directly. It produces a structured JSON plan; the executor queries real data; the synthesizer formats the answer; the verifier fact-checks each claim.
+**Key principle:** The LLM never touches the data directly. It translates natural language to a structured JSON plan; the executor queries real data; the synthesizer formats the answer; the verifier fact-checks each claim against the mart.
+
+## Current Status (April 12, 2026)
+
+- ✅ FastAPI backend on port 9000 with custom HTML frontend (dark theme, deck.gl 3D map)
+- ✅ Resource mart: **7,759 resources** across 19 types
+- ✅ Knowledge graph: **3.6M edges** via cuGraph
+- ✅ SPO triples: **328K + 1.2M** txt2kg extractions
+- ✅ PyKEEN KGE: **83,618 entities × 64 dims** (TransE)
+- ✅ cuOpt VRP allocation (cold emergency, migrant allocation)
+- ✅ Location-aware search with GPS + manual address + Nominatim geocoding
+- ✅ Multi-modal routing: walk (OSRM) + transit with budget awareness
+- ✅ Case management: login, visit tracking, progress, choose/checkin/resolve
+- ✅ Eligibility screener (SNAP/Medicaid/WIC/Cash/Fair Fares)
+- ✅ Rights database (per resource type)
+- ✅ Success stories (6 anonymized journeys)
+- ✅ Ollama nemotron-mini on GPU (90 tok/s)
 
 ## Requirements
 
-- Python 3.10+
-- An LLM API key (at least one):
-  - `ANTHROPIC_API_KEY` — Claude Haiku (recommended for local dev)
-  - `OPENAI_API_KEY` — GPT-4o-mini
-  - `OPENROUTER_API_KEY` — OpenRouter (free Nemotron tier)
-  - Or a local NIM/vLLM server on `localhost:8000`
-
-**Yes, an API key is required.** The system uses an LLM for query planning, answer synthesis, verification, and feedback parsing. Without an LLM provider, it cannot function.
-
-### Install dependencies
-
-```bash
-pip install streamlit pandas numpy networkx pyarrow requests openai anthropic scikit-learn
-```
-
-## Quick Start
-
-The `data/` and `stage/` directories are **included in the repo** — you don't need to regenerate them.
+- Python 3.10+ (3.12 on DGX)
+- DGX Spark (for GPU features) OR laptop with an LLM API key
 
 ### On DGX Spark (no API key needed)
 
-The system uses **Nemotron-3-Nano-30B** running locally via NIM or vLLM. No external API key required.
-
 ```bash
+# Start ollama on GPU (REQUIRED — default is CPU)
+sudo systemctl stop ollama
+OLLAMA_NUM_GPU=999 ollama serve &
+ollama pull nemotron-mini  # or nemotron-3-nano for larger model
+
+# Clone and install
 git clone https://github.com/Nishant-ZFYII/nyc_hack.git
 cd nyc_hack
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# Start Nemotron via NIM or vLLM on port 8000 first, then:
-streamlit run app.py
+# Install NVIDIA GPU stack (aarch64 wheels for DGX Spark GB10)
+pip install cudf-cu12 cugraph-cu12 cuml-cu12 cupy-cuda12x cuopt-cu12
+pip install torch --pre --index-url https://download.pytorch.org/whl/nightly/cu128 --no-deps
+pip install pykeen tensorrt-llm
+
+# Run
+uvicorn server:app --host 0.0.0.0 --port 9000
+# Open http://<dgx-ip>:9000
 ```
 
-### On your laptop (API key required)
+### On laptop (API key required)
 
-Without a local GPU to run Nemotron, you need a cloud LLM API key:
+Full step-by-step for a fresh Linux/Mac laptop:
 
 ```bash
+# 1. Clone the repo
 git clone https://github.com/Nishant-ZFYII/nyc_hack.git
 cd nyc_hack
+
+# 2. Create a Python virtual environment
+python3 -m venv venv
+source venv/bin/activate      # Linux/Mac
+# .\venv\Scripts\activate     # Windows PowerShell
+
+# 3. Upgrade pip and install dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
-ANTHROPIC_API_KEY=your-key-here streamlit run app.py
+
+# 4. Get an LLM API key
+#    Option A: Anthropic Claude Haiku (recommended — fast, cheap, reliable JSON)
+#      → https://console.anthropic.com/ → API keys → create key
+#      → Add $5 credit
+#    Option B: OpenAI
+#      → https://platform.openai.com/api-keys
+
+# 5. Run the server
+ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE uvicorn server:app --host 0.0.0.0 --port 9000
+
+# 6. Open in browser
+#    http://localhost:9000
 ```
 
-Or with OpenAI: `OPENAI_API_KEY=your-key-here streamlit run app.py`
-
-The app will be available at `http://localhost:8501`.
-
-> **Data also available on Google Drive:** https://drive.google.com/drive/folders/1gcCU1-kqGn64PfQ51Hw93J96nt-GI0br
-
-## Rebuilding Data from Scratch (optional)
-
-If you want to regenerate the data from NYC Open Data:
-
+**If port 9000 is busy:**
 ```bash
-pip install sodapy tqdm scipy
-python pull_all.py       # Step 1: Download raw data (~5-10 min)
-python clean_all.py      # Step 2: Clean and normalize
-python build_mart.py     # Step 3: Build resource mart (7,759 resources)
-python build_graph.py    # Step 4: Build knowledge graph
-python build_triples.py  # Step 5: Build SPO triples (optional)
+# Find what's using the port and kill it
+lsof -ti:9000 | xargs kill -9
+# Or run on a different port:
+ANTHROPIC_API_KEY=sk-... uvicorn server:app --host 0.0.0.0 --port 9001
 ```
 
-See [DATA_PIPELINE.md](DATA_PIPELINE.md) for detailed documentation on each step.
+**To stop the server:** `Ctrl+C`
+
+**To update code later:**
+```bash
+cd nyc_hack
+source venv/bin/activate
+git pull
+pip install -r requirements.txt   # in case new deps were added
+# restart uvicorn
+```
+
+**Persistent API key (don't type every time):**
+```bash
+# Linux/Mac — add to ~/.bashrc or ~/.zshrc
+echo 'export ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE' >> ~/.bashrc
+source ~/.bashrc
+# Then just run:
+uvicorn server:app --host 0.0.0.0 --port 9000
+```
+
+### Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `ModuleNotFoundError: No module named 'fastapi'` | `pip install -r requirements.txt` |
+| `Address already in use` | `lsof -ti:9000 \| xargs kill -9` |
+| `No LLM provider available` | Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` |
+| Port 9000 works on DGX but not locally | Use `http://localhost:9000` not the DGX IP |
+| `data/resource_mart.parquet not found` | `git pull` — data files are in the repo |
+| Slow queries (>60s) | You're on CPU — expected. Faster on DGX with ollama |
+| Permission errors on macOS | `sudo xcode-select --install` then retry pip install |
+
+Data (`data/`, `stage/`) is **included in the repo** — no need to regenerate.
+
+> **Alternate data source:** [Google Drive](https://drive.google.com/drive/folders/1gcCU1-kqGn64PfQ51Hw93J96nt-GI0br)
+
+## API Endpoints
+
+### Core Pipeline
+- `POST /api/query` — main query. Body: `{query, case_id?, location?: {lat,lon}, demo_mode?}`. Returns: `{answer, plan, resources[], timing, verification, reasoning, clarify_question}`
+- `GET /api/resources` — all 7,759 resources with coords (for map)
+- `GET /api/status` — system health + resource counts
+
+### Location & Routing
+- `GET /api/geocode?q=<address>` — geocode an address via Nominatim proxy
+- `POST /api/directions` — multi-modal directions. Body: `{from_lat, from_lon, to_lat, to_lon, budget?}`
+
+### Case Management
+- `POST /api/case/login` — create/resume case. Body: `{case_id, name?}`
+- `GET /api/case/progress/{case_id}` — structured progress with ✅/🔄/⚪
+- `POST /api/case/choose` — user picks a resource for a need. Body: `{case_id, need_category, resource_name, resource_address, resource_type}`
+- `POST /api/case/checkin` — confirm arrival. Body: `{case_id, arrived: true/false, resource_name, feedback?}`
+- `POST /api/case/resolve` — mark a need as resolved manually. Body: `{case_id, category}`
+- `POST /api/case/visited` — log resource visit with feedback
+- `GET /api/cases` — list all cases (admin view)
+
+### Knowledge & Support
+- `POST /api/eligibility` — benefits calculator. Body: `{household_size, annual_income, has_children, ...}`. Returns qualifying programs + estimated amounts.
+- `GET /api/rights?resource_type=shelter` — legal rights at that resource type
+- `GET /api/stories?need=housing&k=3` — anonymized success stories
+- `POST /api/similar` — KGE similarity search. Body: `{resource_id, k}`
+- `POST /api/feedback` — report issue with a resource. Body: `{resource_name, issue, detail}`
 
 ## Project Structure
 
 ```
 nyc_hack/
-├── app.py                  # Streamlit UI (main entry point)
+├── server.py                 # FastAPI backend (main entry point)
+├── frontend/
+│   └── index.html            # Single-page app (dark theme, deck.gl map)
 ├── llm/
-│   └── client.py           # LLM provider fallback ladder (NIM → Claude → GPT → OpenRouter)
+│   └── client.py             # LLM fallback ladder (ollama → Claude → OpenRouter)
 ├── pipeline/
-│   ├── planner.py          # NL → JSON plan (needs_assessment, lookup, simulate, explain)
-│   ├── executor.py         # Execute plan against resource mart + graph
-│   ├── synth.py            # Synthesize natural language answer
-│   ├── verify.py           # Per-claim fact verification + reasoning paths
-│   ├── feedback.py         # User-in-the-loop ground truth correction
-│   └── clarify.py          # Multi-turn follow-up questions
+│   ├── planner.py            # NL → JSON plan
+│   ├── executor.py           # Plan → cuDF/cuGraph queries (with location-aware sorting)
+│   ├── synth.py              # Results → natural language
+│   ├── verify.py             # Per-claim fact verification
+│   ├── feedback.py           # Ground truth correction
+│   ├── clarify.py            # Multi-turn follow-up
+│   ├── cases.py              # Case management (persistent user tracking)
+│   ├── geocode.py            # Nominatim + NYC landmark fallback
+│   ├── routing.py            # OSRM walking + MTA transit directions
+│   └── eligibility.py        # Benefits calculator + rights + stories
 ├── engine/
-│   ├── confidence.py       # Confidence-scored reasoning paths
-│   ├── embeddings.py       # KGE embeddings for similarity search
-│   └── txt2kg.py           # 311 complaint → structured triples
-├── pull_all.py             # Download raw data from NYC Open Data
-├── clean_all.py            # Clean and normalize raw data
-├── build_mart.py           # Build unified resource mart
-├── build_graph.py          # Build knowledge graph
-├── build_triples.py        # Build SPO triples
-├── ARCHITECTURE.md         # Detailed technical documentation
-├── DEMO_SCRIPT.md          # Demo presentation script
-└── DEVPOST.md              # Hackathon submission writeup
+│   ├── confidence.py         # Confidence-scored reasoning paths
+│   ├── embeddings.py         # KGE embeddings (loads PyKEEN if available)
+│   ├── txt2kg.py             # 311 complaint → structured triples
+│   └── train_kge.py          # Train PyKEEN TransE on triples
+├── data/                     # INCLUDED: resource_mart, graph.pkl, triples, KGE embeddings
+├── stage/                    # INCLUDED: cleaned per-dataset parquet
+├── pull_all.py               # Download raw data from NYC Open Data
+├── clean_all.py              # Clean raw data
+├── build_mart.py             # Build unified resource mart
+├── build_graph.py            # Build cuGraph knowledge graph
+├── build_triples.py          # Build SPO triples
+├── ARCHITECTURE.md           # Detailed technical docs
+├── DEMO_SCRIPT.md            # Demo presentation
+└── DEVPOST.md                # Hackathon submission writeup
 ```
 
 ## Example Queries
 
-**Caseworker needs assessment:**
-- "I'm Tina, 4 kids ages 12-16, income $28K, currently staying with my sister in Flatbush but she's kicking me out next week"
-- "Someone broke into my apartment and stole my stuff. I don't feel safe going back. I have a 6 year old."
+**Needs assessment (caseworker):**
+- *"I'm Tina, 4 kids ages 12-16, income $28K, my sister is kicking us out next week"*
 
-**Simple resource lookup:**
-- "What shelters in Manhattan have available beds?"
-- "Find wheelchair-accessible hospitals in Queens"
+**Simple lookup:**
+- *"What shelters in Brooklyn have available beds?"*
+
+**Location-aware:**
+- *"I need a shelter near 43rd street Manhattan"*
 
 **City-ops simulation:**
-- "A cold emergency is declared. 3 Brooklyn shelters hit capacity. 200 people outside. 15 degrees. What do we do?"
-- "Which neighborhoods are more than 30 minutes from the nearest shelter?"
+- *"Cold emergency declared. 3 Brooklyn shelters hit capacity. 200 people outside at 15°F. What do we do?"*
 
-## LLM Provider Fallback
+## LLM Provider Fallback (`llm/client.py`)
 
-The system tries providers in order:
-1. NIM container on DGX Spark (localhost:8000)
+1. Ollama nemotron-mini at `localhost:11434` (primary on DGX)
 2. Claude Haiku via Anthropic API
 3. GPT-4o-mini via OpenAI API
-4. vLLM on DGX Spark (localhost:8001)
-5. llama.cpp local server (localhost:8080)
-6. OpenRouter Nemotron (free tier)
+4. llama.cpp at `localhost:8080`
+5. OpenRouter (last resort)
 
-Set the appropriate environment variable for whichever provider you want to use.
+## NVIDIA Stack (11 components)
 
-## NVIDIA Stack (on DGX Spark)
-
-On the DGX Spark, the system uses GPU-accelerated equivalents:
-- **cuDF** replaces pandas for filtering
-- **cuGraph** replaces networkx for graph operations
-- **cuOpt** for VRP-based resource allocation
-- **NIM** for local Nemotron-3-Nano-30B inference
-- **cuML** for KNN spatial joins
-- **cuPy** for accessibility heatmaps
-
-Locally, everything runs on CPU with pandas/networkx/scikit-learn.
+| Tool | Role |
+|------|------|
+| **Nemotron via Ollama** | LLM inference on GB10 GPU |
+| **RAPIDS cuDF** | GPU DataFrame filtering |
+| **RAPIDS cuGraph** | 3.6M-edge knowledge graph |
+| **cuOpt** | VRP allocation for emergencies |
+| **cuPy** | GPU spatial scoring |
+| **RAPIDS cuML** | KNN / HDBSCAN |
+| **TensorRT-LLM** | Compiled inference |
+| **PyKEEN + PyTorch** | TransE KGE embeddings |
+| **txt2kg** | 311 complaint extraction |
+| **deck.gl** | GPU 3D map |
+| **CUDA 13.0** | DGX Spark GB10 compute |
 
 ## License
 

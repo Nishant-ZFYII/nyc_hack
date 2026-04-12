@@ -94,12 +94,70 @@ def _norm_borough(b):
     return BOROUGH_MAP.get(str(b).strip().lower(), str(b).strip().upper()[:2])
 
 
+def _borough_from_coords(lat, lon):
+    """Detect NYC borough from lat/lon coordinates."""
+    # Approximate bounding boxes for NYC boroughs
+    if lat > 40.8 and lon > -73.93:
+        return "BX"  # Bronx
+    if lat > 40.7 and lon > -74.01 and lon < -73.9:
+        return "MN"  # Manhattan
+    if lat < 40.7 and lon < -73.85:
+        return "BK"  # Brooklyn
+    if lat > 40.7 and lon > -73.85 and lon < -73.7:
+        return "QN"  # Queens
+    if lat < 40.65 and lon < -74.05:
+        return "SI"  # Staten Island
+    # Fallback: check which borough centroid is closest
+    centroids = {
+        "MN": (40.7831, -73.9712), "BK": (40.6501, -73.9496),
+        "QN": (40.7282, -73.7949), "BX": (40.8448, -73.8648),
+        "SI": (40.5795, -74.1502),
+    }
+    import math
+    closest = min(centroids.items(),
+                  key=lambda x: math.hypot(lat - x[1][0], lon - x[1][1]))
+    return closest[0]
+
+
 # ── Core filter ───────────────────────────────────────────────────────────────
 _excluded_resources: list[str] = []
 
 def set_excluded_resources(excluded: list[str]):
     global _excluded_resources
     _excluded_resources = excluded
+
+
+# Map planner categories to actual resource_type values in the mart
+TYPE_EXPANSION = {
+    "medical": ["hospital", "clinic", "mental_health"],
+    "healthcare": ["hospital", "clinic", "mental_health"],
+    "health": ["hospital", "clinic", "mental_health"],
+    "housing": ["shelter", "nycha", "dropin_center"],
+    "food": ["food_bank"],
+    "education": ["school", "childcare", "education"],
+    "safety": ["domestic_violence", "emergency_services"],
+    "legal": ["legal_aid"],
+    "benefits": ["benefits_center"],
+    "employment": ["community_center"],  # job training is often at community centers
+    "documents": ["benefits_center"],  # HRA offices handle ID/docs
+    "senior": ["senior_services"],
+    "childcare": ["childcare"],
+    "mental_health": ["mental_health"],
+    "substance": ["mental_health"],
+    "dv": ["domestic_violence"],
+}
+
+
+def _expand_types(resource_types: list[str]) -> list[str]:
+    """Expand planner categories to actual mart resource_type values."""
+    expanded = []
+    for rt in resource_types:
+        rt_lower = rt.lower().strip()
+        if rt_lower in TYPE_EXPANSION:
+            expanded.extend(TYPE_EXPANSION[rt_lower])
+        else:
+            expanded.append(rt)
+    return list(set(expanded))  # deduplicate
 
 
 def filter_resources(
@@ -110,6 +168,9 @@ def filter_resources(
 ) -> pd.DataFrame:
     mart, _ = load_state()
     df = mart.copy()
+
+    # Expand planner categories to mart types
+    resource_types = _expand_types(resource_types)
 
     # Convert cuDF → pandas early for geocode compatibility
     if USE_GPU and hasattr(df, 'to_pandas'):
@@ -122,9 +183,13 @@ def filter_resources(
     if resource_types:
         df = df[df["resource_type"].isin(resource_types)]
 
-    # If we have user location, skip borough filter — distance sorting is better
-    # This prevents empty results when LLM outputs wrong borough codes like "MTA"
+    # Detect borough from user location if available (more reliable than LLM)
     borough = _norm_borough(filters.get("borough"))
+    if user_location and user_location.get("lat"):
+        detected_borough = _borough_from_coords(user_location["lat"], user_location.get("lon", 0))
+        if detected_borough:
+            borough = detected_borough
+
     if borough and not user_location:
         df = df[df["borough"] == borough]
     elif borough and user_location:
@@ -514,13 +579,16 @@ def simulate_resource_gap(params: dict) -> dict:
 # ── Main execute entry point ──────────────────────────────────────────────────
 def _get_user_location(plan: dict) -> dict | None:
     """Try to extract user location from the plan for distance-based sorting."""
+    # Priority 1: explicit user location from frontend GPS/manual input
+    if plan.get("_user_location"):
+        return plan["_user_location"]
+
+    # Priority 2: geocode from query text
     try:
         from pipeline.geocode import geocode_location
-        # Check if plan has location info from the client profile
         profile = plan.get("client_profile", {})
         situation = profile.get("situation", "")
 
-        # Also check the original query stored in _last_query
         query_text = plan.get("_original_query", situation)
         if query_text:
             loc = geocode_location(query_text)
@@ -548,6 +616,19 @@ def execute(plan: dict) -> dict[str, Any]:
         profile  = plan.get("client_profile", {})
         needs    = plan.get("identified_needs", [])
         searches = plan.get("resource_searches", [])
+
+        # Auto-generate searches from needs if planner didn't produce any
+        if not searches and needs:
+            for need in needs:
+                cat = need.get("category", "")
+                if cat:
+                    # Use TYPE_EXPANSION to get actual resource types
+                    rtypes = TYPE_EXPANSION.get(cat.lower(), [cat])
+                    searches.append({
+                        "resource_types": rtypes,
+                        "filters": {"borough": profile.get("borough", "")},
+                        "limit": 5,
+                    })
 
         all_results = {}
         for search in searches:

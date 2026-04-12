@@ -28,7 +28,9 @@ from pipeline.verify import verify_answer, build_reasoning_path, summarize_reaso
 from pipeline.clarify import get_clarifying_question, merge_query
 from pipeline.feedback import parse_feedback
 from pipeline.cases import (load_case, create_case, add_visit, mark_resource_visited,
-                             resolve_need, get_case_summary, list_cases)
+                             resolve_need, get_case_summary, list_cases,
+                             choose_resource, checkin, get_failed_resources, get_progress)
+from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
 from llm.client import get_active_provider
 import pandas as pd
 
@@ -43,10 +45,15 @@ app = FastAPI(title="NYC Social Services Intelligence Engine")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
+class LocationModel(BaseModel):
+    lat: float
+    lon: float
+
 class QueryRequest(BaseModel):
     query: str
     demo_mode: bool = False
-    case_id: str | None = None  # optional: link query to a case
+    case_id: str | None = None
+    location: LocationModel | None = None  # user's current location for distance sorting
 
 
 class FeedbackRequest(BaseModel):
@@ -102,7 +109,17 @@ async def status():
 @app.post("/api/query")
 async def query(req: QueryRequest):
     t0 = time.time()
-    set_excluded_resources(_excluded)
+
+    # Combine global exclusions + case-specific failed resources
+    excluded = list(_excluded)
+    if req.case_id:
+        excluded.extend(get_failed_resources(req.case_id))
+    set_excluded_resources(excluded)
+
+    # Build user location dict for executor
+    user_loc = None
+    if req.location:
+        user_loc = {"lat": req.location.lat, "lon": req.location.lon}
 
     # Plan
     t1 = time.time()
@@ -111,6 +128,10 @@ async def query(req: QueryRequest):
     except Exception as e:
         raise HTTPException(500, f"Planner error: {e}")
     plan_time = time.time() - t1
+
+    # Inject user location into plan so executor can use it for distance sorting
+    if user_loc:
+        plan["_user_location"] = user_loc
 
     # Execute
     t2 = time.time()
@@ -264,6 +285,22 @@ async def similar(req: SimilarRequest):
         return {"similar": [], "error": str(e)}
 
 
+@app.get("/api/geocode")
+async def geocode(q: str):
+    """Proxy geocoding to avoid CORS issues with Nominatim."""
+    import requests
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": f"{q}, NYC", "format": "json", "limit": "1", "countrycodes": "us"},
+            headers={"User-Agent": "NYC-SocialServices-Engine/1.0"},
+            timeout=5,
+        )
+        return resp.json()
+    except Exception as e:
+        return []
+
+
 class DirectionsRequest(BaseModel):
     from_lat: float
     from_lon: float
@@ -343,10 +380,122 @@ async def case_resolve(req: CaseResolveRequest):
     return case
 
 
+class ChooseResourceRequest(BaseModel):
+    case_id: str
+    need_category: str
+    resource_name: str
+    resource_address: str = ""
+    resource_type: str = ""
+
+
+class CheckinRequest(BaseModel):
+    case_id: str
+    arrived: bool
+    resource_name: str = ""
+    feedback: str = ""
+    location: LocationModel | None = None
+
+
+@app.post("/api/case/choose")
+async def case_choose(req: ChooseResourceRequest):
+    """User selects a resource for a specific need."""
+    case = choose_resource(req.case_id, req.need_category, req.resource_name,
+                           req.resource_address, req.resource_type)
+    return {"case": case, "message": f"Got it — heading to {req.resource_name} for {req.need_category}."}
+
+
+@app.post("/api/case/checkin")
+async def case_checkin(req: CheckinRequest):
+    """User confirms arrival (or not) at a resource."""
+    loc = {"lat": req.location.lat, "lon": req.location.lon} if req.location else None
+    case = checkin(req.case_id, req.arrived, req.resource_name, req.feedback, loc)
+
+    if req.arrived:
+        progress = get_progress(req.case_id)
+        open_needs = [n for n in progress["needs"] if n["status"] == "open"]
+        if open_needs:
+            next_need = open_needs[0]["category"]
+            msg = (f"Great, glad you made it to {req.resource_name}! "
+                   f"You still have {len(open_needs)} open need(s). "
+                   f"Next up: {next_need}. Want to find resources for that?")
+        else:
+            msg = f"Wonderful! You've addressed all your needs. Come back anytime if you need more help."
+        return {"case": case, "message": msg, "progress": progress}
+    else:
+        # Not arrived — resource might be full
+        failed = get_failed_resources(req.case_id)
+        msg = (f"I'm sorry {req.resource_name} didn't work out. "
+               f"Let me find alternatives (excluding {len(failed)} resource(s) you've already tried).")
+        return {"case": case, "message": msg, "failed_resources": failed}
+
+
+@app.get("/api/case/progress/{case_id}")
+async def case_progress(case_id: str):
+    """Get structured progress report for a case."""
+    return get_progress(case_id)
+
+
 @app.get("/api/cases")
 async def cases_list():
     """List all cases (admin view)."""
     return list_cases()
+
+
+# ── Eligibility / Rights / Stories ────────────────────────────────────────────
+
+class EligibilityRequest(BaseModel):
+    household_size: int = 1
+    annual_income: float = 0
+    has_children: bool = False
+    has_pregnant: bool = False
+    has_disabled: bool = False
+    has_senior: bool = False
+    is_veteran: bool = False
+    housing_status: str = ""  # homeless, at_risk, stable
+    has_id: bool = True
+    immigration_status: str = "any"
+
+
+@app.post("/api/eligibility")
+async def eligibility(req: EligibilityRequest):
+    """Calculate benefits eligibility for a household profile.
+
+    Returns which programs they qualify for (SNAP, Medicaid, WIC, Cash Assistance,
+    Fair Fares, emergency shelter, etc.) with estimated monthly amounts and
+    documents needed.
+    """
+    return calculate_eligibility(
+        household_size=req.household_size,
+        annual_income=req.annual_income,
+        has_children=req.has_children,
+        has_pregnant=req.has_pregnant,
+        has_disabled=req.has_disabled,
+        has_senior=req.has_senior,
+        is_veteran=req.is_veteran,
+        housing_status=req.housing_status,
+        has_id=req.has_id,
+        immigration_status=req.immigration_status,
+    )
+
+
+@app.get("/api/rights")
+async def rights(resource_type: str = "default"):
+    """Get know-your-rights info for a resource type.
+
+    Returns legal rights a person has at that type of resource
+    (shelter, food bank, hospital, school, benefits center, etc.)
+    """
+    return {"resource_type": resource_type, "rights": get_rights(resource_type)}
+
+
+@app.get("/api/stories")
+async def stories(need: str = None, k: int = 3):
+    """Get success stories, optionally filtered by need category.
+
+    Returns 2-3 anonymized journeys of people who found help in similar
+    situations. Used to build trust with new users.
+    """
+    return {"need": need, "stories": get_stories(need, k)}
 
 
 @app.get("/api/resources")
