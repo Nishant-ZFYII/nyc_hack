@@ -25,6 +25,18 @@ tqdm>=4.65.0
 # Safety / Guardrails (NVIDIA NeMo Guardrails)
 nemoguardrails>=0.11.0
 
+# NVIDIA NeMo Agent Toolkit (ReAct agent + tool dispatch)
+nvidia-nat>=0.1.0
+nvidia-nat-langchain
+
+# Form filling
+pypdf>=4.0.0
+pdfplumber>=0.10.0
+reportlab>=4.0.0
+PyPDFForm>=3.0.0
+pytesseract>=0.3.10
+pillow>=10.0.0
+
 # Knowledge Graph Embeddings (optional — uses PyTorch)
 # pykeen>=1.10.0
 

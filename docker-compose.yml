@@ -1,0 +1,110 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  NYC Social Services Intelligence Engine — stack orchestration
+# ─────────────────────────────────────────────────────────────────────────────
+#  Three services:
+#    ollama    — local LLM runtime (GPU passthrough if available)
+#    ollama-init — one-shot container that pulls required models on first boot
+#    app-user  — FastAPI user portal on :9000
+#    app-admin — FastAPI admin portal on :9001
+#
+#  Run:
+#    docker compose up -d
+#  Then open:
+#    http://localhost:9000   (user / client portal)
+#    http://localhost:9001   (admin / caseworker portal)
+#
+#  GPU: requires NVIDIA Container Toolkit. Falls back to CPU (slower) if not
+#  present — remove the `deploy.resources` blocks below.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nyc_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"        # exposed for local debug; app talks over docker net
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_NUM_GPU=999   # use all GPUs if present
+      - OLLAMA_KEEP_ALIVE=2h
+    # GPU passthrough — comment out this block if you don't have NVIDIA Container Toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: pulls the models we need. Exits when done.
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: nyc_ollama_init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    # llama3 drives the ReAct agent. llama3.2-vision reads the ID images.
+    # This can take 10-20 min on first run depending on bandwidth.
+    command: |
+      "echo 'Pulling llama3...' && ollama pull llama3 && \
+       echo 'Pulling llama3.2-vision:11b...' && ollama pull llama3.2-vision:11b && \
+       echo 'Models ready.'"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: "no"
+
+  app-user:
+    build: .
+    image: nyc_services_app
+    container_name: nyc_user_portal
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data/cases:/app/data/cases
+      - ./data/cases_backup:/app/data/cases_backup
+    command: >
+      bash -c "python3 seed_demo_cases.py --seed-only 2>/dev/null || true;
+               uvicorn server:app --host 0.0.0.0 --port 9000"
+
+  app-admin:
+    image: nyc_services_app      # reuses image built by app-user
+    container_name: nyc_admin_portal
+    restart: unless-stopped
+    ports:
+      - "9001:9001"
+    depends_on:
+      app-user:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data/cases:/app/data/cases
+      - ./data/cases_backup:/app/data/cases_backup
+    command: ["uvicorn", "admin_server:app", "--host", "0.0.0.0", "--port", "9001"]
+
+
+volumes:
+  ollama_data:
+    # Persists across `docker compose down` — judges don't re-download models
+    # unless they run `docker compose down -v`.

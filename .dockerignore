@@ -1,0 +1,47 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+.venv
+venv
+env
+
+# OS / editor junk
+.DS_Store
+.idea
+.vscode
+*.swp
+
+# Large / transient data (gets mounted as volumes at runtime)
+data/cases_backup_*
+data/raw
+data/stage
+data/*.parquet
+data/*.pkl
+*.log
+/tmp
+
+# Ollama model cache — never bake into image
+.ollama
+
+# Test / debug artifacts
+test_nat_debug.sh
+debug_admin_cases.py
+audit_cases.py
+inspect_nat.py
+inspect_filled_forms.py
+test_vision_ocr.py
+
+# Docs that aren't needed at runtime
+*.md
+!README.md
