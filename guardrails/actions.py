@@ -70,15 +70,17 @@ def detect_crisis(text: str) -> str:
 
 # ── Jailbreak Detection ──────────────────────────────────────────────────────
 JAILBREAK_PATTERNS = [
-    r'ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions',
-    r'forget\s+(?:your|the)\s+instructions',
+    r'ignore\s+(?:all\s+)?(?:your\s+)?(?:previous\s+|prior\s+|above\s+|the\s+)?instructions',
+    r'forget\s+(?:your|the|all)\s+(?:previous\s+)?instructions',
     r'you\s+are\s+(?:now|actually)\s+(?:a|an)\s+\w+\s+(?:ai|assistant|bot)',
-    r'(?:dan|developer)\s+mode',
-    r'pretend\s+(?:you|to)\s+(?:are|be)\s+not',
-    r'disregard\s+(?:all|your)',
+    r'(?:dan|developer|god)\s+mode',
+    r'pretend\s+(?:you|to)\s+(?:are|be)\s+(?:not|something)',
+    r'disregard\s+(?:all|your|the)',
     r'override\s+(?:your|the)\s+(?:instructions|rules|system)',
     r'reveal\s+(?:your|the)\s+(?:system\s+)?prompt',
-    r'what\s+are\s+your\s+instructions',
+    r'what\s+are\s+your\s+(?:system\s+)?instructions',
+    r'(?:help|tell)\s+me\s+(?:how\s+to\s+)?commit\s+(?:fraud|crime)',
+    r'how\s+to\s+(?:commit\s+fraud|evade|hide\s+from)',
 ]
 
 
