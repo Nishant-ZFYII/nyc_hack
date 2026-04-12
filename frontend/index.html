@@ -527,7 +527,10 @@ async function sendQuery(){
   const nameInput=document.getElementById('newNameInput');
   if(nameInput&&nameInput.value.trim()&&!currentCaseId){
     const n=nameInput.value.trim();
-    currentCaseId=n.toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-')+'-'+Date.now().toString(36).slice(-4);
+    // Use full timestamp + 3 random chars for uniqueness
+    const tsSuffix=Date.now().toString(36).slice(-6);
+    const rand=Math.random().toString(36).slice(2,5);
+    currentCaseId=n.toLowerCase().replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-')+'-'+tsSuffix+rand;
     currentUserName=n;
     document.getElementById('userLabel').textContent=n;
     try{await fetch('/api/case/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:currentCaseId,name:n})})}catch(e){}
@@ -568,7 +571,8 @@ function renderResults(data){
   let html='';
 
   // Case ID banner
-  if(currentCaseId){
+  // Only show case ID card if the sticky top banner isn't already showing it
+  if(currentCaseId && !document.getElementById('caseIdBanner')){
     html+=`<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin:16px 0 12px;display:flex;align-items:center;justify-content:space-between">
       <div><div style="font-size:10px;font-family:var(--mono);color:var(--t3);text-transform:uppercase;letter-spacing:0.5px">Your Case ID</div>
       <div style="font-size:15px;font-weight:600;font-family:var(--mono);color:var(--green);margin-top:2px">${currentCaseId}</div></div>
