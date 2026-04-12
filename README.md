@@ -4,6 +4,118 @@ An AI-powered caseworker + kiosk system for NYC Department of Social Services. B
 
 The system performs comprehensive needs assessments across housing, food, healthcare, legal aid, benefits eligibility, school continuity, and safety — using a **bounded DSL architecture** that prevents LLM hallucination. It tracks people across multiple visits (like a real caseworker), finds resources sorted by distance from where they are, and guides them step-by-step through their journey.
 
+---
+
+## 🏁 Quickstart for evaluators
+
+Pick ONE path. The Docker path is simpler; the bare-metal path is faster on a machine you already trust.
+
+### Path A — Docker (recommended)
+
+See **[DOCKER.md](./DOCKER.md)** for the full walkthrough. Three commands:
+
+```bash
+git clone https://github.com/Nishant-ZFYII/nyc_hack.git && cd nyc_hack
+docker compose up -d
+docker compose logs -f ollama-init       # wait for "Models ready."
+```
+
+Then open [http://localhost:9000](http://localhost:9000) (user) and [http://localhost:9001](http://localhost:9001) (admin).
+
+### Path B — Bare metal (no Docker)
+
+Works on Linux/macOS. Tested on Ubuntu 22.04 and the NVIDIA DGX Spark.
+
+#### 1. System prerequisites
+
+```bash
+# Python 3.10 or newer (3.12 recommended)
+python3 --version
+
+# Tesseract — fallback OCR (primary OCR uses llama3.2-vision via Ollama)
+#   Ubuntu/Debian:
+sudo apt-get install -y tesseract-ocr
+#   macOS:
+brew install tesseract
+```
+
+#### 2. Install Ollama + pull the two models
+
+```bash
+# Install Ollama: https://ollama.com/download
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Start Ollama with GPU enabled (required on DGX — defaults to CPU otherwise)
+sudo systemctl stop ollama 2>/dev/null
+OLLAMA_NUM_GPU=999 OLLAMA_KEEP_ALIVE=2h ollama serve > /tmp/ollama.log 2>&1 &
+
+# Pull the two models the system uses (~25 GB, 10–20 min depending on bandwidth)
+ollama pull llama3              # drives the ReAct agent
+ollama pull llama3.2-vision:11b # reads ID photos for the form-fill feature
+
+# Verify
+curl -s http://localhost:11434/api/tags | python3 -m json.tool
+```
+
+#### 3. Clone + install Python deps
+
+```bash
+git clone https://github.com/Nishant-ZFYII/nyc_hack.git
+cd nyc_hack
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+> **Note:** `nvidia-nat-langchain` may error on `pip`'s dependency resolver. If it does, run `pip install uv && uv pip install nvidia-nat-langchain` instead (uv handles deep dependency trees pip can't).
+
+#### 4. Seed demo data
+
+```bash
+python3 seed_demo_cases.py
+```
+
+This writes 8 curated cases (1 critical, 2 high, 3 medium, 2 resolved) into `data/cases/` so the admin dashboard has something to show on first open.
+
+#### 5. Launch both portals
+
+Open **two terminals** (or run both in the background):
+
+```bash
+# Terminal 1 — user portal
+uvicorn server:app --host 0.0.0.0 --port 9000
+
+# Terminal 2 — admin portal
+uvicorn admin_server:app --host 0.0.0.0 --port 9001
+```
+
+#### 6. Open in your browser
+
+| Portal | URL | What to try |
+|---|---|---|
+| **Client / user** | [http://localhost:9000](http://localhost:9000) | *"I need a shelter tonight in Brooklyn near Flatbush"* → click **🤖 NeMo ReAct** → wait ~60 s → click **🎫 Raise a Ticket** to register a case |
+| **Admin / caseworker** | [http://localhost:9001](http://localhost:9001) | Click any case → **📄 Fill Forms from ID** → upload `samples/sample_id.jpg` → download filled LDSS-4826 SNAP + DOH-4220 Medicaid PDFs |
+
+#### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Agent request hangs | Check Ollama is running: `curl http://localhost:11434/api/tags`. Restart with `OLLAMA_NUM_GPU=999 ollama serve &` |
+| "tesseract not found" | Re-run step 1 — the fallback OCR needs the system binary even though we default to Ollama vision |
+| `ModuleNotFoundError: No module named 'nat'` | `pip install nvidia-nat nvidia-nat-langchain` (use `uv pip install` if pip fails) |
+| Admin page shows 0 cases | `python3 seed_demo_cases.py` (you skipped step 4) |
+| "Full Plan" button visible but doesn't work | Ignore — the primary agent button is **🤖 NeMo ReAct** |
+
+#### Stop everything
+
+```bash
+pkill -f uvicorn     # stops both portals
+pkill ollama         # stops Ollama
+```
+
+---
+
 ## Architecture
 
 ```
