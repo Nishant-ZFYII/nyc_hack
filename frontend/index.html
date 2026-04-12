@@ -929,6 +929,12 @@ async function buildReturnFlow(){
   const inProgress=progress.needs.find(n=>n.status==='in_progress');
   const open=progress.needs.filter(n=>n.status==='open');
 
+  // If all needs are done, show completion screen directly
+  if(open.length===0&&!inProgress){
+    await refreshReturnFlow();
+    return;
+  }
+
   let html=`<div style="margin-top:20px">`;
 
   // Warm greeting
