@@ -27,7 +27,8 @@ from pipeline.verify import verify_answer, build_reasoning_path, summarize_reaso
 from pipeline.clarify import get_clarifying_question, merge_query
 from pipeline.feedback import parse_feedback
 from pipeline.cases import (load_case, create_case, add_visit, mark_resource_visited,
-                             resolve_need, get_case_summary, list_cases)
+                             resolve_need, get_case_summary, list_cases,
+                             choose_resource, checkin, get_failed_resources, get_progress)
 from llm.client import get_active_provider
 import pandas as pd
 
@@ -106,7 +107,12 @@ async def status():
 @app.post("/api/query")
 async def query(req: QueryRequest):
     t0 = time.time()
-    set_excluded_resources(_excluded)
+
+    # Combine global exclusions + case-specific failed resources
+    excluded = list(_excluded)
+    if req.case_id:
+        excluded.extend(get_failed_resources(req.case_id))
+    set_excluded_resources(excluded)
 
     # Build user location dict for executor
     user_loc = None
@@ -370,6 +376,61 @@ async def case_resolve(req: CaseResolveRequest):
     """Mark a need as resolved."""
     case = resolve_need(req.case_id, req.category)
     return case
+
+
+class ChooseResourceRequest(BaseModel):
+    case_id: str
+    need_category: str
+    resource_name: str
+    resource_address: str = ""
+    resource_type: str = ""
+
+
+class CheckinRequest(BaseModel):
+    case_id: str
+    arrived: bool
+    resource_name: str = ""
+    feedback: str = ""
+    location: LocationModel | None = None
+
+
+@app.post("/api/case/choose")
+async def case_choose(req: ChooseResourceRequest):
+    """User selects a resource for a specific need."""
+    case = choose_resource(req.case_id, req.need_category, req.resource_name,
+                           req.resource_address, req.resource_type)
+    return {"case": case, "message": f"Got it — heading to {req.resource_name} for {req.need_category}."}
+
+
+@app.post("/api/case/checkin")
+async def case_checkin(req: CheckinRequest):
+    """User confirms arrival (or not) at a resource."""
+    loc = {"lat": req.location.lat, "lon": req.location.lon} if req.location else None
+    case = checkin(req.case_id, req.arrived, req.resource_name, req.feedback, loc)
+
+    if req.arrived:
+        progress = get_progress(req.case_id)
+        open_needs = [n for n in progress["needs"] if n["status"] == "open"]
+        if open_needs:
+            next_need = open_needs[0]["category"]
+            msg = (f"Great, glad you made it to {req.resource_name}! "
+                   f"You still have {len(open_needs)} open need(s). "
+                   f"Next up: {next_need}. Want to find resources for that?")
+        else:
+            msg = f"Wonderful! You've addressed all your needs. Come back anytime if you need more help."
+        return {"case": case, "message": msg, "progress": progress}
+    else:
+        # Not arrived — resource might be full
+        failed = get_failed_resources(req.case_id)
+        msg = (f"I'm sorry {req.resource_name} didn't work out. "
+               f"Let me find alternatives (excluding {len(failed)} resource(s) you've already tried).")
+        return {"case": case, "message": msg, "failed_resources": failed}
+
+
+@app.get("/api/case/progress/{case_id}")
+async def case_progress(case_id: str):
+    """Get structured progress report for a case."""
+    return get_progress(case_id)
 
 
 @app.get("/api/cases")
