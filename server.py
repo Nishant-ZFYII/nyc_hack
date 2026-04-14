@@ -1051,6 +1051,16 @@ async def agent_pdf(req: AgentPlanRequest):
 
 
 
+_TYPE_DEFAULT_CAP = {
+    "shelter": 60, "food_bank": 200, "food_pantry": 180, "hospital": 300,
+    "clinic": 35, "school": 500, "childcare": 40, "benefits_center": 100,
+    "domestic_violence": 35, "legal_aid": 50, "senior_services": 60,
+    "mental_health": 45, "cooling_center": 80, "community_center": 120,
+    "youth_services": 80, "transit_station": 15, "emergency_services": 40,
+    "nycha": 150,
+}
+
+
 @app.get("/api/resources")
 async def all_resources():
     """Get all resources with coordinates for initial map load."""
@@ -1064,6 +1074,17 @@ async def all_resources():
     for c in ("safety_score", "capacity"):
         if c in df.columns:
             df[c] = df[c].replace([_np.inf, -_np.inf], _np.nan).fillna(0 if c == "capacity" else 0.0)
+    # Replace 0-capacity with per-type sensible default so 3D columns aren't flat.
+    if "capacity" in df.columns and "resource_type" in df.columns:
+        def _cap(row):
+            try:
+                v = float(row["capacity"])
+                if v <= 0:
+                    return _TYPE_DEFAULT_CAP.get(str(row["resource_type"]), 30)
+                return int(v)
+            except Exception:
+                return 30
+        df["capacity"] = df.apply(_cap, axis=1)
     df = df.rename(columns={"latitude": "lat", "longitude": "lon"})
     return df.head(2500).to_dict("records")
 
