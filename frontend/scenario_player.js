@@ -252,6 +252,28 @@
     const filteredResources = (state.typeFilter === 'all')
       ? state.allResources
       : state.allResources.filter(r => r.resource_type === state.typeFilter);
+
+    // When a scenario is active, compute the demand bounding box so we can
+    // dim beacons outside the action zone. This makes it obvious WHERE the
+    // movement is happening and stops e.g. Brooklyn shelters from looking
+    // "on" while Cold Emergency only routes in the Bronx.
+    let scenarioBbox = null;
+    const _sc = state.currentScenario;
+    if (_sc && _sc.demand && _sc.demand.length) {
+      const lons = _sc.demand.map(d => d.lon);
+      const lats = _sc.demand.map(d => d.lat);
+      const pad = 0.02;
+      scenarioBbox = {
+        west: Math.min(...lons) - pad,
+        east: Math.max(...lons) + pad,
+        south: Math.min(...lats) - pad,
+        north: Math.max(...lats) + pad,
+      };
+    }
+    const inBbox = d => !scenarioBbox
+      || (d.lon >= scenarioBbox.west && d.lon <= scenarioBbox.east
+          && d.lat >= scenarioBbox.south && d.lat <= scenarioBbox.north);
+
     if (filteredResources.length) {
       layers.push(new deck.ColumnLayer({
         id: 'sp-city',
@@ -263,12 +285,21 @@
         getPosition: d => [d.lon, d.lat],
         getFillColor: d => {
           const c = TYPE_COLORS_SP[d.resource_type] || COLOR_DEFAULT_SP;
-          return [c[0], c[1], c[2], 210];
+          // Dim to ~20% opacity + desaturated if outside the active scenario
+          if (!inBbox(d)) return [Math.round(c[0] * 0.4), Math.round(c[1] * 0.4), Math.round(c[2] * 0.4), 70];
+          return [c[0], c[1], c[2], 225];
         },
-        // Heights between 60 m and ~450 m so beacons sit above the skyline
-        getElevation: d => 120 + Math.log1p(d.capacity || 20) * 110,
+        // Heights between 60 m and ~450 m — shrink outside-scenario beacons too
+        getElevation: d => {
+          const base = 120 + Math.log1p(d.capacity || 20) * 110;
+          return inBbox(d) ? base : base * 0.35;
+        },
         material: { ambient: 0.55, diffuse: 0.8, shininess: 90, specularColor: [200, 230, 255] },
         onHover: info => showTooltip(info),
+        updateTriggers: {
+          getFillColor: [state.typeFilter, scenarioBbox ? JSON.stringify(scenarioBbox) : null],
+          getElevation: [state.typeFilter, scenarioBbox ? JSON.stringify(scenarioBbox) : null],
+        },
       }));
     }
 
@@ -460,7 +491,9 @@
   // ─────────────────────────────────────────────────────────────────────
   // HUD + title + pills
   // ─────────────────────────────────────────────────────────────────────
-  // Hover tooltip — tells the viewer what a column is
+  // Hover tooltip — tells the viewer what a column is. Auto-hides 1.5 s
+  // after the last hover so stale tooltips don't linger.
+  let _tipHideT = null;
   function showTooltip(info) {
     let el = document.getElementById('sp-tip');
     if (!el) {
@@ -472,15 +505,33 @@
     }
     if (!info || !info.object) { el.style.display = 'none'; return; }
     const o = info.object;
-    el.innerHTML = `
-      <div style="color:var(--accent);font-weight:700;margin-bottom:4px">${(o.resource_type || o.type || 'resource').replace(/_/g,' ').toUpperCase()}</div>
-      <div style="color:var(--t1);font-size:12px">${o.name || '(unnamed)'}</div>
-      <div style="color:var(--t3);font-size:10px;margin-top:3px">${o.address || ''} ${o.borough ? '· ' + o.borough : ''}</div>
-      <div style="color:var(--t2);font-size:10px;margin-top:4px">capacity: <b class="neon-cyan">${o.capacity || '—'}</b></div>
-    `;
+    // Build with DOM nodes, not innerHTML templates — guaranteed no raw `${}`
+    // ever appears in the output.
+    const typeName = String((o.resource_type || o.type || 'resource')).replace(/_/g, ' ').toUpperCase();
+    el.innerHTML = '';
+    const row1 = document.createElement('div');
+    row1.style.cssText = 'color:var(--accent);font-weight:700;margin-bottom:4px';
+    row1.textContent = typeName;
+    const row2 = document.createElement('div');
+    row2.style.cssText = 'color:var(--t1);font-size:12px';
+    row2.textContent = o.name || '(unnamed)';
+    const row3 = document.createElement('div');
+    row3.style.cssText = 'color:var(--t3);font-size:10px;margin-top:3px';
+    row3.textContent = (o.address || '') + (o.borough ? ' · ' + o.borough : '');
+    const row4 = document.createElement('div');
+    row4.style.cssText = 'color:var(--t2);font-size:10px;margin-top:4px';
+    const capLabel = document.createElement('span'); capLabel.textContent = 'capacity: ';
+    const capVal = document.createElement('b');
+    capVal.className = 'neon-cyan';
+    capVal.textContent = (o.capacity || o.cap || '—');
+    row4.appendChild(capLabel); row4.appendChild(capVal);
+    el.appendChild(row1); el.appendChild(row2); el.appendChild(row3); el.appendChild(row4);
     el.style.left = (info.x + 14) + 'px';
     el.style.top  = (info.y + 14) + 'px';
     el.style.display = 'block';
+    // Auto-hide after inactivity
+    if (_tipHideT) clearTimeout(_tipHideT);
+    _tipHideT = setTimeout(() => { if (el) el.style.display = 'none'; }, 1800);
   }
 
   // Legend card — explains what each visual element MEANS
