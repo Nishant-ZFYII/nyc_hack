@@ -175,16 +175,42 @@ def _sites_to_frontend(sites: pd.DataFrame, max_sites: int = 60) -> list[dict]:
 
 
 def _synth_demand_in_borough(n: int, borough: str, seed: int | None, spread_km: float = 3.5) -> list[dict]:
+    """
+    Generate N synthetic demand points inside a borough, GUARANTEED ON LAND.
+
+    Earlier versions scattered random points in a circle around the borough
+    centroid with no land mask, which dumped arcs into the Hudson, Jamaica
+    Bay, the Atlantic, etc. We instead sample real on-land NYC anchors
+    (schools + childcare centers — ~3K of them, every borough, always on
+    solid ground) and jitter each by ≤220m so points don't cluster exactly
+    on the anchor itself.
+    """
     rng = random.Random(seed)
-    lat0, lon0 = _BOROUGH_CENTROID.get(borough, _BOROUGH_CENTROID["Bronx"])
-    # 1 degree latitude ≈ 111 km ; longitude at NYC ≈ 85 km
+    code = _BOROUGH_CODE.get(borough, borough)
+    mart = _load_mart()
+    anchors = mart[mart["resource_type"].isin(["school", "childcare", "community_center"])]
+    if "borough" in anchors.columns:
+        borough_anchors = anchors[anchors["borough"] == code]
+        if len(borough_anchors) >= 10:
+            anchors = borough_anchors
+    if anchors.empty:
+        # Last-resort fallback — should never trigger in practice
+        lat0, lon0 = _BOROUGH_CENTROID.get(borough, _BOROUGH_CENTROID["Bronx"])
+        return [{"id": f"d{i:04d}", "lat": lat0, "lon": lon0} for i in range(n)]
+
+    picks = anchors.sample(n=n, replace=(len(anchors) < n), random_state=seed or 0)
     out = []
-    for i in range(n):
-        r = math.sqrt(rng.random()) * spread_km
-        theta = rng.random() * 2 * math.pi
-        dlat = (r * math.cos(theta)) / 111.0
-        dlon = (r * math.sin(theta)) / 85.0
-        out.append({"id": f"d{i:04d}", "lat": lat0 + dlat, "lon": lon0 + dlon})
+    # jitter scale derived from the requested spread — tighter than the old circle
+    jitter_lat = min(0.006, spread_km / 111.0 / 4)
+    jitter_lon = min(0.008, spread_km / 85.0 / 4)
+    for i, (_, row) in enumerate(picks.iterrows()):
+        dlat = (rng.random() - 0.5) * 2 * jitter_lat
+        dlon = (rng.random() - 0.5) * 2 * jitter_lon
+        out.append({
+            "id": f"d{i:04d}",
+            "lat": float(row["lat"]) + dlat,
+            "lon": float(row["lon"]) + dlon,
+        })
     return out
 
 
