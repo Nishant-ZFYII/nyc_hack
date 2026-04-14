@@ -280,13 +280,11 @@
       const filterSites = state.typeFilter === 'all'
         ? (sc.sites || [])
         : (sc.sites || []).filter(s => s.type === state.typeFilter);
+      // Build a fast lookup of the ids we care about
+      const filterSiteIds = new Set(filterSites.map(s => s.id));
       const filterArcs = state.typeFilter === 'all'
         ? sc.arcs
-        : sc.arcs.filter(a => {
-            // Keep arc iff its destination site_id matches a filtered-type site
-            if (!a.to_id) return true;
-            return filterSites.some(s => s.id === a.to_id);
-          });
+        : sc.arcs.filter(a => !a.to_id || filterSiteIds.has(a.to_id));
 
       // Bright rim around each active site (highlight where demand lands)
       if (filterSites.length) {

@@ -157,9 +157,17 @@ def _greedy_allocate(demand: list[dict], sites: pd.DataFrame, k_candidates: int 
     return arcs, sites, stats
 
 
-def _sites_to_frontend(sites: pd.DataFrame, max_sites: int = 60) -> list[dict]:
-    """Trim to the sites that got hit (used > 0) + a few neighbors."""
-    df = sites.sort_values("used", ascending=False).head(max_sites)
+def _sites_to_frontend(sites: pd.DataFrame, max_sites: int = 400) -> list[dict]:
+    """
+    Return sites for the frontend — keep enough so every arc's to_id has a
+    matching site (otherwise the frontend arc→site filter drops arcs
+    whose destinations got trimmed). Prefer sites with nonzero usage, then
+    fill in unused ones up to max_sites.
+    """
+    used = sites[sites["used"] > 0].sort_values("used", ascending=False)
+    # Top-up with highest-capacity unused sites so dropdowns/legends don't go empty
+    others = sites[sites["used"] == 0].sort_values("capacity", ascending=False)
+    df = pd.concat([used, others], ignore_index=True).head(max_sites)
     out = []
     for _, r in df.iterrows():
         out.append({
