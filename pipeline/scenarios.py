@@ -265,10 +265,54 @@ def reset() -> dict[str, Any]:
     }
 
 
+def citywide_storm(n_people: int = 1200, seed: int | None = 42) -> dict[str, Any]:
+    """
+    Finale scenario: fire 1,200 demand points across the ENTIRE city and
+    route them all to their nearest available shelter / drop-in / community
+    center. Visual payload is roughly 1,200 arcs simultaneously.
+    """
+    t0 = time.time()
+    rng = random.Random(seed)
+    per_borough = max(1, n_people // 5)
+
+    demand: list[dict] = []
+    for borough, n in [("Bronx", per_borough),
+                       ("Brooklyn", per_borough),
+                       ("Queens", per_borough),
+                       ("Manhattan", per_borough),
+                       ("Staten Island", n_people - 4 * per_borough)]:
+        demand.extend(_synth_demand_in_borough(n, borough, rng.randint(0, 1_000_000), spread_km=6.0))
+
+    sites_df = pd.concat([
+        _sites_for("shelter"),
+        _sites_for("community_center"),
+        _sites_for("cooling_center"),
+        _sites_for("food_bank"),
+    ], ignore_index=True).reset_index(drop=True)
+
+    arcs, sites, stats = _greedy_allocate(demand, sites_df, k_candidates=6)
+    # Mix cyan + magenta for a storm palette
+    for i, a in enumerate(arcs):
+        if a["color"][0] == 255:  # keep red unmet arcs
+            continue
+        a["color"] = [0, 229, 255, 180] if i % 3 else [178, 75, 255, 180]
+    stats["elapsed_ms"] = int((time.time() - t0) * 1000)
+    return {
+        "phase": "citywide_storm",
+        "title": "CITYWIDE STORM",
+        "subtitle": f"{n_people} CONCURRENT ROUTINGS · ALL 5 BOROUGHS · {stats['elapsed_ms']}ms",
+        "demand": demand,
+        "sites": _sites_to_frontend(sites, max_sites=180),
+        "arcs": arcs,
+        "stats": stats,
+    }
+
+
 SCENARIOS = {
-    "cold_emergency": cold_emergency,
-    "migrant_bus":    migrant_bus,
-    "reset":          reset,
+    "cold_emergency":  cold_emergency,
+    "migrant_bus":     migrant_bus,
+    "citywide_storm":  citywide_storm,
+    "reset":           reset,
 }
 
 

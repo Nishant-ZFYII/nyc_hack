@@ -61,10 +61,37 @@
     pillEls: {},
     tickStart: Date.now(),
     peopleServed: 0,
+    // Particle animation
+    particleT: 0,                // 0..1 rolling
+    particleRafHandle: null,
+    // Cinematic intro
+    introComplete: false,
   };
 
-  const PHASES = ['cold_emergency', 'migrant_bus', 'reset'];
-  const PHASE_DURATIONS = { cold_emergency: 10000, migrant_bus: 10000, reset: 3000 };
+  const PHASES = ['cold_emergency', 'migrant_bus', 'citywide_storm', 'reset'];
+  const PHASE_DURATIONS = {
+    cold_emergency: 9000,
+    migrant_bus: 9000,
+    citywide_storm: 11000,   // the money shot — give it room
+    reset: 2500,
+  };
+
+  // Plain-English caption shown BIG on mute for each phase
+  const PHASE_CAPTIONS = {
+    cold_emergency: {
+      main: 'COLD EMERGENCY',
+      sub:  '200 PEOPLE NEED SHELTER IN THE BRONX — ROUTED TO NEAREST AVAILABLE',
+    },
+    migrant_bus: {
+      main: 'MIGRANT BUS ARRIVAL',
+      sub:  '120 PEOPLE AT PORT AUTHORITY — INTAKE CENTERS NEARBY',
+    },
+    citywide_storm: {
+      main: 'CITYWIDE FLOW',
+      sub:  '1,200 CONCURRENT ROUTINGS · ALL 5 BOROUGHS · UNDER HALF A SECOND',
+    },
+    reset: { main: '', sub: '' },
+  };
 
   // ─────────────────────────────────────────────────────────────────────
   // Map init
@@ -75,13 +102,15 @@
     if (!el) { console.warn('[ScenarioPlayer] container missing:', containerId); return; }
     if (state.map) return;
 
+    // CINEMATIC INTRO: start tight over Manhattan at steep angle,
+    // then ease out to the full NYC overview as the skyline reveals.
     state.map = new maplibregl.Map({
       container: containerId,
       style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-      center: NYC,
-      zoom: 10.8,
-      pitch: 58,
-      bearing: state.orbitAngle,
+      center: [-73.9857, 40.7580],   // Midtown Manhattan
+      zoom: 14.2,
+      pitch: 72,
+      bearing: -8,
       antialias: true,
     });
     state.map.addControl(new maplibregl.NavigationControl(), 'top-left');
@@ -89,9 +118,20 @@
       state.map.resize();
       await Promise.all([loadResources(), loadVulnerability(), loadBuildings()]);
       renderLayers();
+      // Kick off cinematic pull-back after data loads
+      setTimeout(() => {
+        state.map.easeTo({
+          center: NYC, zoom: 10.7, pitch: 56, bearing: state.orbitAngle,
+          duration: 3600, easing: t => t * (2 - t),
+        });
+        setTimeout(() => { state.introComplete = true; }, 3700);
+      }, 500);
     });
-    state.map.on('mousedown', () => { state.orbitPaused = true; });
-    state.map.on('touchstart', () => { state.orbitPaused = true; });
+    state.map.on('mousedown', () => { state.orbitPaused = true; state.introComplete = true; });
+    state.map.on('touchstart', () => { state.orbitPaused = true; state.introComplete = true; });
+
+    // Start the particle-flow animation loop
+    startParticleLoop();
 
     injectOverlays();
     startOrbit();
@@ -124,6 +164,52 @@
     } catch (e) { /* silent */ }
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Particle animation loop — drives the flowing dots on every arc
+  // ─────────────────────────────────────────────────────────────────────
+  function startParticleLoop() {
+    if (state.particleRafHandle) cancelAnimationFrame(state.particleRafHandle);
+    let last = performance.now();
+    function frame(now) {
+      const dt = (now - last) / 1000;
+      last = now;
+      state.particleT = (state.particleT + dt * 0.45) % 1;
+      // Only repaint particle layer (not the expensive 28K building layer)
+      if (state.overlay && state.currentScenario && state.currentScenario.arcs?.length) {
+        state.overlay.setProps({ layers: buildLayers() });
+      }
+      state.particleRafHandle = requestAnimationFrame(frame);
+    }
+    state.particleRafHandle = requestAnimationFrame(frame);
+  }
+
+  // Build the flowing-particle dataset from the current scenario arcs.
+  // 3 particles per arc, evenly staggered, travelling source→target with
+  // a parabolic altitude bump so they arc visibly in 3D.
+  function particlesFromArcs(arcs, t) {
+    const out = [];
+    const PER_ARC = 3;
+    for (let i = 0; i < arcs.length; i++) {
+      const a = arcs[i];
+      if (!a.from || !a.to) continue;
+      for (let p = 0; p < PER_ARC; p++) {
+        const tp = (t + (i * 0.013) + (p / PER_ARC)) % 1;
+        const lon = a.from[0] + (a.to[0] - a.from[0]) * tp;
+        const lat = a.from[1] + (a.to[1] - a.from[1]) * tp;
+        // parabolic altitude bump — tallest at midpoint
+        const altitude = Math.sin(tp * Math.PI) * 900;
+        // alpha fades at the start/end so particles "enter + exit" smoothly
+        const fade = Math.sin(tp * Math.PI);
+        const c = a.color || [0, 229, 255, 200];
+        out.push({
+          pos: [lon, lat, altitude],
+          color: [c[0], c[1], c[2], Math.round(255 * fade)],
+        });
+      }
+    }
+    return out;
+  }
+
   async function loadBuildings() {
     try {
       const r = await fetch('/api/buildings?limit=28000');
@@ -138,11 +224,10 @@
   // ─────────────────────────────────────────────────────────────────────
   // Layer factory
   // ─────────────────────────────────────────────────────────────────────
-  function renderLayers() {
-    if (!state.map) return;
+  function buildLayers() {
     const layers = [];
 
-    // Very subtle ambient violet glow — NOT a heatmap of truth.
+    // Very subtle ambient violet glow — service-gap mood lighting.
     if (state.vulnerabilityHexes.length) {
       layers.push(new deck.HeatmapLayer({
         id: 'sp-vuln',
@@ -156,29 +241,27 @@
       }));
     }
 
-    // REAL NYC SKYLINE — 28K PLUTO lots rendered as tiny square building
-    // extrusions with actual numfloors heights. This is the city underneath;
-    // resources + arcs sit on top.
+    // REAL NYC SKYLINE — PLUTO lots as tight square extrusions.
+    // Shrunk the radius (8 m) and removed the 45° rotation so cubes don't
+    // float over streets / overlap neighbours.
     if (state.buildings && state.buildings.length) {
       layers.push(new deck.ColumnLayer({
         id: 'sp-buildings',
         data: state.buildings,
-        diskResolution: 4,          // square footprint — looks like a building
-        radius: 16,
-        angle: 45,
+        diskResolution: 4,
+        radius: 8,
+        angle: 0,
         extruded: true,
         pickable: false,
         getPosition: d => [d.lon, d.lat],
-        // 3.2 m per floor ≈ NYC average
-        getElevation: d => Math.max(12, (d.floors || 2) * 3.4),
-        // Dim cool grey-blue so it reads as "the city" not data
+        getElevation: d => Math.max(10, (d.floors || 2) * 3.4),
         getFillColor: d => {
           const tall = Math.min(1, (d.floors || 2) / 40);
           return [
             70 + Math.round(tall * 40),
             92 + Math.round(tall * 50),
             130 + Math.round(tall * 60),
-            225,
+            235,
           ];
         },
         material: { ambient: 0.35, diffuse: 0.6, shininess: 60, specularColor: [120,160,220] },
@@ -210,61 +293,88 @@
     // Scenario-specific layers
     const sc = state.currentScenario;
     if (sc && sc.arcs && sc.arcs.length) {
-      // Bright columns at each active site
+      // Bright rim around each active site (highlight where demand lands)
       if (sc.sites && sc.sites.length) {
         layers.push(new deck.ColumnLayer({
           id: 'sp-sites',
           data: sc.sites,
           diskResolution: 18,
-          radius: 90,
+          radius: 95,
           extruded: true,
           pickable: false,
           getPosition: d => [d.lon, d.lat],
           getFillColor: d => {
             const c = TYPE_COLORS_SP[d.type] || COLOR_DEFAULT_SP;
-            const saturate = 0.7 + 0.3 * (d.used / Math.max(1, d.cap));
+            const loadFrac = Math.min(1, (d.used || 0) / Math.max(1, d.cap));
+            const saturate = 0.75 + 0.25 * loadFrac;
             return [
               Math.min(255, Math.floor(c[0] * saturate)),
               Math.min(255, Math.floor(c[1] * saturate)),
               Math.min(255, Math.floor(c[2] * saturate)),
-              240,
+              245,
             ];
           },
-          getElevation: d => Math.log1p(d.used || 1) * 300 + 120,
-          material: { ambient: 0.6, diffuse: 0.9, shininess: 120, specularColor: [255, 255, 255] },
+          getElevation: d => Math.log1p((d.used || 1) + (d.cap || 30)) * 150 + 200,
+          material: { ambient: 0.7, diffuse: 0.95, shininess: 160, specularColor: [255, 255, 255] },
         }));
       }
-      // Demand scatter — each person as a small glowing dot
+      // Demand dots — people needing help, always visible
       if (sc.demand && sc.demand.length) {
+        const demandColor = sc.phase === 'migrant_bus'
+          ? [178, 75, 255, 230]
+          : sc.phase === 'citywide_storm' ? [255, 255, 255, 220] : [255, 204, 51, 230];
         layers.push(new deck.ScatterplotLayer({
           id: 'sp-demand',
           data: sc.demand,
           getPosition: d => [d.lon, d.lat],
-          getRadius: 40,
-          radiusMinPixels: 3,
-          radiusMaxPixels: 7,
-          getFillColor: sc.phase === 'migrant_bus' ? [178, 75, 255, 230] : [255, 204, 51, 230],
+          getRadius: 55,
+          radiusMinPixels: 2.5,
+          radiusMaxPixels: 6,
+          getFillColor: demandColor,
           stroked: false,
         }));
       }
-      // Arcs — cyan for cold-emergency, magenta for migrant
+      // FADED ARC CONTEXT — thin, translucent paths so the viewer sees
+      // the routing structure beneath the flowing particles.
       layers.push(new deck.ArcLayer({
-        id: 'sp-arcs',
+        id: 'sp-arcs-context',
         data: sc.arcs,
         getSourcePosition: d => d.from,
         getTargetPosition: d => d.to,
-        getSourceColor: d => d.color || [0, 229, 255, 200],
+        getSourceColor: d => {
+          const c = d.color || [0, 229, 255, 200];
+          return [c[0], c[1], c[2], 50];
+        },
         getTargetColor: d => {
           const c = d.color || [0, 229, 255, 200];
-          return [Math.min(255, c[0]+40), Math.min(255, c[1]+40), Math.min(255, c[2]+40), 255];
+          return [c[0], c[1], c[2], 80];
         },
-        getWidth: d => Math.max(1.2, 2.2 * (d.weight || 1)),
-        widthMinPixels: 1.2,
+        getWidth: 1.1,
+        widthMinPixels: 0.6,
         greatCircle: false,
+      }));
+      // FLOWING PARTICLES — 3 per arc, staggered phase, parabolic altitude.
+      const particles = particlesFromArcs(sc.arcs, state.particleT);
+      layers.push(new deck.ScatterplotLayer({
+        id: 'sp-particles',
+        data: particles,
+        getPosition: d => d.pos,
+        getRadius: 80,
+        radiusMinPixels: 2.6,
+        radiusMaxPixels: 6,
+        getFillColor: d => d.color,
+        stroked: false,
+        // Trigger re-render on state.particleT change
+        updateTriggers: { getPosition: state.particleT, getFillColor: state.particleT },
       }));
     }
 
-    const props = { layers };
+    return layers;
+  }
+
+  function renderLayers() {
+    if (!state.map) return;
+    const props = { layers: buildLayers() };
     if (state.overlay) state.overlay.setProps(props);
     else { state.overlay = new deck.MapboxOverlay(props); state.map.addControl(state.overlay); }
   }
@@ -316,13 +426,22 @@
       updateHud(payload);
       highlightPill(name);
       renderLayers();
+      // Big mute-readable caption for the phase
+      const cap = PHASE_CAPTIONS[name] || { main: payload.title, sub: payload.subtitle };
+      if (cap.main) {
+        showCaption(cap.main, cap.sub);
+      } else {
+        showCaption('', '');
+      }
       // Fly in on the action so the arcs are actually visible
       if (payload.demand && payload.demand.length && state.map) {
         const cx = payload.demand.reduce((s, d) => s + d.lon, 0) / payload.demand.length;
         const cy = payload.demand.reduce((s, d) => s + d.lat, 0) / payload.demand.length;
-        state.map.easeTo({ center: [cx, cy], zoom: 11.8, pitch: 58, duration: 1400 });
+        // Citywide storm needs to stay wide; other phases zoom in
+        const zoom = name === 'citywide_storm' ? 10.4 : 11.8;
+        state.map.easeTo({ center: [cx, cy], zoom, pitch: 56, duration: 1400 });
       } else if (state.map && name === 'reset') {
-        state.map.easeTo({ center: NYC, zoom: 10.8, pitch: 58, duration: 1400 });
+        state.map.easeTo({ center: NYC, zoom: 10.8, pitch: 56, duration: 1400 });
       }
     } catch (e) { /* silent */ }
   }
@@ -334,9 +453,10 @@
     if (state.orbitHandle) clearInterval(state.orbitHandle);
     state.orbitHandle = setInterval(() => {
       if (!state.map || state.orbitPaused) return;
-      state.orbitAngle = (state.orbitAngle + 0.2) % 360;
+      if (!state.introComplete) return;   // let cinematic intro finish
+      state.orbitAngle = (state.orbitAngle + 0.55) % 360;
       try { state.map.setBearing(state.orbitAngle); } catch (e) {}
-    }, 120);
+    }, 90);
     // Allow orbit to resume after period of inactivity
     let idleTimer = null;
     const resumeAfterIdle = () => {
@@ -400,8 +520,46 @@
     document.body.appendChild(el);
   }
 
+  // Big centered caption that describes the phase in plain English —
+  // this is the mute-readable narration.
+  function injectCaption() {
+    const c = document.createElement('div');
+    c.id = 'sp-caption';
+    c.style.cssText = `
+      position:fixed; left:50%; top:26%; transform:translate(-50%,0);
+      padding:22px 42px; border-radius:14px;
+      background:rgba(10,14,22,0.78); backdrop-filter:blur(22px);
+      -webkit-backdrop-filter:blur(22px);
+      border:1px solid rgba(0,229,255,0.35);
+      box-shadow:0 0 48px rgba(0,229,255,0.25);
+      text-align:center; font-family:var(--mono);
+      color:var(--t1); z-index:850;
+      pointer-events:none; min-width:320px; max-width:720px;
+      opacity:0; transition:opacity 500ms ease;
+    `;
+    c.innerHTML = `
+      <div id="sp-caption-main" style="font-size:22px;font-weight:700;color:var(--accent);letter-spacing:0.28em;text-shadow:0 0 16px rgba(0,229,255,0.55);line-height:1.2">—</div>
+      <div id="sp-caption-sub"  style="font-size:12px;color:var(--t2);letter-spacing:0.18em;margin-top:10px">—</div>
+    `;
+    document.body.appendChild(c);
+    return c;
+  }
+
+  function showCaption(main, sub) {
+    let c = document.getElementById('sp-caption');
+    if (!c) c = injectCaption();
+    if (!main) { c.style.opacity = '0'; return; }
+    document.getElementById('sp-caption-main').textContent = main;
+    document.getElementById('sp-caption-sub').textContent = sub || '';
+    c.style.opacity = '1';
+  }
+
   function injectOverlays() {
     injectLegend();
+    injectCaption();
+    // Initial orientation caption during the intro pull-back
+    showCaption('NYC SOCIAL SERVICES', 'LIVE OPS · 7,759 RESOURCES · RUNNING LOCALLY');
+    setTimeout(() => showCaption('', ''), 4200);
     // Phase title + progress bar
     const t = document.createElement('div');
     t.className = 'phase-title';
@@ -444,6 +602,7 @@
     };
     p.appendChild(mk('cold_emergency', 'Cold Snap'));
     p.appendChild(mk('migrant_bus', 'Migrant Bus'));
+    p.appendChild(mk('citywide_storm', 'Citywide'));
     p.appendChild(mk('reset', 'Reset'));
     const autoPill = mk('auto', 'AUTO');
     autoPill.classList.add('active');
@@ -468,13 +627,31 @@
     state.titleEl.classList.add('show');
   }
 
+  // Smoothly lerp an on-screen integer from its current value to `target`
+  // over `durationMs`. Reads the element's current text, eases with
+  // easeOutCubic, writes toLocaleString().
+  function animateNumber(el, target, durationMs) {
+    if (!el) return;
+    const cur = parseInt((el.textContent || '0').replace(/[^\d-]/g, ''), 10) || 0;
+    const start = performance.now();
+    function tick(now) {
+      const p = Math.min(1, (now - start) / durationMs);
+      const e = 1 - Math.pow(1 - p, 3);
+      const v = Math.round(cur + (target - cur) * e);
+      el.textContent = v.toLocaleString();
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
   function updateHud(payload) {
-    const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-    set('sp-h-phase', (payload.phase || '—').replace('_', ' ').toUpperCase());
-    set('sp-h-served', state.peopleServed.toLocaleString());
-    set('sp-h-sites', (payload.sites?.length || 0));
-    set('sp-h-avg', `${payload.stats?.avg_km?.toFixed?.(2) || 0} km`);
-    set('sp-h-latency', `${payload.stats?.elapsed_ms || 0}`);
+    const byId = id => document.getElementById(id);
+    if (byId('sp-h-phase')) byId('sp-h-phase').textContent = (payload.phase || '—').replace(/_/g, ' ').toUpperCase();
+    animateNumber(byId('sp-h-served'), state.peopleServed, 1400);
+    animateNumber(byId('sp-h-sites'), payload.sites?.length || 0, 900);
+    const avg = payload.stats?.avg_km?.toFixed?.(2) || '0';
+    if (byId('sp-h-avg')) byId('sp-h-avg').textContent = `${avg} km`;
+    animateNumber(byId('sp-h-latency'), payload.stats?.elapsed_ms || 0, 900);
   }
 
   function highlightPill(name) {
