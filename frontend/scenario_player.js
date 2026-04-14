@@ -81,6 +81,16 @@
     reset: 2500,
   };
 
+  // Each scenario operates on a primary resource type. When the user fires
+  // a scenario we sync the dropdown filter to that type so the viewer sees
+  // exactly what's being computed (no blank-screen confusion). null = "all".
+  const SCENARIO_PRIMARY_TYPE = {
+    cold_emergency: 'shelter',
+    migrant_bus:    'community_center',
+    citywide_storm: null,            // storm intentionally touches all types
+    reset:          null,
+  };
+
   // Plain-English caption shown BIG on mute for each phase
   const PHASE_CAPTIONS = {
     cold_emergency: {
@@ -390,6 +400,16 @@
       // Update HUD + title
       if (payload.phase !== 'reset') {
         state.peopleServed += (payload.stats?.served || 0);
+      }
+      // Sync the type filter so the dropdown reflects the scenario's domain.
+      // Cold Emergency → shelter, Migrant Bus → community_center, Storm → all.
+      const targetType = SCENARIO_PRIMARY_TYPE.hasOwnProperty(name)
+        ? SCENARIO_PRIMARY_TYPE[name] : null;
+      const newFilter = targetType || 'all';
+      if (state.typeFilter !== newFilter) {
+        state.typeFilter = newFilter;
+        const sel = document.getElementById('sp-filter-sel');
+        if (sel) sel.value = newFilter;
       }
       updateTitle(payload.title, payload.subtitle);
       updateHud(payload);
