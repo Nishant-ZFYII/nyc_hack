@@ -512,8 +512,8 @@ const TYPE_COLORS={
 };
 const COLOR_DEFAULT=[150,170,200,180];
 
-// City-wide resource cache (all 7,759 for the ambient 3D backdrop)
-let allResources=[];
+// City-wide resource cache (all 7,759 for the ambient 3D backdrop).
+// `allResources` is already declared at the top of the module; don't redeclare.
 let vulnerabilityHexes=[];
 let resultLighting=null;
 const BOROUGHS=[
