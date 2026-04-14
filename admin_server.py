@@ -439,3 +439,14 @@ async def admin_agent_nat(req: AdminAgentRequest):
             "total_time_s": round(_time.time() - t0, 2),
             "via": "nat-react-agent",
         }
+
+
+# ── Admin live ops snapshot ──────────────────────────────────────────────────
+
+from pipeline.ops_snapshot import build_snapshot as _build_snapshot
+
+
+@app.get("/api/admin/ops_snapshot")
+async def admin_ops_snapshot():
+    """Build the live-ops dashboard payload (sites, cases, arcs, stats)."""
+    return _build_snapshot()

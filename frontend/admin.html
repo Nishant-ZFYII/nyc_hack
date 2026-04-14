@@ -153,6 +153,10 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 }
 </style>
 <link rel="stylesheet" href="/frontend/theme.css">
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+<script src="/frontend/admin_map.js" defer></script>
 </head>
 <body>
 
@@ -161,6 +165,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   <div class="topbar">
     <span class="topbar-title">&#128203; Admin Dashboard</span>
     <span class="topbar-right" id="adminRefreshLabel"></span>
+    <button class="btn-secondary glow-border-cyan" style="padding:6px 14px;font-size:11px;margin-left:12px;color:var(--accent);border:1px solid rgba(0,229,255,0.35)" onclick="goTo('page-admin-map')">&#127902;&#65039; Live Ops Map</button>
     <button class="btn-secondary" style="padding:6px 14px;font-size:11px;margin-left:12px;background:linear-gradient(135deg,#1b7a00,#0f4a00);color:#fff;border:none" onclick="openNatAgent()" title="Ask the NVIDIA NeMo Agent anything about the caseload">&#129302; Ask Agent</button>
     <button class="btn-secondary" style="padding:6px 14px;font-size:11px;margin-left:8px" onclick="loadAdminCases()">&#8635; Refresh</button>
   </div>
@@ -270,6 +275,16 @@ function renderNatAdminResult(data,elapsed){
   out.innerHTML=html;
 }
 </script>
+
+<!-- ═══════════ PAGE: LIVE OPS MAP (admin) ═══════════ -->
+<div class="page" id="page-admin-map">
+  <div id="adminMapEl" style="position:absolute;inset:0;background:#07080c"></div>
+  <button class="agent-drawer-toggle" style="left:16px;top:16px" onclick="goTo('page-admin')">&#8592; DASHBOARD</button>
+  <div class="hud-panel" style="position:fixed;bottom:16px;left:16px;padding:10px 14px;font-family:var(--mono);font-size:11px;letter-spacing:0.12em;z-index:700">
+    <span class="neon-cyan">NYC LIVE OPS</span>
+    <span style="color:var(--t3);margin-left:10px">&middot; admin caseload</span>
+  </div>
+</div>
 
 <!-- ═══════════ PAGE: BRIEFING PANEL ═══════════ -->
 <div class="page" id="page-briefing">
@@ -382,10 +397,25 @@ async function onIdImageChosen(event) {
 
 <script>
 // ── Page navigation ──────────────────────────────────────────
+let _adminMapInitialized = false;
 function goTo(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(pageId).classList.add('active');
   if(pageId === 'page-admin') loadAdminCases();
+  if(pageId === 'page-admin-map' && window.AdminOpsMap) {
+    if(!_adminMapInitialized) {
+      _adminMapInitialized = true;
+      setTimeout(() => {
+        window.AdminOpsMap.init('adminMapEl');
+        setTimeout(() => window.AdminOpsMap.startPolling(4000), 400);
+      }, 100);
+    } else {
+      window.AdminOpsMap.refresh();
+    }
+  }
+  // Show admin HUD only on ops page
+  const hud = document.getElementById('admin-hud');
+  if(hud) hud.style.display = pageId === 'page-admin-map' ? 'flex' : 'none';
 }
 
 // ══════════════════════════════════════════════════════════
