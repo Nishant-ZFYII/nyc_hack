@@ -46,6 +46,30 @@ _BOROUGH_CENTROID = {
 }
 _BOROUGH_CODE = {"Manhattan":"MN","Brooklyn":"BK","Queens":"QN","Bronx":"BX","Staten Island":"SI"}
 
+# Borough share of NYC population (2020 census, ~8.3 M total). Used to
+# weight synthetic demand so we don't dump 20% of the city's homeless
+# into Staten Island (which holds ~6% of NYC's population).
+_BOROUGH_POP_WEIGHT = {
+    "Brooklyn":     0.311,
+    "Queens":       0.272,
+    "Manhattan":    0.196,
+    "Bronx":        0.169,
+    "Staten Island":0.057,
+}
+
+
+def _demand_split(n: int) -> dict[str, int]:
+    """Allocate N people across boroughs by population share, guaranteeing sum == n."""
+    raw = {b: n * w for b, w in _BOROUGH_POP_WEIGHT.items()}
+    ints = {b: int(v) for b, v in raw.items()}
+    remainder = n - sum(ints.values())
+    # Give any rounding slack to the biggest boroughs first
+    for b in sorted(ints, key=lambda k: -raw[k]):
+        if remainder <= 0: break
+        ints[b] += 1
+        remainder -= 1
+    return ints
+
 # ──────────────────────────────────────────────────────────────────────────
 # Internal helpers
 # ──────────────────────────────────────────────────────────────────────────
@@ -240,13 +264,9 @@ def cold_emergency(n_people: int = 2500, borough: str | None = None, seed: int |
     """
     t0 = time.time()
     rng = random.Random(seed)
-    per_borough = max(1, n_people // 5)
+    split = _demand_split(n_people)
     demand: list[dict] = []
-    for b, n in [("Manhattan", per_borough),
-                 ("Brooklyn", per_borough),
-                 ("Queens", per_borough),
-                 ("Bronx", per_borough),
-                 ("Staten Island", n_people - 4 * per_borough)]:
+    for b, n in split.items():
         demand.extend(_synth_demand_in_borough(n, b, rng.randint(0, 1_000_000), spread_km=3.5))
 
     # Candidates: shelters + cooling centers citywide
@@ -279,13 +299,8 @@ def migrant_bus(n_people: int = 500, arrival_lat: float = 40.7560, arrival_lon: 
     """
     t0 = time.time()
     rng = random.Random(seed)
-    per_borough = max(1, n_people // 5)
     demand: list[dict] = []
-    for borough, n in [("Manhattan", per_borough),
-                       ("Brooklyn", per_borough),
-                       ("Queens", per_borough),
-                       ("Bronx", per_borough),
-                       ("Staten Island", n_people - 4 * per_borough)]:
+    for borough, n in _demand_split(n_people).items():
         demand.extend(_synth_demand_in_borough(n, borough, rng.randint(0, 1_000_000), spread_km=3.0))
     sites_df = pd.concat([
         _sites_for("community_center"),
@@ -330,14 +345,8 @@ def citywide_storm(n_people: int = 4000, seed: int | None = 42) -> dict[str, Any
     """
     t0 = time.time()
     rng = random.Random(seed)
-    per_borough = max(1, n_people // 5)
-
     demand: list[dict] = []
-    for borough, n in [("Bronx", per_borough),
-                       ("Brooklyn", per_borough),
-                       ("Queens", per_borough),
-                       ("Manhattan", per_borough),
-                       ("Staten Island", n_people - 4 * per_borough)]:
+    for borough, n in _demand_split(n_people).items():
         demand.extend(_synth_demand_in_borough(n, borough, rng.randint(0, 1_000_000), spread_km=6.0))
 
     sites_df = pd.concat([
