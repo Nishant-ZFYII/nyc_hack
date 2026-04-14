@@ -184,6 +184,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:var(--border2)}
 </style>
 <link rel="stylesheet" href="/frontend/theme.css">
+<script src="/frontend/scenario_player.js" defer></script>
 </head>
 <body>
 
@@ -207,6 +208,10 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
       <div class="choice-card fade-in-d3" onclick="goTo('page-explore')">
         <div class="choice-icon">&#128506;</div>
         <div><div class="choice-title">Find Aid</div><div class="choice-desc">Browse resources on the map by borough</div></div>
+      </div>
+      <div class="choice-card fade-in-d3 glow-border-cyan" onclick="goTo('page-live-ops')" style="border-color:rgba(0,229,255,0.35)">
+        <div class="choice-icon neon-cyan" style="background:rgba(0,229,255,0.08)">&#127902;&#65039;</div>
+        <div><div class="choice-title neon-cyan">Live Ops Demo</div><div class="choice-desc">3D city view &middot; auto-playing cold-emergency &amp; migrant-bus scenarios</div></div>
       </div>
 
       <div class="powered fade-in-d4">
@@ -400,6 +405,16 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
   </div>
 </div>
 
+<!-- ═══════════ LIVE OPS DEMO (3D scenario loop) ═══════════ -->
+<div class="page" id="page-live-ops">
+  <div id="liveMapEl" style="position:absolute;inset:0;background:#07080c"></div>
+  <button class="agent-drawer-toggle" style="left:auto;right:16px;top:auto;bottom:16px" onclick="goTo('page-welcome')">&#8592; BACK</button>
+  <div class="hud-panel" style="position:fixed;top:16px;left:16px;padding:10px 14px;font-family:var(--mono);font-size:11px;letter-spacing:0.12em;z-index:700">
+    <span class="neon-cyan">NYC LIVE OPS</span>
+    <span style="color:var(--t3);margin-left:10px">&middot; DGX-free edge build</span>
+  </div>
+</div>
+
 <!-- ═══════════ PAGE 5: EXPLORE ═══════════ -->
 <div class="page" id="page-explore">
   <div class="topbar">
@@ -514,12 +529,25 @@ function detectEmergency(q){return EMERGENCY_KEYWORDS.some(kw=>q.toLowerCase().i
 function getMatchReason(r){const p=[];if(r.need)r.need.split('+').forEach(n=>p.push(n.trim().replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())));if(!p.length&&r.type)p.push(r.type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()));return p.join(' + ')}
 
 // ── Page Navigation ────────────────────────────────────────
+let _liveOpsInitialized=false;
 function goTo(pageId){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById(pageId).classList.add('active');
   // Init maps when first shown
   if(pageId==='page-map'&&!resultMap)initResultMap();
   if(pageId==='page-explore'&&!exploreMap)setTimeout(()=>initExploreMap(),100);
+  if(pageId==='page-live-ops' && !_liveOpsInitialized && window.ScenarioPlayer){
+    _liveOpsInitialized=true;
+    // Give the page a beat to lay out, then init
+    setTimeout(()=>{
+      window.ScenarioPlayer.init('liveMapEl');
+      // Wait 2s for initial resources fetch, then start the auto loop
+      setTimeout(()=>window.ScenarioPlayer.startLoop(), 2200);
+    }, 120);
+  }
+  // Hide/show HUD overlays based on page
+  const overlays=['sp-title','sp-hud','sp-pills'];
+  overlays.forEach(id=>{const e=document.getElementById(id);if(e)e.style.display=pageId==='page-live-ops'?'':'none';});
 }
 
 // ── Login ──────────────────────────────────────────────────
