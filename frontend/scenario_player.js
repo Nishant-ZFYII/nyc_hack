@@ -94,8 +94,8 @@
   // Plain-English caption shown BIG on mute for each phase
   const PHASE_CAPTIONS = {
     cold_emergency: {
-      main: 'COLD EMERGENCY',
-      sub:  '200 PEOPLE NEED SHELTER IN THE BRONX — ROUTED TO NEAREST AVAILABLE',
+      main: 'COLD SNAP · CODE BLUE',
+      sub:  '400 PEOPLE CITYWIDE — ROUTED TO NEAREST SHELTER OR WARMING CENTER',
     },
     migrant_bus: {
       main: 'MIGRANT BUS ARRIVAL',

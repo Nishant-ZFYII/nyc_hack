@@ -226,26 +226,36 @@ def _synth_demand_in_borough(n: int, borough: str, seed: int | None, spread_km: 
 # Public scenarios
 # ──────────────────────────────────────────────────────────────────────────
 
-def cold_emergency(n_people: int = 200, borough: str = "Bronx", seed: int | None = 7) -> dict[str, Any]:
+def cold_emergency(n_people: int = 400, borough: str | None = None, seed: int | None = 7) -> dict[str, Any]:
+    """
+    NYC Code Blue — cold-weather emergency sheltering. In reality Code
+    Blue activates shelters + cooling/warming centres across ALL FIVE
+    BOROUGHS simultaneously, not just one. Demand is distributed
+    citywide proportional to the synthetic borough quota.
+    """
     t0 = time.time()
-    demand = _synth_demand_in_borough(n_people, borough, seed, spread_km=4.0)
-    shelters = _sites_for("shelter", borough)
-    cooling = _sites_for("cooling_center", borough)
-    candidates = pd.concat([shelters, cooling], ignore_index=True)
-    # If the borough is too sparse, expand to within ~10km of the centroid
-    if len(candidates) < 8:
-        lat0, lon0 = _BOROUGH_CENTROID.get(borough, _BOROUGH_CENTROID["Bronx"])
-        all_s = pd.concat([_sites_for("shelter"), _sites_for("cooling_center")], ignore_index=True)
-        all_s = all_s[(all_s["lat"] - lat0).abs() < 0.1]
-        all_s = all_s[(all_s["lon"] - lon0).abs() < 0.13].reset_index(drop=True)
-        candidates = all_s
-    candidates = candidates.reset_index(drop=True)
+    rng = random.Random(seed)
+    per_borough = max(1, n_people // 5)
+    demand: list[dict] = []
+    for b, n in [("Manhattan", per_borough),
+                 ("Brooklyn", per_borough),
+                 ("Queens", per_borough),
+                 ("Bronx", per_borough),
+                 ("Staten Island", n_people - 4 * per_borough)]:
+        demand.extend(_synth_demand_in_borough(n, b, rng.randint(0, 1_000_000), spread_km=3.5))
+
+    # Candidates: shelters + cooling centers citywide
+    candidates = pd.concat([
+        _sites_for("shelter"),
+        _sites_for("cooling_center"),
+    ], ignore_index=True).reset_index(drop=True)
+
     arcs, sites, stats = _greedy_allocate(demand, candidates, k_candidates=10)
     stats["elapsed_ms"] = int((time.time() - t0) * 1000)
     return {
         "phase": "cold_emergency",
-        "title": "COLD EMERGENCY",
-        "subtitle": f"{n_people} PEOPLE · {borough.upper()} · OVERFLOW ROUTING",
+        "title": "COLD SNAP · CODE BLUE",
+        "subtitle": f"{n_people} PEOPLE · ALL 5 BOROUGHS · SHELTERS + WARMING CENTERS",
         "demand": demand,
         "sites": _sites_to_frontend(sites),
         "arcs": arcs,
