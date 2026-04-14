@@ -198,8 +198,8 @@
     state.particleRafHandle = requestAnimationFrame(frame);
   }
 
-  // Haversine distance in METERS — used so each particle rises to the same
-  // apex as its arc (deck.gl ArcLayer's height scales with the arc length).
+  // Haversine distance in METERS — used so each trip's apex scales with arc
+  // length (long arcs rise high, short arcs stay low).
   function _distanceMeters(a, b) {
     const R = 6371000;
     const toRad = v => v * Math.PI / 180;
@@ -211,35 +211,38 @@
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
   }
 
-  // Build the flowing-particle dataset from the current scenario arcs.
-  // 3 particles per arc, evenly staggered, travelling source→target with
-  // an apex proportional to arc length so long arcs rise high, short arcs
-  // stay low — matching deck.gl ArcLayer's default parabola geometry.
-  function particlesFromArcs(arcs, t) {
-    const out = [];
-    const PER_ARC = 3;
+  // Convert arcs → trip paths for deck.gl TripsLayer. Each arc becomes a
+  // 40-sample 3D parabola (lon, lat, altitude) with monotonic timestamps.
+  // TripsLayer then animates a trail along that exact geometry, so the
+  // visible line AND the animated highlight share one source — no possible
+  // drift between "arc" and "particle".
+  function arcsToTrips(arcs) {
+    const N = 40;
+    const trips = [];
     for (let i = 0; i < arcs.length; i++) {
       const a = arcs[i];
       if (!a.from || !a.to) continue;
       const dm = _distanceMeters(a.from, a.to);
-      // ArcLayer default height=1 → apex ≈ distance. Scale down to ~0.45x so
-      // arcs don't feel cartoonish, but stay proportional.
       const apex = Math.max(180, dm * 0.45);
-      for (let p = 0; p < PER_ARC; p++) {
-        const tp = (t + (i * 0.013) + (p / PER_ARC)) % 1;
-        const lon = a.from[0] + (a.to[0] - a.from[0]) * tp;
-        const lat = a.from[1] + (a.to[1] - a.from[1]) * tp;
-        // parabolic altitude bump tied to this arc's length
-        const altitude = Math.sin(tp * Math.PI) * apex;
-        const fade = Math.sin(tp * Math.PI);
-        const c = a.color || [0, 229, 255, 200];
-        out.push({
-          pos: [lon, lat, altitude],
-          color: [c[0], c[1], c[2], Math.round(255 * fade)],
-        });
+      const path = [];
+      const timestamps = [];
+      // stagger each arc's start offset so trips don't all fire in lock-step
+      const start = (i * 0.071) % 1;
+      for (let k = 0; k < N; k++) {
+        const t = k / (N - 1);
+        const lon = a.from[0] + (a.to[0] - a.from[0]) * t;
+        const lat = a.from[1] + (a.to[1] - a.from[1]) * t;
+        const alt = Math.sin(t * Math.PI) * apex;
+        path.push([lon, lat, alt]);
+        timestamps.push(start + t * 0.4); // each trip spans 0.4 of the loop
       }
+      trips.push({
+        path,
+        timestamps,
+        color: a.color || [0, 229, 255, 220],
+      });
     }
-    return out;
+    return trips;
   }
 
   async function loadBuildings() {
@@ -359,42 +362,40 @@
           material: { ambient: 0.7, diffuse: 0.95, shininess: 160, specularColor: [255, 255, 255] },
         }));
       }
-      // FADED ARC CONTEXT — thin, translucent paths beneath the particles
-      // so the viewer perceives the routing structure. getHeight matches
-      // the particle apex factor (0.45 × distance) so dots travel exactly
-      // along the arc's visual curve.
-      layers.push(new deck.ArcLayer({
-        id: 'sp-arcs-context',
-        data: filterArcs,
-        getSourcePosition: d => d.from,
-        getTargetPosition: d => d.to,
-        getSourceColor: d => {
-          const c = d.color || [0, 229, 255, 200];
-          return [c[0], c[1], c[2], 50];
-        },
-        getTargetColor: d => {
-          const c = d.color || [0, 229, 255, 200];
-          return [c[0], c[1], c[2], 80];
-        },
-        getWidth: 1.1,
-        widthMinPixels: 0.6,
-        getHeight: 0.45,
-        greatCircle: false,
-      }));
-      // FLOWING PARTICLES — 3 per arc, staggered phase, parabolic altitude.
-      const particles = particlesFromArcs(filterArcs, state.particleT);
-      layers.push(new deck.ScatterplotLayer({
-        id: 'sp-particles',
-        data: particles,
-        getPosition: d => d.pos,
-        getRadius: 80,
-        radiusMinPixels: 2.6,
-        radiusMaxPixels: 6,
-        getFillColor: d => d.color,
-        stroked: false,
-        // Trigger re-render on state.particleT change
-        updateTriggers: { getPosition: state.particleT, getFillColor: state.particleT },
-      }));
+      // FLOW via deck.gl TripsLayer — one geometry source for both the
+      // path (faded line) and the moving trail (animated head). Can't
+      // drift apart because they're literally the same vertex data.
+      if (deck.TripsLayer) {
+        const trips = arcsToTrips(filterArcs);
+        layers.push(new deck.TripsLayer({
+          id: 'sp-trips',
+          data: trips,
+          getPath: d => d.path,
+          getTimestamps: d => d.timestamps,
+          getColor: d => d.color,
+          getWidth: 3,
+          widthMinPixels: 2,
+          opacity: 0.85,
+          trailLength: 0.22,
+          currentTime: state.particleT * 1.6, // sweeps past the max timestamp (~1.4) each cycle
+          capRounded: true,
+          jointRounded: true,
+          fadeTrail: true,
+          shadowEnabled: false,
+        }));
+      } else {
+        // Fallback: plain static arcs if TripsLayer is missing in this bundle
+        layers.push(new deck.ArcLayer({
+          id: 'sp-arcs-fallback',
+          data: filterArcs,
+          getSourcePosition: d => d.from,
+          getTargetPosition: d => d.to,
+          getSourceColor: d => d.color || [0, 229, 255, 200],
+          getTargetColor: d => d.color || [0, 229, 255, 200],
+          getWidth: 2,
+          getHeight: 0.45,
+        }));
+      }
     }
 
     return layers;
