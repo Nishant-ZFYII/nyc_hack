@@ -198,22 +198,39 @@
     state.particleRafHandle = requestAnimationFrame(frame);
   }
 
+  // Haversine distance in METERS — used so each particle rises to the same
+  // apex as its arc (deck.gl ArcLayer's height scales with the arc length).
+  function _distanceMeters(a, b) {
+    const R = 6371000;
+    const toRad = v => v * Math.PI / 180;
+    const dLat = toRad(b[1] - a[1]);
+    const dLon = toRad(b[0] - a[0]);
+    const lat1 = toRad(a[1]);
+    const lat2 = toRad(b[1]);
+    const h = Math.sin(dLat/2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
   // Build the flowing-particle dataset from the current scenario arcs.
   // 3 particles per arc, evenly staggered, travelling source→target with
-  // a parabolic altitude bump so they arc visibly in 3D.
+  // an apex proportional to arc length so long arcs rise high, short arcs
+  // stay low — matching deck.gl ArcLayer's default parabola geometry.
   function particlesFromArcs(arcs, t) {
     const out = [];
     const PER_ARC = 3;
     for (let i = 0; i < arcs.length; i++) {
       const a = arcs[i];
       if (!a.from || !a.to) continue;
+      const dm = _distanceMeters(a.from, a.to);
+      // ArcLayer default height=1 → apex ≈ distance. Scale down to ~0.45x so
+      // arcs don't feel cartoonish, but stay proportional.
+      const apex = Math.max(180, dm * 0.45);
       for (let p = 0; p < PER_ARC; p++) {
         const tp = (t + (i * 0.013) + (p / PER_ARC)) % 1;
         const lon = a.from[0] + (a.to[0] - a.from[0]) * tp;
         const lat = a.from[1] + (a.to[1] - a.from[1]) * tp;
-        // parabolic altitude bump — tallest at midpoint
-        const altitude = Math.sin(tp * Math.PI) * 900;
-        // alpha fades at the start/end so particles "enter + exit" smoothly
+        // parabolic altitude bump tied to this arc's length
+        const altitude = Math.sin(tp * Math.PI) * apex;
         const fade = Math.sin(tp * Math.PI);
         const c = a.color || [0, 229, 255, 200];
         out.push({
@@ -343,7 +360,9 @@
         }));
       }
       // FADED ARC CONTEXT — thin, translucent paths beneath the particles
-      // so the viewer perceives the routing structure.
+      // so the viewer perceives the routing structure. getHeight matches
+      // the particle apex factor (0.45 × distance) so dots travel exactly
+      // along the arc's visual curve.
       layers.push(new deck.ArcLayer({
         id: 'sp-arcs-context',
         data: filterArcs,
@@ -359,6 +378,7 @@
         },
         getWidth: 1.1,
         widthMinPixels: 0.6,
+        getHeight: 0.45,
         greatCircle: false,
       }));
       // FLOWING PARTICLES — 3 per arc, staggered phase, parabolic altitude.
