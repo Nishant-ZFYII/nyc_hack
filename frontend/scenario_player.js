@@ -95,15 +95,15 @@
   const PHASE_CAPTIONS = {
     cold_emergency: {
       main: 'COLD SNAP · CODE BLUE',
-      sub:  '400 PEOPLE CITYWIDE — ROUTED TO NEAREST SHELTER OR WARMING CENTER',
+      sub:  '2,500 PEOPLE CITYWIDE — EVERY SHELTER + WARMING CENTER ACTIVATES',
     },
     migrant_bus: {
       main: 'MIGRANT BUS ARRIVAL',
-      sub:  '120 PEOPLE DISPERSED TO INTAKE SITES ACROSS ALL 5 BOROUGHS',
+      sub:  '500 PEOPLE DISPERSED TO INTAKE SITES ACROSS ALL 5 BOROUGHS',
     },
     citywide_storm: {
       main: 'CITYWIDE FLOW',
-      sub:  '1,200 CONCURRENT ROUTINGS · ALL 5 BOROUGHS · UNDER HALF A SECOND',
+      sub:  '4,000 CONCURRENT ROUTINGS · ALL 5 BOROUGHS · UNDER ONE SECOND',
     },
     reset: { main: '', sub: '' },
   };
@@ -188,7 +188,8 @@
     function frame(now) {
       const dt = (now - last) / 1000;
       last = now;
-      state.particleT = (state.particleT + dt * 0.45) % 1;
+      // Slower cycle (~5.5 s full loop) so individual trails have time to read
+      state.particleT = (state.particleT + dt * 0.18) % 1;
       // Only repaint particle layer (not the expensive 28K building layer)
       if (state.overlay && state.currentScenario && state.currentScenario.arcs?.length) {
         state.overlay.setProps({ layers: buildLayers() });
@@ -373,11 +374,11 @@
           getPath: d => d.path,
           getTimestamps: d => d.timestamps,
           getColor: d => d.color,
-          getWidth: 3,
-          widthMinPixels: 2,
-          opacity: 0.85,
-          trailLength: 0.22,
-          currentTime: state.particleT * 1.6, // sweeps past the max timestamp (~1.4) each cycle
+          getWidth: 4,
+          widthMinPixels: 2.5,
+          opacity: 0.92,
+          trailLength: 0.32,
+          currentTime: state.particleT * 1.6,
           capRounded: true,
           jointRounded: true,
           fadeTrail: true,

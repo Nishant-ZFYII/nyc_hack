@@ -157,7 +157,7 @@ def _greedy_allocate(demand: list[dict], sites: pd.DataFrame, k_candidates: int 
     return arcs, sites, stats
 
 
-def _sites_to_frontend(sites: pd.DataFrame, max_sites: int = 400) -> list[dict]:
+def _sites_to_frontend(sites: pd.DataFrame, max_sites: int = 1200) -> list[dict]:
     """
     Return sites for the frontend — keep enough so every arc's to_id has a
     matching site (otherwise the frontend arc→site filter drops arcs
@@ -226,7 +226,7 @@ def _synth_demand_in_borough(n: int, borough: str, seed: int | None, spread_km: 
 # Public scenarios
 # ──────────────────────────────────────────────────────────────────────────
 
-def cold_emergency(n_people: int = 400, borough: str | None = None, seed: int | None = 7) -> dict[str, Any]:
+def cold_emergency(n_people: int = 2500, borough: str | None = None, seed: int | None = 7) -> dict[str, Any]:
     """
     NYC Code Blue — cold-weather emergency sheltering. In reality Code
     Blue activates shelters + cooling/warming centres across ALL FIVE
@@ -263,7 +263,7 @@ def cold_emergency(n_people: int = 400, borough: str | None = None, seed: int | 
     }
 
 
-def migrant_bus(n_people: int = 120, arrival_lat: float = 40.7560, arrival_lon: float = -73.9903, seed: int | None = 11) -> dict[str, Any]:
+def migrant_bus(n_people: int = 500, arrival_lat: float = 40.7560, arrival_lon: float = -73.9903, seed: int | None = 11) -> dict[str, Any]:
     """
     Simulates what DHS actually does: migrants arrive at Port Authority but
     are promptly dispersed by bus to intake sites citywide. To visualize
@@ -315,7 +315,7 @@ def reset() -> dict[str, Any]:
     }
 
 
-def citywide_storm(n_people: int = 1200, seed: int | None = 42) -> dict[str, Any]:
+def citywide_storm(n_people: int = 4000, seed: int | None = 42) -> dict[str, Any]:
     """
     Finale scenario: fire 1,200 demand points across the ENTIRE city and
     route them all to their nearest available shelter / drop-in / community
