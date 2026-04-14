@@ -352,7 +352,7 @@ def citywide_storm(n_people: int = 4000, seed: int | None = 42) -> dict[str, Any
         "title": "CITYWIDE STORM",
         "subtitle": f"{n_people} CONCURRENT ROUTINGS · ALL 5 BOROUGHS · {stats['elapsed_ms']}ms",
         "demand": demand,
-        "sites": _sites_to_frontend(sites, max_sites=180),
+        "sites": _sites_to_frontend(sites, max_sites=1500),
         "arcs": arcs,
         "stats": stats,
     }
