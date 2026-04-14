@@ -1,394 +1,314 @@
-# NYC Social Services Intelligence Engine
+# NYC Social Services — Live Ops
 
-An AI-powered caseworker + kiosk system for NYC Department of Social Services. Built for **NVIDIA Spark Hack NYC 2026**.
+An interactive 3D visualization of New York City's social-services network — every shelter, food bank, cooling center, community center, clinic, and school rendered as a glowing beacon, with live scenario animations that route synthetic demand to real resources and honestly report where the system runs out of capacity.
 
-The system performs comprehensive needs assessments across housing, food, healthcare, legal aid, benefits eligibility, school continuity, and safety — using a **bounded DSL architecture** that prevents LLM hallucination. It tracks people across multiple visits (like a real caseworker), finds resources sorted by distance from where they are, and guides them step-by-step through their journey.
+Built on **NYC Open Data** + `deck.gl` + `maplibre-gl`. Runs locally on a GTX 1060-class GPU (or any Mac with Metal support). No cloud, no API keys required for the core demo.
 
 ---
 
-## 🏁 Quickstart for evaluators (judges read this)
+## What you're looking at
 
-Pick ONE path below. **Path A (Docker)** is the zero-assumption path — works on any machine with Docker + internet. **Path B (bare metal)** is for developers who want to run directly.
+When the map loads, you see NYC at night. Hexagonal neon columns mark every social-services resource the city operates — color encodes type, height encodes capacity.
 
-### Path A — Docker (recommended for judges)
+Click one of the bottom pills to fire a scenario:
 
-**Prerequisites** (all standard on modern dev machines):
+| Pill | What it simulates | Real-world analogue |
+|---|---|---|
+| **Cold Snap** | 2,500 people need emergency warming-center placement across all five boroughs | NYC Code Blue declaration |
+| **Migrant Bus** | 500 new arrivals dispersed to intake sites citywide | DHS Port Authority reception + borough buses |
+| **Citywide Storm** | 4,000 concurrent routings — stress test | Mass event / simultaneous demand |
+| **Reset** | Clear everything | — |
+| **AUTO** | Master toggle: cycle the three scenarios continuously + orbit the camera | — |
+
+Each scenario runs an honest greedy nearest-with-capacity allocator (scikit-learn `BallTree`) in Python — no LLM in the critical path — and returns:
+
+- **Arcs + flowing neon trails**: every successfully routed person
+- **Pulsing red dots**: "unmet" — people the shelter system had no capacity within a reasonable radius to serve. This is NYC's real story on bad nights.
+- **Site columns that grow with load** — bright thick columns where demand is landing
+- **Dimmed columns** — sites outside the active scenario's area (spotlighting what's in play)
+
+A live stats HUD reports served / unmet / active sites / average distance / latency as the animation plays.
+
+### Type filter
+
+The dropdown at the top lets you isolate a resource type (e.g. show only shelters, or only food banks). When you fire a scenario, the filter auto-syncs to whatever primary resource type that scenario targets — so the dropdown and the map always stay coherent.
+
+### Other pages still here
+
+This repo started as a hackathon project and the original flows are intact:
+
+- **User portal** (`/`) — natural-language query → resource + eligibility + case registration. Uses local llama3 via Ollama when available.
+- **Admin portal** (`:9001`) — caseload dashboard, per-case AI briefings, form-fill-from-ID (llama3.2-vision → pre-filled NYC LDSS-4826 SNAP and DOH-4220 Medicaid PDFs).
+- **Live Ops Demo** — this README's main subject.
+
+---
+
+## Quickstart
+
+### Linux (tested on Ubuntu 22.04)
 
 ```bash
-docker --version           # need v24+
-docker compose version     # need v2+
+# 1. Clone + cd
+git clone https://github.com/Nishant-ZFYII/nyc_hack.git
+cd nyc_hack
+git checkout linkedin-demo
+
+# 2. Tesseract (fallback OCR for the form-filler — not strictly needed for live-ops)
+sudo apt-get install -y tesseract-ocr
+
+# 3. Python env
+conda create -n nyc_hack python=3.11 -y
+conda activate nyc_hack
+pip install -r requirements.txt
+
+# 4. (Optional) Ollama for the LLM agent drawer
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve > /tmp/ollama.log 2>&1 &
+ollama pull llama3
+
+# 5. Seed demo cases (only needed if you'll poke the admin portal)
+python seed_demo_cases.py
+
+# 6. Launch both portals
+uvicorn server:app       --host 127.0.0.1 --port 9000 --workers 1 &
+uvicorn admin_server:app --host 127.0.0.1 --port 9001 --workers 1 &
+
+# 7. Open it
+xdg-open http://127.0.0.1:9000/   # then click "Live Ops Demo"
+xdg-open http://127.0.0.1:9001/   # admin view
 ```
 
-If either is missing:
-- **Ubuntu/Debian:** `sudo apt-get install -y docker.io docker-compose-plugin && sudo usermod -aG docker $USER && newgrp docker`
-- **Mac:** install [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/)
-- **Windows:** install [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) + enable WSL2
+### macOS (tested requirements — should Just Work)
 
-**Optional but recommended:** if you have an NVIDIA GPU, install [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Without a GPU, Ollama falls back to CPU (still works, just slower).
-
-Disk + RAM: **~30 GB free disk** (for the two models), **~10 GB free RAM** minimum.
-
-**Run it:**
+The codebase uses only cross-platform libraries — no Linux-specific syscalls, no CUDA requirement, no systemd.
 
 ```bash
 # 1. Clone
 git clone https://github.com/Nishant-ZFYII/nyc_hack.git
 cd nyc_hack
+git checkout linkedin-demo
 
-# 2. Launch (smart — reuses existing Ollama cache if present)
-./start.sh
-```
-
-The `start.sh` script does the full boot:
-- Auto-detects an existing host Ollama cache (`~/.ollama`) and bind-mounts it so you don't re-download 25 GB
-- If no cache, Docker downloads `llama3` + `llama3.2-vision:11b` on first run (10-20 min)
-- Boots the stack (user portal + admin portal + ollama)
-- Tails the init container until models are ready
-- Prints the two URLs when done
-
-**If you don't want the helper script**, the manual equivalent is:
-
-```bash
-docker compose up -d
-docker compose logs -f ollama-init       # wait for "Models ready."
-```
-
-**Open in your browser:**
-
-| Portal | URL | First thing to try |
-|---|---|---|
-| **Client / user** | [http://localhost:9000](http://localhost:9000) | Set location to *"Flatbush Brooklyn"* → type *"I have 4 kids and we're losing our housing next week"* → click **🌟 Not Sure Where to Start?** → wait ~60s → click **🎫 Raise a Ticket** to register the case |
-| **Admin / caseworker** | [http://localhost:9001](http://localhost:9001) | You'll see 8 pre-seeded cases → click any case → **📄 Fill Forms from ID** → upload `samples/sample_id.jpg` → download filled LDSS-4826 SNAP + DOH-4220 Medicaid PDFs |
-
-**Stop the stack:**
-```bash
-./start.sh stop              # or: docker compose down
-./start.sh reset             # wipe Docker volumes + regenerated override (keeps host Ollama cache)
-```
-
-See [DOCKER.md](./DOCKER.md) for container architecture details.
-
----
-
-### Path B — Bare metal (no Docker)
-
-Works on Linux/macOS. Tested on Ubuntu 22.04 and the NVIDIA DGX Spark.
-
-#### 1. System prerequisites
-
-```bash
-# Python 3.10 or newer (3.12 recommended)
-python3 --version                         # must print 3.10+
-
-# Ubuntu/Debian — full system deps (OCR, C++ compiler for annoy, image libs, curl)
-sudo apt-get update
-sudo apt-get install -y \
-    tesseract-ocr \
-    build-essential g++ python3-dev \
-    libgl1 libglib2.0-0 \
-    curl
-
-# macOS — Xcode tools (provides clang++) + Tesseract via Homebrew
-xcode-select --install 2>/dev/null || true
+# 2. Tesseract
 brew install tesseract
+
+# 3. Python env (via miniconda or directly)
+conda create -n nyc_hack python=3.11 -y
+conda activate nyc_hack
+pip install -r requirements.txt
+
+# 4. (Optional) Ollama
+brew install ollama
+ollama serve > /tmp/ollama.log 2>&1 &
+ollama pull llama3
+
+# 5. Seed demo cases
+python seed_demo_cases.py
+
+# 6. Launch
+uvicorn server:app       --host 127.0.0.1 --port 9000 --workers 1 &
+uvicorn admin_server:app --host 127.0.0.1 --port 9001 --workers 1 &
+
+# 7. Open it
+open http://127.0.0.1:9000/
+open http://127.0.0.1:9001/
 ```
 
-> **Why `build-essential`?** `nemoguardrails` transitively requires `annoy`, which compiles native C++ code. Without `g++` the `pip install` step will fail with `command 'g++' failed: No such file or directory`.
+**Notes for Mac users:**
 
-#### 2. Install Ollama + pull the two models
+- On Apple Silicon (M1/M2/M3), Ollama uses Metal for GPU acceleration automatically — llama3:8b runs at ~30 tok/s on an M1 Pro.
+- `pyarrow` and `scikit-learn` have native arm64 wheels — pip install is fast, no compilation.
+- deck.gl + maplibre run entirely in your browser (Chrome/Safari) via WebGL2 — no host-GPU config needed.
+- If `brew install tesseract` is missing a language pack: `brew install tesseract-lang`.
 
-```bash
-# Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
+### Windows
 
-# Start Ollama on GPU (omit env vars if you don't have a GPU)
-sudo systemctl stop ollama 2>/dev/null
-OLLAMA_NUM_GPU=999 OLLAMA_KEEP_ALIVE=2h ollama serve > /tmp/ollama.log 2>&1 &
-
-# Pull the two models (~25 GB total, 10-20 min first run)
-ollama pull llama3                        # ReAct agent (~4.7 GB)
-ollama pull llama3.2-vision:11b           # ID reader (~7.9 GB)
-
-# Verify — should list both models
-curl -s http://localhost:11434/api/tags | python3 -m json.tool
-```
-
-#### 3. Clone + install Python deps
-
-```bash
-git clone https://github.com/Nishant-ZFYII/nyc_hack.git
-cd nyc_hack
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip uv        # uv handles our deep dep graph (nvidia-nat + langchain + cuda stack)
-uv pip install -r requirements.txt
-```
-
-> **Why `uv` not plain `pip`?** `nvidia-nat-langchain` + the cuda/torch stack pulls ~200 transitive deps. Plain pip will error with `resolution-too-deep`. `uv` is a drop-in pip replacement that handles it in ~60 seconds.
->
-> If you must use pip: `pip install --use-deprecated=legacy-resolver -r requirements.txt` (slower, may have version conflicts).
-
-#### 4. Seed demo data
-
-```bash
-python3 seed_demo_cases.py
-```
-
-Writes 8 curated cases (1 critical DV, 2 high, 3 medium, 2 resolved) into `data/cases/` so the admin dashboard has demo content. The resource mart, knowledge graph, and embeddings are already in `data/` (committed to git — no regeneration needed).
-
-#### 5. Launch both portals
-
-Open **two terminals**:
-
-```bash
-# Terminal 1 — user portal
-source venv/bin/activate
-uvicorn server:app --host 0.0.0.0 --port 9000
-
-# Terminal 2 — admin portal
-source venv/bin/activate
-uvicorn admin_server:app --host 0.0.0.0 --port 9001
-```
-
-#### 6. Open in browser
-
-Same URLs and flows as Path A above. Use `localhost` or your machine's IP.
-
-#### Troubleshooting (bare metal)
-
-| Symptom | Fix |
-|---|---|
-| Agent request hangs forever | `curl http://localhost:11434/api/tags` — if no response, restart Ollama: `pkill ollama; OLLAMA_NUM_GPU=999 ollama serve &` |
-| `tesseract: command not found` | Re-run step 1 — fallback OCR needs the system binary |
-| `ModuleNotFoundError: No module named 'nat'` | `pip install nvidia-nat nvidia-nat-langchain` (use `uv pip install` if pip fails) |
-| Admin page shows 0 cases | You skipped step 4 — run `python3 seed_demo_cases.py` |
-| Only `Find Help` button, no AI plan button | Scroll down — the `🌟 Not Sure Where to Start?` button is below it |
-| `data/resource_mart.parquet not found` | `git pull` — data files are committed to git |
-| Port 9000 or 9001 already in use | `lsof -ti:9000 \| xargs kill -9` or change the port flag |
-| Slow queries (>2 min) | You're on CPU — expected. Faster with GPU ollama |
-
-#### Stop everything
-
-```bash
-pkill -f uvicorn           # both portals
-pkill ollama               # Ollama
-```
-
----
-
-## 🟩 NVIDIA Stack at a Glance
-
-Everything below runs **locally** on the DGX Spark GB10. No cloud.
-
-| Layer | Component | Where it's used |
-|---|---|---|
-| **Agent framework** | [NVIDIA NeMo Agent Toolkit](https://docs.nvidia.com/nemo/agent-toolkit/) (`nvidia-nat` + `nvidia-nat-langchain`) | ReAct loop driving llama3 — 5 tool groups, 15+ Python tools. See `agent/register.py`, `agent/config.yml`, `agent/config_admin.yml`. |
-| **Safety** | [NVIDIA NeMo Guardrails](https://github.com/NVIDIA/NeMo-Guardrails) (`nemoguardrails`) | PII redaction, jailbreak detection, crisis-keyword routing (988 / DV hotline). Gates every LLM call on both user and admin portals. See `guardrails/`. |
-| **Local inference** | llama3 (8B) + llama3.2-vision (11B) via **Ollama** on GPU | Reasoning agent + ID-photo OCR. Same model family on both sides of the stack. |
-| **Community** | **OpenClaw + ClawHub** | `nyc-caseworker` skill capsule (`skills/nyc-caseworker/`) + subprocess dispatch (`/api/agent/openclaw`). |
-| **GPU dataframes** | **RAPIDS cuDF** | 870K PLUTO lots + 7,759 resources ingested and filtered on GPU. |
-| **GPU graph** | **RAPIDS cuGraph** | 3.6M-edge knowledge graph with SSSP, BFS, connected-components for service accessibility. |
-| **GPU ML** | **RAPIDS cuML** | k-NN + HDBSCAN for resource similarity and neighborhood clustering. |
-| **Optimization** | **NVIDIA cuOpt** | VRP allocation for cold-emergency and migrant-bus scenarios. |
-| **Array compute** | **CuPy** | GPU spatial scoring + capacity-change heatmaps. |
-| **KGE embeddings** | **PyKEEN + PyTorch** | TransE training on 328K SPO triples → 83,618 entity vectors × 64 dims. |
-| **Knowledge extraction** | **txt2kg** | Structured extraction from 311 complaint free-text. |
-| **Hardware** | **NVIDIA DGX Spark GB10** (128 GB unified memory) | All ~35 GB of active state — models, graph, mart, embeddings — co-resident in one memory space. |
-
-See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for the full technical deep-dive (system architecture, pipeline flow, memory layout, anti-hallucination design, rubric alignment).
-
----
-
-## Architecture (quick reference)
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│ User portal  │     │ Admin portal │     │ Ollama GPU   │
-│ :9000        │◀───▶│ :9001        │◀───▶│ llama3 +     │
-│ FastAPI      │     │ FastAPI      │     │ llama3.2-    │
-│ NeMo ReAct   │     │ NeMo ReAct   │     │ vision       │
-│ agent        │     │ agent        │     │              │
-└──────┬───────┘     └──────┬───────┘     └──────┬───────┘
-       │                    │                    │
-       │        NeMo Guardrails (every call)     │
-       │                    │                    │
-       └────────────────────┼────────────────────┘
-                            │
-                    ┌───────┴────────┐
-                    │ Shared state   │
-                    │ data/cases/    │  ← JSON case files
-                    │ data/ (mart,   │  ← 7,759 resources
-                    │  graph, KGE)   │  ← 3.6M edges, 83K vectors
-                    └────────────────┘
-```
-
-User queries go through: guardrails → NeMo ReAct (llama3) → tool dispatch (find_resources, calculate_eligibility, get_rights, get_directions, …) → synthesis → response. The agent never touches raw data — all tool calls run bounded Python on real NYC Open Data.
-
-Admin queries (supervisor mode) use a separate config with 8 admin-tier tools (list_all_cases, get_city_stats, generate_case_briefing, …). Form-fill feature sends ID photos to llama3.2-vision for structured extraction, then overlays the fields onto real NYC LDSS-4826 SNAP + DOH-4220 Medicaid PDFs using pdfplumber + pypdf + reportlab.
-
-Full walkthrough in **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
-
----
-
-#### (Archived) legacy stop command
-
-```bash
-pkill -f uvicorn           # both portals
-pkill ollama               # Ollama
-```
+Not personally tested. Should work via WSL2 (follow the Linux path) or Miniconda for Windows directly. The only Windows-specific adjustment would be `curl`'s `--output` style and using `start` instead of `xdg-open`.
 
 ---
 
 ## Architecture
 
 ```
-User query → LLM Planner (llama3) → JSON Plan
-  → Executor (cuDF/cuGraph/cuOpt on DGX)
-  → Synthesizer (natural language answer)
-  → Verifier (per-claim fact-checking)
-  → Case tracker (persistent across visits)
-  → User feedback loop (ground truth correction)
+┌──────────────────────────────────────────────────────────────────────────┐
+│                             BROWSER (client)                             │
+│                                                                          │
+│   ┌───────────────────┐       ┌────────────────────────────────────┐    │
+│   │ scenario_player.js│       │ maplibre-gl  (dark-matter basemap) │    │
+│   │                   │──────▶│                                    │    │
+│   │ - state loop      │       │ ┌────────────────────────────────┐ │    │
+│   │ - auto-orbit      │       │ │ deck.gl MapboxOverlay          │ │    │
+│   │ - filter dropdown │       │ │                                │ │    │
+│   │ - phase captions  │       │ │ • ColumnLayer (sp-city)        │ │    │
+│   │ - animated HUD    │       │ │   every resource as neon beacon│ │    │
+│   │ - tooltip         │       │ │ • ColumnLayer (sp-sites)       │ │    │
+│   └─────────┬─────────┘       │ │   active scenario sites, fat   │ │    │
+│             │                 │ │ • ScatterplotLayer (sp-unmet)  │ │    │
+│             │   fetch         │ │   pulsing red dots = unplaced  │ │    │
+│             │                 │ │ • TripsLayer (sp-trips)        │ │    │
+│             ▼                 │ │   animated neon flow along arcs│ │    │
+│   ┌───────────────────┐       │ └────────────────────────────────┘ │    │
+│   │   fetch + JSON    │       └────────────────────────────────────┘    │
+│   └─────────┬─────────┘                                                  │
+└─────────────┼────────────────────────────────────────────────────────────┘
+              │
+              ▼  HTTP on 127.0.0.1:9000
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         FastAPI (server.py, CPU-only)                    │
+│                                                                          │
+│   GET  /                          →   frontend/index.html (live ops)     │
+│   GET  /frontend/*                →   static assets                      │
+│   GET  /api/resources             →   all NYC geocoded resources         │
+│   POST /api/scenario/{name}       →   run cold/migrant/storm/reset       │
+│   GET  /api/scenario/state        →   last scenario snapshot             │
+│   GET  /api/vulnerability         →   (subtle context layer, optional)   │
+│   POST /api/query  /api/agent/*   →   legacy chat + NeMo agent (opt)     │
+│                                                                          │
+│   ┌──────────────────────────────────────────────────────────────┐       │
+│   │                pipeline/scenarios.py                          │       │
+│   │                                                              │       │
+│   │  • _synth_demand_in_borough — real on-land anchors (schools, │       │
+│   │    childcare, community centers), ±150m jitter, NO water     │       │
+│   │  • _demand_split            — weight by 2020 census share    │       │
+│   │  • _greedy_allocate         — sklearn BallTree k-NN, strict  │       │
+│   │    15 km physical cap, returns (arcs, sites, unmet)          │       │
+│   │  • cold_emergency | migrant_bus | citywide_storm | reset     │       │
+│   └──────────────────────────────────────────────────────────────┘       │
+└──────────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+                      ┌──────────────────┐
+                      │ data/*.parquet   │   real NYC Open Data
+                      │                  │
+                      │ resource_mart    │   7,759 resources, 19 types
+                      │ pluto_layer      │   857 K tax lots (legacy)
+                      │ triples          │   328 K + 1.2 M SPO (legacy)
+                      └──────────────────┘
 ```
 
-**Key principle:** the LLM never touches the data directly. It translates natural language to a structured JSON plan; the executor queries real data; the synthesizer formats the answer; the verifier fact-checks each claim against the resource mart.
+---
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full design.
+## What's real, what's synthetic
 
-## Current status (April 12, 2026)
+Full transparency. The source and quality of everything visible:
 
-- ✅ FastAPI user portal on `:9000` + admin portal on `:9001`
-- ✅ **NVIDIA NeMo Agent Toolkit** — ReAct agent on llama3, 5 tool groups, 15+ tools (`agent/register.py`)
-- ✅ **NVIDIA NeMo Guardrails** — PII detection, jailbreak blocking, crisis keyword handling (`guardrails/`)
-- ✅ **OpenClaw skill** — `nyc-caseworker` capsule submitted to ClawHub (`skills/nyc-caseworker/`)
-- ✅ Resource mart: **7,759 resources** across 19 types
-- ✅ Knowledge graph: **3.6M edges** via cuGraph
-- ✅ SPO triples: **328K + 1.2M** txt2kg extractions
-- ✅ PyKEEN KGE: **83,618 entities × 64 dims** (TransE)
-- ✅ cuOpt VRP allocation (cold emergency, migrant allocation)
-- ✅ Location-aware search with GPS + address geocoding (Nominatim proxy + fallback table)
-- ✅ Multi-modal routing: walk (OSRM) + transit with budget awareness + sponsored ride
-- ✅ Case management: login, visit tracking, progress, choose/checkin/resolve
-- ✅ Eligibility screener (SNAP/Medicaid/WIC/Cash/Fair Fares + auto-fill)
-- ✅ Rights database (per resource type)
-- ✅ llama3.2-vision multimodal OCR → auto-filled NYC benefits PDFs
-- ✅ Success stories (10+ anonymized journeys)
+| Element | Source | Notes |
+|---|---|---|
+| NYC resource locations + types | [NYC Open Data](https://opendata.cityofnewyork.us/) — DOHMH facilities, HRA HOPWA, DOE schools, DHS shelters, NYPD precincts | Cleaned into `data/resource_mart.parquet`. Borough, address, lat/lon all real. |
+| Resource **capacity** | Mix of real values + imputed defaults | Where the city publishes bed counts we use them. Where not, we substitute a per-type default (shelter=60, hospital=300, etc.). Imputed values clearly flagged in code. |
+| Demand points ("people") | **Synthetic** | Sampled from on-land anchors (schools/childcare/community centers) + jittered ±150 m. These are *not* real people — they're a proxy for where the population is. |
+| Demand distribution across boroughs | 2020 US Census population share | BK 31.1%, QN 27.2%, MN 19.6%, BX 16.9%, SI 5.7% |
+| Routing | Greedy nearest-with-capacity (sklearn BallTree), 15 km cap | Real algorithm, real latencies |
+| Unmet demand (red dots) | Computed honestly — reflects actual NYC shelter-desert reality in Staten Island when demand exceeds local capacity | |
 
-## API endpoints
+What this project is **not**:
+- Not a live feed of actual NYC shelter occupancy (DHS doesn't publish that publicly).
+- Not a booking system — don't use it to dispatch a real person.
+- Not trained on any personal data.
 
-### Core pipeline
-- `POST /api/query` — main query. Body: `{query, case_id?, location?: {lat,lon}, demo_mode?}`
-- `POST /api/agent/plan` — autonomous plan (timeline view with alternatives, eligibility, rights, stories)
-- `POST /api/agent/nat` — NeMo Agent Toolkit ReAct answer
-- `POST /api/agent/openclaw` — OpenClaw skill dispatch
-- `GET /api/resources` — all 7,759 resources with coords (for map)
-- `GET /api/status` — system health + resource counts
+---
 
-### Location & routing
-- `GET /api/geocode?q=<address>` — Nominatim proxy + NYC fallback table
-- `POST /api/directions` — multi-modal directions. Body: `{from_lat, from_lon, to_lat, to_lon, budget?}`
+## Tech stack
 
-### Case management
-- `POST /api/case/login` — create/resume case
-- `GET /api/case/progress/{case_id}` — structured progress (✅ / 🔄 / ⚪)
-- `POST /api/case/choose` — user picks a resource for a need
-- `POST /api/case/checkin` — confirm arrival (or not)
-- `POST /api/case/resolve` — mark a need as resolved
-- `POST /api/ticket/raise` — register a formal NYC case ticket (NYC-XXXXXX)
+**Frontend**
+- `maplibre-gl@3.6` — dark-matter basemap
+- `deck.gl@latest` (via CDN) — `ColumnLayer`, `ScatterplotLayer`, `TripsLayer`, `HeatmapLayer`
+- Pure vanilla JS — no React, no build step
 
-### Knowledge & support
-- `POST /api/eligibility` — benefits calculator
-- `GET /api/rights?resource_type=shelter` — legal rights
-- `GET /api/stories?need=housing&k=3` — success stories
-- `POST /api/refine` — checkbox-based refine panel (updates eligibility + rights + resources)
-- `POST /api/similar` — KGE similarity search
-- `POST /api/feedback` — report issue with a resource
+**Backend**
+- `fastapi` + `uvicorn` — single-worker async
+- `pandas` + `pyarrow` — parquet IO
+- `scikit-learn` — `BallTree` nearest-neighbor
+- `scipy`, `networkx` — legacy pipeline modules
 
-### Admin
-- `GET /api/admin/cases` — list all cases
-- `POST /api/admin/fill_forms` — auto-fill NYC benefits PDFs from ID upload
-- `POST /api/admin/ocr_id` — llama3.2-vision OCR on ID photo
+**Data + ML (optional, for the non-live-ops features)**
+- `nemoguardrails` — PII/jailbreak/crisis filter on agent queries
+- `nvidia-nat` + `nvidia-nat-langchain` — NeMo Agent Toolkit ReAct agent
+- `pdfplumber` + `pypdf` + `reportlab` — PDF form filler
+- `pytesseract` + `pillow` — fallback OCR when vision model unavailable
+- `ollama` (external) — serves `llama3` + `llama3.2-vision` for agent + form-filler
 
-## Project structure
+Nothing here requires a CUDA GPU. NVIDIA RAPIDS libs are *not* installed by default; the project gracefully degrades to CPU equivalents.
 
+---
+
+## Key files
+
+| Path | Role |
+|---|---|
+| `frontend/index.html` | User portal + Live Ops page |
+| `frontend/admin.html` | Admin portal |
+| `frontend/scenario_player.js` | **The live-ops engine** — map init, TripsLayer flow, HUD, captions, dropdown filter, bbox spotlight |
+| `frontend/theme.css` | Dark-neon visual theme tokens |
+| `frontend/admin_map.js` | Admin caseload 3D map |
+| `frontend/agent_drawer.js` | NeMo Agent right-drawer |
+| `server.py` | FastAPI user portal |
+| `admin_server.py` | FastAPI admin portal |
+| `pipeline/scenarios.py` | **The allocator** — demand synthesis, population-weighted split, BallTree greedy, unmet handling |
+| `pipeline/form_filler.py` | llama3.2-vision OCR + PDF overlay |
+| `pipeline/ops_snapshot.py` | Admin live-ops aggregator |
+| `pipeline/cases.py` | Case persistence (JSON files in `data/cases/`) |
+| `agent/register.py` | NeMo Agent Toolkit tool registration |
+| `llm/client.py` | LLM provider fallback ladder |
+| `seed_demo_cases.py` | Seeds 8 curated demo cases for the admin portal |
+| `tests/test_scenarios.py` | Pytest sanity checks on the allocator |
+| `data/resource_mart.parquet` | 7,759 NYC resources with coords |
+| `data/cases/*.json` | Persisted case files |
+
+---
+
+## Branches
+
+- `main` — stable, pre-live-ops version
+- `linkedin-demo` — **this branch**, current work, the 3D live-ops viz described above
+
+---
+
+## Known limitations + intentional trade-offs
+
+- **Capacity numbers** for shelters are partially imputed — NYC doesn't publish real-time bed counts. The relative differences between boroughs are real; absolute numbers are approximations.
+- **Demand is synthesized.** We don't have anonymized real case-level data (and ethically shouldn't). The spatial distribution of demand follows population share + real on-land anchors.
+- **No real-time shelter feed.** DHS Daily Report is aggregate, not per-facility.
+- **Ollama models are ~5 GB each.** If you skip the agent drawer / form filler, you don't need them.
+- **Performance**: 28 K resource beacons + 1,500 sites + up to 4 K concurrent trips renders at 55–60 fps on a GTX 1060 / M1 Pro. On older integrated GPUs it may drop to 25–30 fps.
+
+---
+
+## Testing
+
+```bash
+# Pytest (sanity checks on the allocator — 8 tests, all green)
+PYTHONPATH= python -m pytest tests/test_scenarios.py -q
+
+# Manual smoke test
+curl -s http://127.0.0.1:9000/api/scenario/cold_emergency | jq '.stats'
+# expected: {"served": 2511, "unmet": 0, "avg_km": 0.4, "elapsed_ms": ~1800}
 ```
-nyc_hack/
-├── server.py                     # user portal (:9000)
-├── admin_server.py               # admin portal (:9001)
-├── frontend/
-│   ├── index.html                # user SPA (dark→light theme, deck.gl map, emoji icons)
-│   └── admin.html                # caseworker SPA
-├── agent/                        # NVIDIA NeMo Agent Toolkit integration
-│   ├── register.py               # tool groups + skills
-│   └── config.yml                # ReAct agent config
-├── skills/nyc-caseworker/        # OpenClaw skill capsule for ClawHub
-├── guardrails/                   # NeMo Guardrails (PII, jailbreak, crisis)
-├── llm/client.py                 # LLM fallback ladder
-├── pipeline/
-│   ├── planner.py                # NL → JSON plan
-│   ├── executor.py               # plan → cuDF/cuGraph queries
-│   ├── synth.py                  # results → natural language
-│   ├── verify.py                 # per-claim fact check
-│   ├── cases.py                  # case management
-│   ├── geocode.py                # Nominatim + fallback table
-│   ├── routing.py                # OSRM walking + MTA transit
-│   ├── eligibility.py            # benefits calculator
-│   ├── form_filler.py            # llama3.2-vision OCR + PDF overlay
-│   └── briefing.py               # admin briefings
-├── engine/                       # KGE + cuGraph primitives
-├── data/                         # ✅ committed: mart, graph.pkl, triples, KGE
-├── samples/                      # sample ID image + blank NYC forms
-├── seed_demo_cases.py            # writes 8 demo cases to data/cases/
-├── docker-compose.yml            # full stack orchestration
-├── Dockerfile                    # app image
-├── start.sh                      # smart launcher (auto-detect ollama cache)
-├── ARCHITECTURE.md
-├── DOCKER.md
-├── DEMO_SCRIPT.md
-└── DEVPOST.md                    # hackathon submission
-```
 
-## Example queries
+---
 
-**Caseworker-style (rich needs assessment):**
-- *"I'm Tina, 4 kids ages 12-16, income $28K, my sister is kicking us out next week"*
-- *"Someone broke into my apartment, I have a 6-year-old, I don't feel safe going back"*
+## Credits + data sources
 
-**Simple lookup:**
-- *"What shelters in Brooklyn have available beds?"*
-- *"Free food pantries near Jamaica Queens"*
+- NYC Open Data — [opendata.cityofnewyork.us](https://opendata.cityofnewyork.us/)
+- PLUTO (Primary Land Use Tax Lot Output) — NYC Department of City Planning
+- Coalition for the Homeless — [coalitionforthehomeless.org](https://www.coalitionforthehomeless.org/) — context + real statistics
+- NYC DHS — Daily Shelter Census aggregate reports
+- [StreetLives NYC / YourPeer](https://www.streetlives.nyc/) — peer-designed reference for how this space works in practice
+- [City Limits](https://citylimits.org/) — investigative reporting on the NYC shelter intake process
+- [deck.gl showcase](https://deck.gl/showcase) + [Peter Beshai's point-animation blog](https://peterbeshai.com/blog/2019-08-10-deckgl-point-animation/) — animation technique references
+- [CartoDB dark-matter](https://carto.com/basemaps/) basemap style
 
-**Location-aware:**
-- *"I need a shelter near 43rd street Manhattan"*
-
-**City-ops simulation:**
-- *"Cold emergency declared. 3 Brooklyn shelters hit capacity. 200 people outside at 15°F. What do we do?"*
-
-## LLM provider fallback (`llm/client.py`)
-
-1. **Ollama llama3 on DGX** (primary, local)
-2. Ollama nemotron-mini (secondary, local)
-3. Claude Haiku via Anthropic API
-4. GPT-4o-mini via OpenAI API
-5. llama.cpp at `localhost:8080`
-6. OpenRouter (last resort)
-
-## NVIDIA stack (11+ components)
-
-| Tool | Role |
-|------|------|
-| **Nemotron / llama3 via Ollama** | Local LLM inference on GB10 GPU |
-| **NeMo Agent Toolkit** | ReAct agent + tool dispatch |
-| **NeMo Guardrails** | PII / jailbreak / crisis detection |
-| **OpenClaw + ClawHub** | `nyc-caseworker` skill capsule |
-| **RAPIDS cuDF** | GPU DataFrame filtering |
-| **RAPIDS cuGraph** | 3.6M-edge knowledge graph |
-| **cuOpt** | VRP allocation for emergencies |
-| **cuPy** | GPU spatial scoring |
-| **RAPIDS cuML** | KNN / HDBSCAN |
-| **PyKEEN + PyTorch** | TransE KGE embeddings |
-| **txt2kg** | 311 complaint extraction |
-| **deck.gl** | GPU 3D map (IconLayer + ScatterplotLayer) |
+---
 
 ## License
 
-MIT
+MIT — see `LICENSE`.
+
+The underlying NYC Open Data is subject to NYC's own terms of use.
+
+---
+
+## Author
+
+Built by [@Nishant-ZFYII](https://github.com/Nishant-ZFYII). This started as a submission to NVIDIA Spark Hack NYC 2026 and was rebuilt as a portfolio piece for LinkedIn.
+
+If you use any part of this for your own civic-tech project, no attribution required but I'd love to hear about it.
