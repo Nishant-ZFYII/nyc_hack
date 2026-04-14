@@ -1057,6 +1057,57 @@ async def all_resources():
     mart, _ = load_state()
     mart_pd = mart.to_pandas() if hasattr(mart, 'to_pandas') else mart
     cols = ["resource_id", "resource_type", "name", "address", "borough",
-            "latitude", "longitude", "safety_score"]
+            "latitude", "longitude", "safety_score", "capacity"]
     df = mart_pd[[c for c in cols if c in mart_pd.columns]].dropna(subset=["latitude", "longitude"])
-    return df.head(2000).to_dict("records")
+    # Rename for frontend friendliness
+    df = df.rename(columns={"latitude": "lat", "longitude": "lon"})
+    return df.head(2500).to_dict("records")
+
+
+# ── Scenario engine (pure Python, no LLM) ────────────────────────────────────
+
+from pipeline import scenarios as _scenarios
+
+# Module-level latest snapshot for /api/scenario/state.
+_latest_scenario: dict = _scenarios.reset()
+
+# Cached vulnerability hex grid.
+_vuln_cache: dict | None = None
+
+
+@app.post("/api/scenario/{name}")
+async def run_scenario(name: str):
+    """Run a named scenario (cold_emergency / migrant_bus / reset)."""
+    global _latest_scenario
+    result = _scenarios.run(name)
+    _latest_scenario = result
+    return result
+
+
+@app.get("/api/scenario/state")
+async def scenario_state():
+    """Return the most recent scenario snapshot."""
+    return _latest_scenario
+
+
+@app.get("/api/vulnerability")
+async def vulnerability():
+    """Vulnerability hex grid for the HeatmapLayer underneath the columns."""
+    global _vuln_cache
+    if _vuln_cache is None:
+        cache_path = ROOT / "data" / "vulnerability_hex.json"
+        if cache_path.exists():
+            try:
+                with open(cache_path) as f:
+                    _vuln_cache = json.load(f)
+            except Exception:
+                _vuln_cache = None
+        if _vuln_cache is None:
+            hexes = _scenarios._vulnerability_hex_grid()
+            _vuln_cache = {"hexes": hexes, "max": max((h["weight"] for h in hexes), default=1.0)}
+            try:
+                with open(cache_path, "w") as f:
+                    json.dump(_vuln_cache, f)
+            except Exception:
+                pass
+    return _vuln_cache
