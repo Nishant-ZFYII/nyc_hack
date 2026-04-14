@@ -66,6 +66,8 @@
     particleRafHandle: null,
     // Cinematic intro
     introComplete: false,
+    // Type filter (dropdown) — 'all' or a resource_type string
+    typeFilter: 'all',
   };
 
   const PHASES = ['cold_emergency', 'migrant_bus', 'citywide_storm', 'reset'];
@@ -270,10 +272,14 @@
 
     // All ~2.5K resources as glowing neon "beacon" columns — hexagonal
     // footprint to distinguish them from the square buildings underneath.
-    if (state.allResources.length) {
+    // Filter by the dropdown selection when user has picked a specific type.
+    const filteredResources = (state.typeFilter === 'all')
+      ? state.allResources
+      : state.allResources.filter(r => r.resource_type === state.typeFilter);
+    if (filteredResources.length) {
       layers.push(new deck.ColumnLayer({
         id: 'sp-city',
-        data: state.allResources,
+        data: filteredResources,
         diskResolution: 6,          // hex — reads as infrastructure
         radius: 38,
         extruded: true,
@@ -554,9 +560,67 @@
     c.style.opacity = '1';
   }
 
+  // Type-filter dropdown — lets the viewer hide schools/childcare noise
+  // or isolate one category (shelters, food, hospitals, etc).
+  function injectTypeFilter() {
+    if (document.getElementById('sp-filter')) return;
+    const wrap = document.createElement('div');
+    wrap.id = 'sp-filter';
+    wrap.className = 'hud-panel';
+    wrap.style.cssText = `
+      position:fixed; top:16px; left:50%; transform:translateX(-50%);
+      padding:8px 14px; font-family:var(--mono); font-size:11px;
+      letter-spacing:0.08em; z-index:700;
+      display:flex; align-items:center; gap:10px;
+    `;
+    wrap.innerHTML = `
+      <span style="color:var(--t3);font-size:9px;letter-spacing:0.18em">SHOW</span>
+      <select id="sp-filter-sel" style="
+        background:rgba(7,8,12,0.85); color:var(--accent);
+        border:1px solid rgba(0,229,255,0.3); border-radius:6px;
+        padding:6px 10px; font-family:var(--mono); font-size:11px;
+        cursor:pointer; min-width:180px;
+        text-transform:uppercase; letter-spacing:0.08em;
+        outline:none;
+      "></select>
+    `;
+    document.body.appendChild(wrap);
+
+    const sel = document.getElementById('sp-filter-sel');
+    // Populate options from the resource types we actually have
+    function refreshOptions() {
+      const types = Array.from(new Set(state.allResources.map(r => r.resource_type))).sort();
+      sel.innerHTML = '';
+      const optAll = document.createElement('option');
+      optAll.value = 'all';
+      optAll.textContent = `All types (${state.allResources.length.toLocaleString()})`;
+      sel.appendChild(optAll);
+      for (const t of types) {
+        if (!t) continue;
+        const count = state.allResources.filter(r => r.resource_type === t).length;
+        const o = document.createElement('option');
+        o.value = t;
+        o.textContent = `${t.replace(/_/g, ' ')} (${count})`;
+        sel.appendChild(o);
+      }
+      sel.value = state.typeFilter || 'all';
+    }
+    refreshOptions();
+    // Retry once a second until resources load
+    const ret = setInterval(() => {
+      if (state.allResources.length) { refreshOptions(); clearInterval(ret); }
+    }, 500);
+
+    sel.onchange = () => {
+      state.typeFilter = sel.value;
+      renderLayers();
+    };
+  }
+
   function injectOverlays() {
     injectLegend();
     injectCaption();
+    injectTypeFilter();
     // Initial orientation caption during the intro pull-back
     showCaption('NYC SOCIAL SERVICES', 'LIVE OPS · 7,759 RESOURCES · RUNNING LOCALLY');
     setTimeout(() => showCaption('', ''), 4200);
@@ -593,8 +657,18 @@
       b.textContent = label;
       b.dataset.id = id;
       b.onclick = () => {
+        if (id === 'auto') {
+          // True toggle — click turns autoplay ON if off, OFF if on
+          state.auto = !state.auto;
+          if (state.auto) { startLoop(); b.classList.add('active'); }
+          else            { stopLoop();  b.classList.remove('active'); }
+          return;
+        }
+        // Any specific scenario click turns autoplay OFF
         state.auto = false;
-        if (id === 'auto') { state.auto = true; startLoop(); return; }
+        stopLoop();
+        const autoBtn = state.pillEls['auto'];
+        if (autoBtn) autoBtn.classList.remove('active');
         runScenario(id);
       };
       state.pillEls[id] = b;

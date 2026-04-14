@@ -558,7 +558,7 @@ function goTo(pageId){
     }, 120);
   }
   // Hide/show HUD overlays based on page
-  const overlays=['sp-title','sp-hud','sp-pills','sp-legend','sp-tip','sp-caption','agent-drawer'];
+  const overlays=['sp-title','sp-hud','sp-pills','sp-legend','sp-tip','sp-caption','sp-filter','agent-drawer'];
   overlays.forEach(id=>{const e=document.getElementById(id);if(e)e.style.display=pageId==='page-live-ops'?'':'none';});
   // Hide drawer toggle button everywhere except live-ops
   document.querySelectorAll('.agent-drawer-toggle').forEach(b=>{
