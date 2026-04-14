@@ -183,6 +183,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:var(--border2)}
 </style>
+<link rel="stylesheet" href="/frontend/theme.css">
 </head>
 <body>
 
@@ -711,7 +712,7 @@ function toggleMap(){
 }
 
 function initResultMap(){
-  resultMap=new maplibregl.Map({container:'mapEl',style:'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',center:NYC,zoom:11,pitch:45});
+  resultMap=new maplibregl.Map({container:'mapEl',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:11,pitch:45});
   resultMap.addControl(new maplibregl.NavigationControl(),'top-left');
   resultMap.on('load',()=>{resultMap.resize()});
 }
@@ -1794,7 +1795,7 @@ function toggleNatMap(){
     panel.classList.add('open');
     document.getElementById('natMapToggleBtn').innerHTML='&#10005; Close map';
     if(!natMap){
-      natMap=new maplibregl.Map({container:'natMapEl',style:'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',center:NYC,zoom:11,pitch:45});
+      natMap=new maplibregl.Map({container:'natMapEl',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:11,pitch:45});
       natMap.addControl(new maplibregl.NavigationControl(),'top-left');
       natMap.on('load',()=>natMap.resize());
     }
@@ -1850,7 +1851,7 @@ function togglePlanMap(){
 }
 
 function initPlanMap(){
-  planMap=new maplibregl.Map({container:'planMapEl',style:'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',center:NYC,zoom:11,pitch:45});
+  planMap=new maplibregl.Map({container:'planMapEl',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:11,pitch:45});
   planMap.addControl(new maplibregl.NavigationControl(),'top-left');
   planMap.on('load',()=>planMap.resize());
 }
@@ -2485,7 +2486,7 @@ async function fetchDirections(budget){
 function initExploreMap(){
   const el=document.getElementById('exploreMapEl');
   if(!el||el.offsetWidth===0)return;
-  exploreMap=new maplibregl.Map({container:'exploreMapEl',style:'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',center:NYC,zoom:10.5,pitch:30});
+  exploreMap=new maplibregl.Map({container:'exploreMapEl',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:10.5,pitch:30});
   exploreMap.addControl(new maplibregl.NavigationControl(),'top-left');
 }
 

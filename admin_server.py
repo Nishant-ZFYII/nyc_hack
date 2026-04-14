@@ -62,6 +62,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve frontend/* (theme.css, admin_map.js, etc.) as static assets.
+from fastapi.staticfiles import StaticFiles as _StaticFiles
+app.mount("/frontend", _StaticFiles(directory=str(ROOT / "frontend")), name="frontend")
+
 
 @app.get("/")
 async def index():

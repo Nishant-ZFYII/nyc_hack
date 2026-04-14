@@ -45,6 +45,26 @@ class Provider:
 
 
 PROVIDERS: list[Provider] = [
+    # Laptop-friendly Ollama models tried first (fit in 6 GB VRAM).
+    Provider(
+        name="Ollama llama3 (local laptop)",
+        base_url="http://127.0.0.1:11434/v1",
+        api_key="ollama",
+        model="llama3",
+    ),
+    Provider(
+        name="Ollama llama3:8b (local laptop)",
+        base_url="http://127.0.0.1:11434/v1",
+        api_key="ollama",
+        model="llama3:8b",
+    ),
+    Provider(
+        name="Ollama phi3:mini (small laptop fallback)",
+        base_url="http://127.0.0.1:11434/v1",
+        api_key="ollama",
+        model="phi3:mini",
+    ),
+    # DGX Spark models kept for reproducibility on bigger hardware.
     Provider(
         name="Ollama Nemotron-3-Nano 30B (DGX Spark)",
         base_url="http://127.0.0.1:11434/v1",

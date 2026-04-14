@@ -56,6 +56,9 @@ except Exception:
 app = FastAPI(title="NYC Social Services Intelligence Engine")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+# Serve frontend/* (theme.css, scenario_player.js, etc.) as static assets.
+app.mount("/frontend", StaticFiles(directory=str(ROOT / "frontend")), name="frontend")
+
 
 class LocationModel(BaseModel):
     lat: float
