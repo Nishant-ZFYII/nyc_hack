@@ -130,21 +130,23 @@
     if (!state.map) return;
     const layers = [];
 
-    // Vulnerability heatmap underneath everything
+    // Very subtle ambient violet glow — NOT a heatmap of truth.
+    // (The prior bright-orange slab was reading as "the thing", which it wasn't.)
     if (state.vulnerabilityHexes.length) {
       layers.push(new deck.HeatmapLayer({
         id: 'sp-vuln',
         data: state.vulnerabilityHexes,
         getPosition: d => [d.lon, d.lat],
         getWeight: d => d.weight || 1,
-        radiusPixels: 70,
-        intensity: 1.0,
-        threshold: 0.04,
-        colorRange: [[20,0,80,0],[80,30,150,140],[180,60,200,190],[255,100,180,230],[255,200,100,250]],
+        radiusPixels: 35,
+        intensity: 0.35,
+        threshold: 0.08,
+        colorRange: [[0,0,0,0],[30,10,50,30],[60,20,90,50],[90,30,120,70],[120,40,150,90]],
       }));
     }
 
-    // Backdrop — all 7K resources as low columns
+    // Backdrop — all 7K resources as low 3D columns. Hoverable so judges
+    // reading the screenshot can tell WHAT each cylinder is.
     if (state.allResources.length) {
       layers.push(new deck.ColumnLayer({
         id: 'sp-city',
@@ -152,14 +154,15 @@
         diskResolution: 16,
         radius: 55,
         extruded: true,
-        pickable: false,
+        pickable: true,
         getPosition: d => [d.lon, d.lat],
         getFillColor: d => {
           const c = TYPE_COLORS_SP[d.resource_type] || COLOR_DEFAULT_SP;
-          return [c[0], c[1], c[2], 130];
+          return [c[0], c[1], c[2], 150];
         },
-        getElevation: d => Math.log1p(d.capacity || 10) * 40 + 30,
+        getElevation: d => Math.log1p(d.capacity || 10) * 55 + 40,
         material: { ambient: 0.45, diffuse: 0.7, shininess: 40, specularColor: [80, 120, 180] },
+        onHover: info => showTooltip(info),
       }));
     }
 
@@ -272,6 +275,14 @@
       updateHud(payload);
       highlightPill(name);
       renderLayers();
+      // Fly in on the action so the arcs are actually visible
+      if (payload.demand && payload.demand.length && state.map) {
+        const cx = payload.demand.reduce((s, d) => s + d.lon, 0) / payload.demand.length;
+        const cy = payload.demand.reduce((s, d) => s + d.lat, 0) / payload.demand.length;
+        state.map.easeTo({ center: [cx, cy], zoom: 11.8, pitch: 58, duration: 1400 });
+      } else if (state.map && name === 'reset') {
+        state.map.easeTo({ center: NYC, zoom: 10.8, pitch: 58, duration: 1400 });
+      }
     } catch (e) { /* silent */ }
   }
 
@@ -300,7 +311,56 @@
   // ─────────────────────────────────────────────────────────────────────
   // HUD + title + pills
   // ─────────────────────────────────────────────────────────────────────
+  // Hover tooltip — tells the viewer what a column is
+  function showTooltip(info) {
+    let el = document.getElementById('sp-tip');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'sp-tip';
+      el.className = 'hud-panel';
+      el.style.cssText = 'position:fixed;padding:8px 12px;font-family:var(--mono);font-size:11px;pointer-events:none;z-index:950;max-width:240px;display:none;line-height:1.55';
+      document.body.appendChild(el);
+    }
+    if (!info || !info.object) { el.style.display = 'none'; return; }
+    const o = info.object;
+    el.innerHTML = `
+      <div style="color:var(--accent);font-weight:700;margin-bottom:4px">${(o.resource_type || o.type || 'resource').replace(/_/g,' ').toUpperCase()}</div>
+      <div style="color:var(--t1);font-size:12px">${o.name || '(unnamed)'}</div>
+      <div style="color:var(--t3);font-size:10px;margin-top:3px">${o.address || ''} ${o.borough ? '· ' + o.borough : ''}</div>
+      <div style="color:var(--t2);font-size:10px;margin-top:4px">capacity: <b class="neon-cyan">${o.capacity || '—'}</b></div>
+    `;
+    el.style.left = (info.x + 14) + 'px';
+    el.style.top  = (info.y + 14) + 'px';
+    el.style.display = 'block';
+  }
+
+  // Legend card — explains what each visual element MEANS
+  function injectLegend() {
+    const el = document.createElement('div');
+    el.className = 'hud-panel';
+    el.id = 'sp-legend';
+    el.style.cssText = 'position:fixed;bottom:16px;right:16px;padding:12px 14px;font-family:var(--mono);font-size:10.5px;letter-spacing:0.04em;line-height:1.65;z-index:700;max-width:260px';
+    el.innerHTML = `
+      <div style="color:var(--t3);font-size:9px;letter-spacing:0.18em;margin-bottom:8px">LEGEND</div>
+      <div style="display:grid;grid-template-columns:22px 1fr;gap:6px 10px;align-items:center">
+        <div style="width:8px;height:14px;border-radius:2px;background:#00e5ff;box-shadow:0 0 10px #00e5ff;margin-left:6px"></div>
+        <div>3D columns = <b class="neon-cyan">NYC resources</b> (height = capacity, color = type)</div>
+        <div style="width:8px;height:8px;border-radius:50%;background:#ffcc33;box-shadow:0 0 10px #ffcc33;margin-left:6px"></div>
+        <div>Dots = <b style="color:#ffcc33">people in need</b> (synthesized demand)</div>
+        <div style="width:16px;height:2px;background:linear-gradient(90deg,#00e5ff,#b24bff);margin-left:2px"></div>
+        <div>Arcs = <b class="neon-cyan">routing</b> person → nearest resource</div>
+        <div style="width:10px;height:10px;border-radius:2px;background:radial-gradient(circle,#6640a0,transparent);margin-left:5px"></div>
+        <div>Violet glow = <b style="color:#b24bff">service gaps</b> (low resource density)</div>
+      </div>
+      <div style="color:var(--t3);font-size:9px;margin-top:9px;letter-spacing:0.1em;border-top:1px solid rgba(255,255,255,0.08);padding-top:7px">
+        Hover a cylinder for details. &nbsp;·&nbsp; Running locally, no cloud.
+      </div>
+    `;
+    document.body.appendChild(el);
+  }
+
   function injectOverlays() {
+    injectLegend();
     // Phase title + progress bar
     const t = document.createElement('div');
     t.className = 'phase-title';
