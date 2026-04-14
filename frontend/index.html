@@ -495,7 +495,8 @@ let exploreBoro=null;
 const NYC=[-73.98,40.74];
 
 // Neon palette for 3D resource columns — map resource_type → RGBA.
-const TYPE_COLORS={
+// (distinct from the pre-existing TYPE_COLORS which is 3-tuple and used by icons)
+const NEON_TYPE_COLORS={
   shelter:          [0,229,255,220],     // cyan
   food_bank:        [255,159,67,220],    // orange
   food_pantry:      [255,159,67,220],
@@ -863,7 +864,7 @@ function updateResultMapLayers(){
       elevationScale:1,
       getPosition:d=>[d.lon,d.lat],
       getFillColor:d=>{
-        const c=TYPE_COLORS[d.resource_type]||COLOR_DEFAULT;
+        const c=NEON_TYPE_COLORS[d.resource_type]||COLOR_DEFAULT;
         return [c[0],c[1],c[2],140];
       },
       getElevation:d=>Math.log1p(d.capacity||10)*40 + 30,
@@ -882,7 +883,7 @@ function updateResultMapLayers(){
       pickable:true,
       elevationScale:1,
       getPosition:d=>[d.lon,d.lat],
-      getFillColor:d=>TYPE_COLORS[d.resource_type]||COLOR_DEFAULT,
+      getFillColor:d=>NEON_TYPE_COLORS[d.resource_type]||COLOR_DEFAULT,
       getElevation:d=>Math.log1p(d.capacity||30)*180 + 60,
       material:{ambient:0.6,diffuse:0.9,shininess:120,specularColor:[255,255,255]},
       onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''},
