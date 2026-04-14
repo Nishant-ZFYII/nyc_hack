@@ -157,6 +157,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
 <script src="/frontend/admin_map.js" defer></script>
+<script src="/frontend/agent_drawer.js" defer></script>
 </head>
 <body>
 
@@ -408,14 +409,27 @@ function goTo(pageId) {
       setTimeout(() => {
         window.AdminOpsMap.init('adminMapEl');
         setTimeout(() => window.AdminOpsMap.startPolling(4000), 400);
+        // Mount agent drawer on first admin-map visit
+        if(window.AgentDrawer && !window._adminDrawerMounted){
+          window._adminDrawerMounted = true;
+          window.AgentDrawer.mount({
+            side:'admin',
+            endpoint:'/api/admin/agent/nat',
+            cannedQuery:'List the 3 most critical cases and summarize their open needs.',
+            title:'NeMo Supervisor Agent',
+          });
+        }
       }, 100);
     } else {
       window.AdminOpsMap.refresh();
     }
   }
-  // Show admin HUD only on ops page
+  // Show admin HUD + drawer only on ops page
   const hud = document.getElementById('admin-hud');
   if(hud) hud.style.display = pageId === 'page-admin-map' ? 'flex' : 'none';
+  document.querySelectorAll('.agent-drawer,.agent-drawer-toggle').forEach(el => {
+    el.style.display = pageId === 'page-admin-map' ? '' : 'none';
+  });
 }
 
 // ══════════════════════════════════════════════════════════

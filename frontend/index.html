@@ -185,6 +185,7 @@ body{font-family:var(--ui);background:var(--bg);color:var(--t1);height:100vh;ove
 </style>
 <link rel="stylesheet" href="/frontend/theme.css">
 <script src="/frontend/scenario_player.js" defer></script>
+<script src="/frontend/agent_drawer.js" defer></script>
 </head>
 <body>
 
@@ -543,11 +544,25 @@ function goTo(pageId){
       window.ScenarioPlayer.init('liveMapEl');
       // Wait 2s for initial resources fetch, then start the auto loop
       setTimeout(()=>window.ScenarioPlayer.startLoop(), 2200);
+      // Mount the agent drawer once
+      if(window.AgentDrawer && !window._userDrawerMounted){
+        window._userDrawerMounted=true;
+        window.AgentDrawer.mount({
+          side:'user',
+          endpoint:'/api/agent/nat',
+          cannedQuery:'I need a shelter tonight in Brooklyn near Flatbush.',
+          title:'NeMo Agent',
+        });
+      }
     }, 120);
   }
   // Hide/show HUD overlays based on page
-  const overlays=['sp-title','sp-hud','sp-pills'];
+  const overlays=['sp-title','sp-hud','sp-pills','agent-drawer','agent-drawer'];
   overlays.forEach(id=>{const e=document.getElementById(id);if(e)e.style.display=pageId==='page-live-ops'?'':'none';});
+  // Hide drawer toggle button everywhere except live-ops
+  document.querySelectorAll('.agent-drawer-toggle').forEach(b=>{
+    b.style.display = pageId==='page-live-ops' ? '' : 'none';
+  });
 }
 
 // ── Login ──────────────────────────────────────────────────

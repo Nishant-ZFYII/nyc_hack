@@ -229,14 +229,27 @@
   // Scenario loop
   // ─────────────────────────────────────────────────────────────────────
   let phaseIdx = 0;
+  let progressHandle = null;
+  function animateProgress(durationMs) {
+    const bar = document.getElementById('sp-progress-bar');
+    if (!bar) return;
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+    // Force reflow before restoring transition
+    void bar.offsetWidth;
+    bar.style.transition = `width ${durationMs}ms linear`;
+    requestAnimationFrame(() => { bar.style.width = '100%'; });
+  }
   function startLoop() {
     stopLoop();
     const tick = async () => {
       if (!state.auto) return;
       const name = PHASES[phaseIdx % PHASES.length];
       phaseIdx += 1;
+      const dur = PHASE_DURATIONS[name] || 8000;
+      animateProgress(dur);
       await runScenario(name);
-      state.loopHandle = setTimeout(tick, PHASE_DURATIONS[name] || 8000);
+      state.loopHandle = setTimeout(tick, dur);
     };
     tick();
   }
@@ -288,11 +301,11 @@
   // HUD + title + pills
   // ─────────────────────────────────────────────────────────────────────
   function injectOverlays() {
-    // Phase title
+    // Phase title + progress bar
     const t = document.createElement('div');
     t.className = 'phase-title';
     t.id = 'sp-title';
-    t.innerHTML = '<div class="main"></div><span class="sub"></span>';
+    t.innerHTML = '<div class="main" style="font-size:15px;font-weight:600"></div><span class="sub"></span><div id="sp-progress" style="margin-top:10px;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden"><div id="sp-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width 120ms linear;box-shadow:0 0 10px rgba(0,229,255,0.4)"></div></div>';
     document.body.appendChild(t);
     state.titleEl = t;
 
