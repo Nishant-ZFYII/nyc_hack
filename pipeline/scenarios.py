@@ -196,10 +196,16 @@ def cold_emergency(n_people: int = 200, borough: str = "Bronx", seed: int | None
     t0 = time.time()
     demand = _synth_demand_in_borough(n_people, borough, seed, spread_km=4.0)
     shelters = _sites_for("shelter", borough)
-    if shelters.empty:
-        shelters = _sites_for("shelter")
-    cooling = _sites_for("cooling_center")
+    cooling = _sites_for("cooling_center", borough)
     candidates = pd.concat([shelters, cooling], ignore_index=True)
+    # If the borough is too sparse, expand to within ~10km of the centroid
+    if len(candidates) < 8:
+        lat0, lon0 = _BOROUGH_CENTROID.get(borough, _BOROUGH_CENTROID["Bronx"])
+        all_s = pd.concat([_sites_for("shelter"), _sites_for("cooling_center")], ignore_index=True)
+        all_s = all_s[(all_s["lat"] - lat0).abs() < 0.1]
+        all_s = all_s[(all_s["lon"] - lon0).abs() < 0.13].reset_index(drop=True)
+        candidates = all_s
+    candidates = candidates.reset_index(drop=True)
     arcs, sites, stats = _greedy_allocate(demand, candidates, k_candidates=10)
     stats["elapsed_ms"] = int((time.time() - t0) * 1000)
     return {
@@ -222,12 +228,14 @@ def migrant_bus(n_people: int = 120, arrival_lat: float = 40.7560, arrival_lon: 
         dlat = (rng.random() - 0.5) * 0.006
         dlon = (rng.random() - 0.5) * 0.006
         demand.append({"id": f"m{i:04d}", "lat": arrival_lat + dlat, "lon": arrival_lon + dlon})
-    # Spread across intake-type sites: community centers, food banks, shelters
+    # Spread across intake-type sites within ~8 km of the arrival point
     sites_df = pd.concat([
         _sites_for("community_center"),
         _sites_for("food_bank"),
         _sites_for("shelter"),
-    ], ignore_index=True).head(400)
+    ], ignore_index=True)
+    sites_df = sites_df[(sites_df["lat"] - arrival_lat).abs() < 0.08]
+    sites_df = sites_df[(sites_df["lon"] - arrival_lon).abs() < 0.1].head(400).reset_index(drop=True)
     arcs, sites, stats = _greedy_allocate(demand, sites_df, k_candidates=12)
     # Recolor arcs magenta for the migrant phase
     for a in arcs:

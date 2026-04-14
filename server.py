@@ -1089,6 +1089,34 @@ async def all_resources():
     return df.head(2500).to_dict("records")
 
 
+# ── NYC building skyline (sampled PLUTO) ─────────────────────────────────────
+
+_buildings_cache: list | None = None
+
+
+@app.get("/api/buildings")
+async def buildings(limit: int = 28000):
+    """Return a lat/lon/floors sample of NYC PLUTO lots for the 3D skyline."""
+    global _buildings_cache
+    import numpy as _np
+    if _buildings_cache is None:
+        import pandas as _pd
+        p = _pd.read_parquet(ROOT / "data" / "pluto_layer.parquet",
+                              columns=["latitude", "longitude", "numfloors"])
+        p = p.dropna(subset=["latitude", "longitude"])
+        p = p[p["numfloors"] > 0]
+        p = p[p["numfloors"] <= 100]  # clip extreme outliers
+        if len(p) > 40000:
+            p = p.sample(40000, random_state=7)
+        # Pre-round for compact payload
+        p["latitude"] = p["latitude"].round(5)
+        p["longitude"] = p["longitude"].round(5)
+        p["numfloors"] = p["numfloors"].round(1)
+        _buildings_cache = p.rename(columns={"latitude": "lat", "longitude": "lon",
+                                              "numfloors": "floors"}).to_dict("records")
+    return _buildings_cache[:max(1000, min(limit, len(_buildings_cache)))]
+
+
 # ── Scenario engine (pure Python, no LLM) ────────────────────────────────────
 
 from pipeline import scenarios as _scenarios

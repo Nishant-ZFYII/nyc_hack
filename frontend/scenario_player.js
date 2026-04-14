@@ -49,6 +49,7 @@
     containerId: null,
     allResources: [],
     vulnerabilityHexes: [],
+    buildings: [],               // sampled PLUTO lots with floor counts
     currentScenario: null,
     auto: true,
     loopHandle: null,
@@ -86,7 +87,7 @@
     state.map.addControl(new maplibregl.NavigationControl(), 'top-left');
     state.map.on('load', async () => {
       state.map.resize();
-      await Promise.all([loadResources(), loadVulnerability()]);
+      await Promise.all([loadResources(), loadVulnerability(), loadBuildings()]);
       renderLayers();
     });
     state.map.on('mousedown', () => { state.orbitPaused = true; });
@@ -123,6 +124,17 @@
     } catch (e) { /* silent */ }
   }
 
+  async function loadBuildings() {
+    try {
+      const r = await fetch('/api/buildings?limit=28000');
+      if (!r.ok) return;
+      const arr = await r.json();
+      state.buildings = (arr || [])
+        .filter(b => b && isFinite(b.lat) && isFinite(b.lon))
+        .map(b => ({ lat: b.lat, lon: b.lon, floors: Math.max(1, Math.min(100, b.floors || 2)) }));
+    } catch (e) { /* silent */ }
+  }
+
   // ─────────────────────────────────────────────────────────────────────
   // Layer factory
   // ─────────────────────────────────────────────────────────────────────
@@ -131,7 +143,6 @@
     const layers = [];
 
     // Very subtle ambient violet glow — NOT a heatmap of truth.
-    // (The prior bright-orange slab was reading as "the thing", which it wasn't.)
     if (state.vulnerabilityHexes.length) {
       layers.push(new deck.HeatmapLayer({
         id: 'sp-vuln',
@@ -139,29 +150,59 @@
         getPosition: d => [d.lon, d.lat],
         getWeight: d => d.weight || 1,
         radiusPixels: 35,
-        intensity: 0.35,
+        intensity: 0.28,
         threshold: 0.08,
-        colorRange: [[0,0,0,0],[30,10,50,30],[60,20,90,50],[90,30,120,70],[120,40,150,90]],
+        colorRange: [[0,0,0,0],[30,10,50,25],[60,20,90,40],[90,30,120,55],[120,40,150,70]],
       }));
     }
 
-    // Backdrop — all 7K resources as low 3D columns. Hoverable so judges
-    // reading the screenshot can tell WHAT each cylinder is.
+    // REAL NYC SKYLINE — 28K PLUTO lots rendered as tiny square building
+    // extrusions with actual numfloors heights. This is the city underneath;
+    // resources + arcs sit on top.
+    if (state.buildings && state.buildings.length) {
+      layers.push(new deck.ColumnLayer({
+        id: 'sp-buildings',
+        data: state.buildings,
+        diskResolution: 4,          // square footprint — looks like a building
+        radius: 16,
+        angle: 45,
+        extruded: true,
+        pickable: false,
+        getPosition: d => [d.lon, d.lat],
+        // 3.2 m per floor ≈ NYC average
+        getElevation: d => Math.max(12, (d.floors || 2) * 3.4),
+        // Dim cool grey-blue so it reads as "the city" not data
+        getFillColor: d => {
+          const tall = Math.min(1, (d.floors || 2) / 40);
+          return [
+            70 + Math.round(tall * 40),
+            92 + Math.round(tall * 50),
+            130 + Math.round(tall * 60),
+            225,
+          ];
+        },
+        material: { ambient: 0.35, diffuse: 0.6, shininess: 60, specularColor: [120,160,220] },
+      }));
+    }
+
+    // All ~2.5K resources as glowing neon "beacon" columns — hexagonal
+    // footprint to distinguish them from the square buildings underneath.
     if (state.allResources.length) {
       layers.push(new deck.ColumnLayer({
         id: 'sp-city',
         data: state.allResources,
-        diskResolution: 16,
-        radius: 55,
+        diskResolution: 6,          // hex — reads as infrastructure
+        radius: 38,
         extruded: true,
         pickable: true,
         getPosition: d => [d.lon, d.lat],
         getFillColor: d => {
           const c = TYPE_COLORS_SP[d.resource_type] || COLOR_DEFAULT_SP;
-          return [c[0], c[1], c[2], 150];
+          return [c[0], c[1], c[2], 210];
         },
-        getElevation: d => Math.log1p(d.capacity || 10) * 55 + 40,
-        material: { ambient: 0.45, diffuse: 0.7, shininess: 40, specularColor: [80, 120, 180] },
+        // Heights between 60 m and ~450 m so beacons sit above the skyline
+        getElevation: d => 120 + Math.log1p(d.capacity || 20) * 110,
+        material: { ambient: 0.55, diffuse: 0.8, shininess: 90, specularColor: [200, 230, 255] },
         onHover: info => showTooltip(info),
       }));
     }
