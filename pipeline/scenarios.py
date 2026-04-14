@@ -100,13 +100,16 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * R * math.asin(min(1.0, math.sqrt(a)))
 
 
-def _greedy_allocate(demand: list[dict], sites: pd.DataFrame, k_candidates: int = 8) -> tuple[list[dict], pd.DataFrame, dict]:
+def _greedy_allocate(demand: list[dict], sites: pd.DataFrame, k_candidates: int = 50) -> tuple[list[dict], pd.DataFrame, dict, list[dict]]:
     """
     Assign each demand point to its nearest site with remaining capacity.
-    Returns (arcs, updated_sites, stats).
+    If NO candidate within k_candidates has capacity left, the person is
+    UNMET — they stay at their demand location, no arc drawn.
+
+    Returns (arcs, updated_sites, stats, unmet_demand_points).
     """
     if sites.empty or not demand:
-        return [], sites.assign(used=0), {"served": 0, "unmet": len(demand), "avg_km": 0.0}
+        return [], sites.assign(used=0), {"served": 0, "unmet": len(demand), "avg_km": 0.0}, list(demand)
 
     sites = sites.copy()
     sites["used"] = 0
@@ -117,15 +120,20 @@ def _greedy_allocate(demand: list[dict], sites: pd.DataFrame, k_candidates: int 
     dists, idxs = tree.query(coords, k=k)
 
     arcs = []
+    unmet: list[dict] = []
     served = 0
     dist_sum_km = 0.0
+    max_km_cap = 15.0   # also cap on physical distance — a person won't be
+                         # bused from Staten Island to Bronx just for a bed
     for i, d in enumerate(demand):
         placed = False
         for j in range(k):
             site_idx = int(idxs[i][j])
+            km = float(dists[i][j]) * 6371.0
+            if km > max_km_cap:
+                break  # further candidates are even further — stop looking
             if sites.at[site_idx, "used"] < sites.at[site_idx, "capacity"]:
                 sites.at[site_idx, "used"] = int(sites.at[site_idx, "used"]) + 1
-                km = float(dists[i][j]) * 6371.0
                 dist_sum_km += km
                 arcs.append({
                     "from": [d["lon"], d["lat"]],
@@ -134,27 +142,22 @@ def _greedy_allocate(demand: list[dict], sites: pd.DataFrame, k_candidates: int 
                     "to_id": str(sites.at[site_idx, "resource_id"]) if "resource_id" in sites.columns else f"site_{site_idx}",
                     "weight": 1.0,
                     "km": round(km, 2),
-                    "color": [0, 229, 255, 180],   # cyan by default; caller may override
+                    "color": [0, 229, 255, 200],
                 })
                 served += 1
                 placed = True
                 break
         if not placed:
-            # Last-resort: pin to nearest regardless of capacity
-            site_idx = int(idxs[i][0])
-            km = float(dists[i][0]) * 6371.0
-            arcs.append({
-                "from": [d["lon"], d["lat"]],
-                "to":   [float(sites.at[site_idx, "lon"]), float(sites.at[site_idx, "lat"])],
-                "from_id": d["id"],
-                "to_id": str(sites.at[site_idx, "resource_id"]) if "resource_id" in sites.columns else f"site_{site_idx}",
-                "weight": 0.4,
-                "km": round(km, 2),
-                "color": [255, 85, 119, 180],   # red — unmet / overflow
-            })
+            # Honest modeling of NYC reality: if the shelter system is full
+            # within a reasonable radius, this person does NOT get placed.
+            unmet.append(d)
     avg_km = (dist_sum_km / served) if served else 0.0
-    stats = {"served": served, "unmet": len(demand) - served, "avg_km": round(avg_km, 2)}
-    return arcs, sites, stats
+    stats = {
+        "served": served,
+        "unmet": len(unmet),
+        "avg_km": round(avg_km, 2),
+    }
+    return arcs, sites, stats, unmet
 
 
 def _sites_to_frontend(sites: pd.DataFrame, max_sites: int = 1200) -> list[dict]:
@@ -208,9 +211,11 @@ def _synth_demand_in_borough(n: int, borough: str, seed: int | None, spread_km: 
 
     picks = anchors.sample(n=n, replace=(len(anchors) < n), random_state=seed or 0)
     out = []
-    # jitter scale derived from the requested spread — tighter than the old circle
-    jitter_lat = min(0.006, spread_km / 111.0 / 4)
-    jitter_lon = min(0.008, spread_km / 85.0 / 4)
+    # Strict ~150 m jitter — tight enough that coastal anchors don't get
+    # pushed into the Harbor/Jamaica Bay/etc. (Previously 660 m → some
+    # demand landed in the water.)
+    jitter_lat = 0.0014   # ~155 m
+    jitter_lon = 0.0018   # ~150 m at NYC latitude
     for i, (_, row) in enumerate(picks.iterrows()):
         dlat = (rng.random() - 0.5) * 2 * jitter_lat
         dlon = (rng.random() - 0.5) * 2 * jitter_lon
@@ -250,13 +255,14 @@ def cold_emergency(n_people: int = 2500, borough: str | None = None, seed: int |
         _sites_for("cooling_center"),
     ], ignore_index=True).reset_index(drop=True)
 
-    arcs, sites, stats = _greedy_allocate(demand, candidates, k_candidates=10)
+    arcs, sites, stats, unmet = _greedy_allocate(demand, candidates, k_candidates=50)
     stats["elapsed_ms"] = int((time.time() - t0) * 1000)
     return {
         "phase": "cold_emergency",
         "title": "COLD SNAP · CODE BLUE",
         "subtitle": f"{n_people} PEOPLE · ALL 5 BOROUGHS · SHELTERS + WARMING CENTERS",
         "demand": demand,
+        "unmet":  unmet,
         "sites": _sites_to_frontend(sites),
         "arcs": arcs,
         "stats": stats,
@@ -286,17 +292,17 @@ def migrant_bus(n_people: int = 500, arrival_lat: float = 40.7560, arrival_lon: 
         _sites_for("food_bank"),
         _sites_for("shelter"),
     ], ignore_index=True).head(600).reset_index(drop=True)
-    arcs, sites, stats = _greedy_allocate(demand, sites_df, k_candidates=12)
+    arcs, sites, stats, unmet = _greedy_allocate(demand, sites_df, k_candidates=40)
     # Recolor arcs magenta for the migrant phase
     for a in arcs:
-        if a["color"][0] != 255:  # keep red unmet arcs
-            a["color"] = [178, 75, 255, 190]
+        a["color"] = [178, 75, 255, 200]
     stats["elapsed_ms"] = int((time.time() - t0) * 1000)
     return {
         "phase": "migrant_bus",
         "title": "MIGRANT BUS ARRIVAL",
         "subtitle": f"{n_people} PEOPLE · PORT AUTHORITY · INTAKE ROUTING",
         "demand": demand,
+        "unmet":  unmet,
         "sites": _sites_to_frontend(sites),
         "arcs": arcs,
         "stats": stats,
@@ -309,6 +315,7 @@ def reset() -> dict[str, Any]:
         "title": "",
         "subtitle": "",
         "demand": [],
+        "unmet":  [],
         "sites": [],
         "arcs": [],
         "stats": {"served": 0, "unmet": 0, "avg_km": 0.0, "elapsed_ms": 0},
@@ -340,7 +347,7 @@ def citywide_storm(n_people: int = 4000, seed: int | None = 42) -> dict[str, Any
         _sites_for("food_bank"),
     ], ignore_index=True).reset_index(drop=True)
 
-    arcs, sites, stats = _greedy_allocate(demand, sites_df, k_candidates=6)
+    arcs, sites, stats, unmet = _greedy_allocate(demand, sites_df, k_candidates=40)
     # Mix cyan + magenta for a storm palette
     for i, a in enumerate(arcs):
         if a["color"][0] == 255:  # keep red unmet arcs
@@ -352,6 +359,7 @@ def citywide_storm(n_people: int = 4000, seed: int | None = 42) -> dict[str, Any
         "title": "CITYWIDE STORM",
         "subtitle": f"{n_people} CONCURRENT ROUTINGS · ALL 5 BOROUGHS · {stats['elapsed_ms']}ms",
         "demand": demand,
+        "unmet":  unmet,
         "sites": _sites_to_frontend(sites, max_sites=1500),
         "arcs": arcs,
         "stats": stats,

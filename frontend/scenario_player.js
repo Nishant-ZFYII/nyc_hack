@@ -338,6 +338,27 @@
         ? sc.arcs
         : sc.arcs.filter(a => !a.to_id || filterSiteIds.has(a.to_id));
 
+      // Unmet demand — people the shelter system couldn't place within a
+      // reasonable radius. Render as pulsing red dots at their source
+      // location. This is NYC's actual shelter-capacity reality.
+      const unmetPeople = sc.unmet || [];
+      if (unmetPeople.length) {
+        const pulseScale = 0.6 + 0.4 * Math.sin(state.particleT * Math.PI * 4);
+        layers.push(new deck.ScatterplotLayer({
+          id: 'sp-unmet',
+          data: unmetPeople,
+          getPosition: d => [d.lon, d.lat],
+          getRadius: 120 * pulseScale,
+          radiusMinPixels: 3 * pulseScale,
+          radiusMaxPixels: 8 * pulseScale,
+          getFillColor: [255, 85, 119, 230],
+          stroked: true,
+          lineWidthMinPixels: 1,
+          getLineColor: [255, 255, 255, 200],
+          updateTriggers: { getRadius: state.particleT },
+        }));
+      }
+
       // Bright rim around each active site (highlight where demand lands)
       if (filterSites.length) {
         layers.push(new deck.ColumnLayer({
@@ -693,7 +714,8 @@
     h.id = 'sp-hud';
     h.innerHTML = `
       <div class="label">PHASE</div><div class="value" id="sp-h-phase">—</div>
-      <div class="label">SERVED (CUM)</div><div class="value" id="sp-h-served">0</div>
+      <div class="label">SERVED</div><div class="value" id="sp-h-served">0</div>
+      <div class="label">UNMET</div><div class="value red" id="sp-h-unmet">0</div>
       <div class="label">ACTIVE SITES</div><div class="value mag" id="sp-h-sites">0</div>
       <div class="label">AVG RESPONSE</div><div class="value" id="sp-h-avg">— km</div>
       <div class="label">LAT. (ms)</div><div class="value" id="sp-h-latency">0</div>
@@ -786,7 +808,8 @@
   function updateHud(payload) {
     const byId = id => document.getElementById(id);
     if (byId('sp-h-phase')) byId('sp-h-phase').textContent = (payload.phase || '—').replace(/_/g, ' ').toUpperCase();
-    animateNumber(byId('sp-h-served'), state.peopleServed, 1400);
+    animateNumber(byId('sp-h-served'), payload.stats?.served || 0, 1400);
+    animateNumber(byId('sp-h-unmet'),  payload.stats?.unmet  || 0, 1200);
     animateNumber(byId('sp-h-sites'), payload.sites?.length || 0, 900);
     const avg = payload.stats?.avg_km?.toFixed?.(2) || '0';
     if (byId('sp-h-avg')) byId('sp-h-avg').textContent = `${avg} km`;
