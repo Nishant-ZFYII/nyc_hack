@@ -89,7 +89,7 @@
     },
     migrant_bus: {
       main: 'MIGRANT BUS ARRIVAL',
-      sub:  '120 PEOPLE AT PORT AUTHORITY — INTAKE CENTERS NEARBY',
+      sub:  '120 PEOPLE DISPERSED TO INTAKE SITES ACROSS ALL 5 BOROUGHS',
     },
     citywide_storm: {
       main: 'CITYWIDE FLOW',

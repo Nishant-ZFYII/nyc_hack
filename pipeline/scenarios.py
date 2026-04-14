@@ -220,24 +220,28 @@ def cold_emergency(n_people: int = 200, borough: str = "Bronx", seed: int | None
 
 
 def migrant_bus(n_people: int = 120, arrival_lat: float = 40.7560, arrival_lon: float = -73.9903, seed: int | None = 11) -> dict[str, Any]:
+    """
+    Simulates what DHS actually does: migrants arrive at Port Authority but
+    are promptly dispersed by bus to intake sites citywide. To visualize
+    that realistically we scatter demand across all five boroughs rather
+    than clustering at a single point (which would trap every arc in one
+    midtown blob).
+    """
     t0 = time.time()
     rng = random.Random(seed)
-    # Tight cluster at Port Authority then fan out over first block
-    demand = []
-    for i in range(n_people):
-        dlat = (rng.random() - 0.5) * 0.006
-        dlon = (rng.random() - 0.5) * 0.006
-        demand.append({"id": f"m{i:04d}", "lat": arrival_lat + dlat, "lon": arrival_lon + dlon})
-    # Citywide intake-type sites. Cap per-site capacity low so the greedy
-    # allocator spreads the 120 arrivals across boroughs instead of dumping
-    # all of them at the nearest Midtown community centre.
+    per_borough = max(1, n_people // 5)
+    demand: list[dict] = []
+    for borough, n in [("Manhattan", per_borough),
+                       ("Brooklyn", per_borough),
+                       ("Queens", per_borough),
+                       ("Bronx", per_borough),
+                       ("Staten Island", n_people - 4 * per_borough)]:
+        demand.extend(_synth_demand_in_borough(n, borough, rng.randint(0, 1_000_000), spread_km=3.0))
     sites_df = pd.concat([
         _sites_for("community_center"),
         _sites_for("food_bank"),
         _sites_for("shelter"),
     ], ignore_index=True).head(600).reset_index(drop=True)
-    sites_df = sites_df.copy()
-    sites_df["capacity"] = 2   # force spread — arcs fan out to all 5 boroughs
     arcs, sites, stats = _greedy_allocate(demand, sites_df, k_candidates=12)
     # Recolor arcs magenta for the migrant phase
     for a in arcs:
