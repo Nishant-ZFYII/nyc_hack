@@ -477,6 +477,29 @@ let exploreFilters=new Set(); // start empty — user picks what to see
 let exploreBoro=null;
 
 const NYC=[-73.98,40.74];
+
+// Neon palette for 3D resource columns — map resource_type → RGBA.
+const TYPE_COLORS={
+  shelter:          [0,229,255,220],     // cyan
+  food_bank:        [255,159,67,220],    // orange
+  food_pantry:      [255,159,67,220],
+  hospital:         [255,85,119,230],    // red
+  clinic:           [255,123,123,220],
+  school:           [77,171,255,210],    // blue
+  childcare:        [178,75,255,210],    // magenta
+  benefits_center:  [92,255,177,220],    // mint
+  domestic_violence:[255,204,51,220],    // amber
+  legal_aid:        [51,240,216,210],    // teal
+  senior_services:  [178,75,255,200],
+  mental_health:    [255,204,51,200],
+  other:            [150,170,200,180],
+};
+const COLOR_DEFAULT=[150,170,200,180];
+
+// City-wide resource cache (all 7,759 for the ambient 3D backdrop)
+let allResources=[];
+let vulnerabilityHexes=[];
+let resultLighting=null;
 const BOROUGHS=[
   {name:'Manhattan',abbr:'MN',icon:'&#127961;&#65039;',center:[-73.97,40.78],zoom:13},
   {name:'Brooklyn',abbr:'BK',icon:'&#127753;',center:[-73.95,40.65],zoom:12.5},
@@ -712,35 +735,148 @@ function toggleMap(){
 }
 
 function initResultMap(){
-  resultMap=new maplibregl.Map({container:'mapEl',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:11,pitch:45});
+  resultMap=new maplibregl.Map({container:'mapEl',style:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',center:NYC,zoom:11,pitch:55,bearing:-20,antialias:true});
   resultMap.addControl(new maplibregl.NavigationControl(),'top-left');
-  resultMap.on('load',()=>{resultMap.resize()});
+  resultMap.on('load',()=>{
+    resultMap.resize();
+    // Lazy-load city-wide backdrop on first open
+    if(!allResources.length) loadCityBackdrop();
+    if(!vulnerabilityHexes.length) loadVulnerability();
+  });
+  // Lighting for 3D columns — ambient + directional for soft shading
+  try{
+    resultLighting = new deck.LightingEffect({
+      ambient: new deck.AmbientLight({color:[255,255,255],intensity:1.0}),
+      sun: new deck._SunLight ? new deck._SunLight({timestamp:1554772579000,color:[255,255,255],intensity:1.2,_shadow:false})
+                              : new deck.DirectionalLight({color:[255,255,255],intensity:1.5,direction:[-3,-9,-1]}),
+    });
+  }catch(e){resultLighting=null}
+}
+
+// Fetch all resources once; cache for the scenario backdrop.
+async function loadCityBackdrop(){
+  try{
+    const r=await fetch('/api/resources');
+    if(!r.ok) return;
+    const arr=await r.json();
+    allResources=arr.filter(x=>x && x.lat && x.lon)
+                     .map(x=>({
+                       ...x,
+                       lat:Number(x.lat||x.latitude),
+                       lon:Number(x.lon||x.longitude),
+                       resource_type:x.type||x.resource_type||'other',
+                       capacity:Number(x.capacity||x.n_beds||x.beds||10),
+                     }))
+                     .filter(x=>!isNaN(x.lat)&&!isNaN(x.lon));
+    updateResultMapLayers();
+  }catch(e){/* silent fail — map still works without backdrop */}
+}
+
+async function loadVulnerability(){
+  try{
+    const r=await fetch('/api/vulnerability');
+    if(!r.ok) return;
+    const d=await r.json();
+    vulnerabilityHexes = (d.hexes||[]).filter(h=>h && isFinite(h.lat) && isFinite(h.lon));
+    updateResultMapLayers();
+  }catch(e){/* endpoint may not exist yet (Task 4) */}
 }
 
 function updateResultMapLayers(){
   if(!resultMap)return;
   buildIconAtlas();
-  const fg=lastResources.filter(r=>r.lat&&r.lon).map(r=>({...r,resource_type:r.type||'shelter'}));
-  const layers=[
-    new deck.IconLayer({
-      id:'results',
-      data:fg,
+
+  const searchHits=lastResources.filter(r=>r.lat&&r.lon)
+    .map(r=>({...r,resource_type:r.type||r.resource_type||'shelter',capacity:Number(r.capacity||r.n_beds||r.beds||30)}));
+
+  // Backdrop = everything the city has, as short dim columns
+  const backdrop = allResources.length ? allResources : searchHits;
+
+  const layers=[];
+
+  // Vulnerability heatmap underneath everything
+  if(vulnerabilityHexes.length){
+    layers.push(new deck.HeatmapLayer({
+      id:'vulnerability',
+      data:vulnerabilityHexes,
+      getPosition:d=>[d.lon,d.lat],
+      getWeight:d=>d.weight||1,
+      radiusPixels:60,
+      intensity:1.0,
+      threshold:0.03,
+      colorRange:[[20,0,80,0],[80,30,150,120],[180,60,200,180],[255,100,180,220],[255,200,100,240]],
+    }));
+  }
+
+  // Base city columns — ALL resources, low elevation, subtle
+  if(backdrop.length){
+    layers.push(new deck.ColumnLayer({
+      id:'city-backdrop',
+      data:backdrop,
+      diskResolution:16,
+      radius:55,
+      extruded:true,
+      pickable:false,
+      elevationScale:1,
+      getPosition:d=>[d.lon,d.lat],
+      getFillColor:d=>{
+        const c=TYPE_COLORS[d.resource_type]||COLOR_DEFAULT;
+        return [c[0],c[1],c[2],140];
+      },
+      getElevation:d=>Math.log1p(d.capacity||10)*40 + 30,
+      material:{ambient:0.45,diffuse:0.7,shininess:40,specularColor:[80,120,180]},
+    }));
+  }
+
+  // Search-hit columns — brighter, taller, on top
+  if(searchHits.length){
+    layers.push(new deck.ColumnLayer({
+      id:'search-hits',
+      data:searchHits,
+      diskResolution:20,
+      radius:80,
+      extruded:true,
+      pickable:true,
+      elevationScale:1,
+      getPosition:d=>[d.lon,d.lat],
+      getFillColor:d=>TYPE_COLORS[d.resource_type]||COLOR_DEFAULT,
+      getElevation:d=>Math.log1p(d.capacity||30)*180 + 60,
+      material:{ambient:0.6,diffuse:0.9,shininess:120,specularColor:[255,255,255]},
+      onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''},
+      onClick:({object})=>{if(object)showResultResourceInfo(object)},
+    }));
+  }
+
+  // User location / selected marker on top via IconLayer (keeps existing interactions)
+  if(searchHits.length){
+    layers.push(new deck.IconLayer({
+      id:'hit-icons',
+      data:searchHits.slice(0,20),
       getPosition:d=>[d.lon,d.lat],
       iconAtlas:_iconAtlasUrl,
       iconMapping:_iconMapping,
       getIcon:d=>_iconMapping[d.resource_type]?d.resource_type:'shelter',
-      getSize:42,
-      sizeMinPixels:28,
-      sizeMaxPixels:56,
+      getSize:28,
+      sizeMinPixels:18,
+      sizeMaxPixels:36,
       pickable:true,
       onHover:({object})=>{document.getElementById('mapEl').title=object?object.name:''},
       onClick:({object})=>{if(object)showResultResourceInfo(object)},
-    }),
-  ];
-  if(resultDeck)resultDeck.setProps({layers});else{resultDeck=new deck.MapboxOverlay({layers});resultMap.addControl(resultDeck)}
-  if(fg.length){
-    const aLat=fg.reduce((s,d)=>s+d.lat,0)/fg.length,aLon=fg.reduce((s,d)=>s+d.lon,0)/fg.length;
-    resultMap.flyTo({center:[aLon,aLat],zoom:13,pitch:45,duration:1000});
+    }));
+  }
+
+  const props = {layers};
+  if(resultLighting) props.effects=[resultLighting];
+
+  if(resultDeck){resultDeck.setProps(props)}
+  else{resultDeck=new deck.MapboxOverlay(props);resultMap.addControl(resultDeck)}
+
+  if(searchHits.length){
+    const aLat=searchHits.reduce((s,d)=>s+d.lat,0)/searchHits.length,
+          aLon=searchHits.reduce((s,d)=>s+d.lon,0)/searchHits.length;
+    resultMap.flyTo({center:[aLon,aLat],zoom:13,pitch:55,bearing:-20,duration:1200});
+  }else if(backdrop.length){
+    resultMap.easeTo({center:NYC,zoom:11,pitch:55,bearing:-20,duration:800});
   }
 }
 
