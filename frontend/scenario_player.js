@@ -563,18 +563,18 @@
     el.style.cssText = 'position:fixed;bottom:16px;right:16px;padding:12px 14px;font-family:var(--mono);font-size:10.5px;letter-spacing:0.04em;line-height:1.65;z-index:700;max-width:260px';
     el.innerHTML = `
       <div style="color:var(--t3);font-size:9px;letter-spacing:0.18em;margin-bottom:8px">LEGEND</div>
-      <div style="display:grid;grid-template-columns:22px 1fr;gap:6px 10px;align-items:center">
-        <div style="width:8px;height:14px;border-radius:2px;background:#00e5ff;box-shadow:0 0 10px #00e5ff;margin-left:6px"></div>
-        <div>3D columns = <b class="neon-cyan">NYC resources</b> (height = capacity, color = type)</div>
-        <div style="width:8px;height:8px;border-radius:50%;background:#ffcc33;box-shadow:0 0 10px #ffcc33;margin-left:6px"></div>
-        <div>Dots = <b style="color:#ffcc33">people in need</b> (synthesized demand)</div>
-        <div style="width:16px;height:2px;background:linear-gradient(90deg,#00e5ff,#b24bff);margin-left:2px"></div>
-        <div>Arcs = <b class="neon-cyan">routing</b> person → nearest resource</div>
-        <div style="width:10px;height:10px;border-radius:2px;background:radial-gradient(circle,#6640a0,transparent);margin-left:5px"></div>
-        <div>Violet glow = <b style="color:#b24bff">service gaps</b> (low resource density)</div>
+      <div style="display:grid;grid-template-columns:24px 1fr;gap:8px 10px;align-items:center">
+        <div style="width:5px;height:12px;border-radius:1px;background:#00e5ff;opacity:0.55;margin-left:9px"></div>
+        <div><b style="color:#e8f0ff">Thin column</b> = resource exists (<span style="color:var(--t3)">inventory</span>)</div>
+        <div style="width:10px;height:18px;border-radius:2px;background:#00e5ff;box-shadow:0 0 14px #00e5ff;margin-left:6px"></div>
+        <div><b class="neon-cyan">Thick tall column</b> = active in scenario (height = load)</div>
+        <div style="width:20px;height:3px;background:linear-gradient(90deg,transparent,#00e5ff,#b24bff);margin-left:0"></div>
+        <div><b class="neon-cyan">Neon trail</b> = person being routed to a resource</div>
+        <div style="width:8px;height:8px;border-radius:50%;background:#444a5e;margin-left:7px"></div>
+        <div><b style="color:var(--t2)">Dimmed column</b> = exists but not in this scenario</div>
       </div>
       <div style="color:var(--t3);font-size:9px;margin-top:9px;letter-spacing:0.1em;border-top:1px solid rgba(255,255,255,0.08);padding-top:7px">
-        Hover a cylinder for details. &nbsp;·&nbsp; Running locally, no cloud.
+        Hover any column for details &nbsp;·&nbsp; Running locally, no cloud
       </div>
     `;
     document.body.appendChild(el);
