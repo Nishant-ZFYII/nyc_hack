@@ -228,14 +228,14 @@ def migrant_bus(n_people: int = 120, arrival_lat: float = 40.7560, arrival_lon: 
         dlat = (rng.random() - 0.5) * 0.006
         dlon = (rng.random() - 0.5) * 0.006
         demand.append({"id": f"m{i:04d}", "lat": arrival_lat + dlat, "lon": arrival_lon + dlon})
-    # Spread across intake-type sites within ~8 km of the arrival point
+    # Citywide intake-type sites — migrants realistically route to community
+    # centres, food banks and shelters across all five boroughs, not just
+    # within walking distance of Port Authority. Cap at 600 sites for perf.
     sites_df = pd.concat([
         _sites_for("community_center"),
         _sites_for("food_bank"),
         _sites_for("shelter"),
-    ], ignore_index=True)
-    sites_df = sites_df[(sites_df["lat"] - arrival_lat).abs() < 0.08]
-    sites_df = sites_df[(sites_df["lon"] - arrival_lon).abs() < 0.1].head(400).reset_index(drop=True)
+    ], ignore_index=True).head(600).reset_index(drop=True)
     arcs, sites, stats = _greedy_allocate(demand, sites_df, k_candidates=12)
     # Recolor arcs magenta for the migrant phase
     for a in arcs:

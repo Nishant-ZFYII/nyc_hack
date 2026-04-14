@@ -262,14 +262,27 @@
       }));
     }
 
-    // Scenario-specific layers
+    // Scenario-specific layers. When the dropdown has a specific type
+    // selected, also filter the scenario's sites and arcs so everything
+    // the viewer sees is coherent with their choice.
     const sc = state.currentScenario;
     if (sc && sc.arcs && sc.arcs.length) {
+      const filterSites = state.typeFilter === 'all'
+        ? (sc.sites || [])
+        : (sc.sites || []).filter(s => s.type === state.typeFilter);
+      const filterArcs = state.typeFilter === 'all'
+        ? sc.arcs
+        : sc.arcs.filter(a => {
+            // Keep arc iff its destination site_id matches a filtered-type site
+            if (!a.to_id) return true;
+            return filterSites.some(s => s.id === a.to_id);
+          });
+
       // Bright rim around each active site (highlight where demand lands)
-      if (sc.sites && sc.sites.length) {
+      if (filterSites.length) {
         layers.push(new deck.ColumnLayer({
           id: 'sp-sites',
-          data: sc.sites,
+          data: filterSites,
           diskResolution: 18,
           radius: 95,
           extruded: true,
@@ -294,7 +307,7 @@
       // so the viewer perceives the routing structure.
       layers.push(new deck.ArcLayer({
         id: 'sp-arcs-context',
-        data: sc.arcs,
+        data: filterArcs,
         getSourcePosition: d => d.from,
         getTargetPosition: d => d.to,
         getSourceColor: d => {
@@ -310,7 +323,7 @@
         greatCircle: false,
       }));
       // FLOWING PARTICLES — 3 per arc, staggered phase, parabolic altitude.
-      const particles = particlesFromArcs(sc.arcs, state.particleT);
+      const particles = particlesFromArcs(filterArcs, state.particleT);
       layers.push(new deck.ScatterplotLayer({
         id: 'sp-particles',
         data: particles,
