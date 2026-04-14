@@ -1054,12 +1054,16 @@ async def agent_pdf(req: AgentPlanRequest):
 @app.get("/api/resources")
 async def all_resources():
     """Get all resources with coordinates for initial map load."""
+    import numpy as _np
     mart, _ = load_state()
     mart_pd = mart.to_pandas() if hasattr(mart, 'to_pandas') else mart
     cols = ["resource_id", "resource_type", "name", "address", "borough",
             "latitude", "longitude", "safety_score", "capacity"]
-    df = mart_pd[[c for c in cols if c in mart_pd.columns]].dropna(subset=["latitude", "longitude"])
-    # Rename for frontend friendliness
+    df = mart_pd[[c for c in cols if c in mart_pd.columns]].dropna(subset=["latitude", "longitude"]).copy()
+    # Kill NaN/Inf floats so json.dumps doesn't reject the payload
+    for c in ("safety_score", "capacity"):
+        if c in df.columns:
+            df[c] = df[c].replace([_np.inf, -_np.inf], _np.nan).fillna(0 if c == "capacity" else 0.0)
     df = df.rename(columns={"latitude": "lat", "longitude": "lon"})
     return df.head(2500).to_dict("records")
 
