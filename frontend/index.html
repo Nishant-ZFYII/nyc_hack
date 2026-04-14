@@ -543,8 +543,7 @@ function goTo(pageId){
     // Give the page a beat to lay out, then init
     setTimeout(()=>{
       window.ScenarioPlayer.init('liveMapEl');
-      // Wait 2s for initial resources fetch, then start the auto loop
-      setTimeout(()=>window.ScenarioPlayer.startLoop(), 2200);
+      // Default state: calm city, no autoplay. User opts in via the AUTO pill.
       // Mount the agent drawer once
       if(window.AgentDrawer && !window._userDrawerMounted){
         window._userDrawerMounted=true;

@@ -51,11 +51,11 @@
     vulnerabilityHexes: [],
     buildings: [],               // sampled PLUTO lots with floor counts
     currentScenario: null,
-    auto: true,
+    auto: false,                 // default: no scenario cycle on load
     loopHandle: null,
     orbitHandle: null,
     orbitAngle: -20,
-    orbitPaused: false,
+    orbitPaused: false,          // true = user is interacting, orbit stops
     statsEl: null,
     titleEl: null,
     pillEls: {},
@@ -68,6 +68,9 @@
     introComplete: false,
     // Type filter (dropdown) — 'all' or a resource_type string
     typeFilter: 'all',
+    // Master autoplay switch — default OFF. Controls BOTH the scenario
+    // cycle AND the camera orbit so one pill gives predictable behaviour.
+    autoplayOn: false,
   };
 
   const PHASES = ['cold_emergency', 'migrant_bus', 'citywide_storm', 'reset'];
@@ -109,30 +112,30 @@
     state.map = new maplibregl.Map({
       container: containerId,
       style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-      center: [-73.9857, 40.7580],   // Midtown Manhattan
-      zoom: 14.2,
-      pitch: 72,
+      center: [-73.9857, 40.7580],   // Midtown Manhattan for the intro
+      zoom: 14.0,
+      pitch: 62,
       bearing: -8,
       antialias: true,
     });
     state.map.addControl(new maplibregl.NavigationControl(), 'top-left');
     state.map.on('load', async () => {
       state.map.resize();
-      await Promise.all([loadResources(), loadVulnerability(), loadBuildings()]);
+      // Only fetch the resource layer — no more PLUTO pillars, no vulnerability
+      await loadResources();
       renderLayers();
-      // Kick off cinematic pull-back after data loads
+      // Intro pull-back — short and cinematic, no auto-loop afterwards
       setTimeout(() => {
         state.map.easeTo({
-          center: NYC, zoom: 10.7, pitch: 56, bearing: state.orbitAngle,
-          duration: 3600, easing: t => t * (2 - t),
+          center: NYC, zoom: 10.7, pitch: 52, bearing: state.orbitAngle,
+          duration: 3400, easing: t => t * (2 - t),
         });
-        setTimeout(() => { state.introComplete = true; }, 3700);
-      }, 500);
+        setTimeout(() => { state.introComplete = true; }, 3500);
+      }, 400);
     });
     state.map.on('mousedown', () => { state.orbitPaused = true; state.introComplete = true; });
     state.map.on('touchstart', () => { state.orbitPaused = true; state.introComplete = true; });
 
-    // Start the particle-flow animation loop
     startParticleLoop();
 
     injectOverlays();
@@ -228,47 +231,10 @@
   // ─────────────────────────────────────────────────────────────────────
   function buildLayers() {
     const layers = [];
-
-    // Very subtle ambient violet glow — service-gap mood lighting.
-    if (state.vulnerabilityHexes.length) {
-      layers.push(new deck.HeatmapLayer({
-        id: 'sp-vuln',
-        data: state.vulnerabilityHexes,
-        getPosition: d => [d.lon, d.lat],
-        getWeight: d => d.weight || 1,
-        radiusPixels: 35,
-        intensity: 0.28,
-        threshold: 0.08,
-        colorRange: [[0,0,0,0],[30,10,50,25],[60,20,90,40],[90,30,120,55],[120,40,150,70]],
-      }));
-    }
-
-    // REAL NYC SKYLINE — PLUTO lots as tight square extrusions.
-    // Shrunk the radius (8 m) and removed the 45° rotation so cubes don't
-    // float over streets / overlap neighbours.
-    if (state.buildings && state.buildings.length) {
-      layers.push(new deck.ColumnLayer({
-        id: 'sp-buildings',
-        data: state.buildings,
-        diskResolution: 4,
-        radius: 8,
-        angle: 0,
-        extruded: true,
-        pickable: false,
-        getPosition: d => [d.lon, d.lat],
-        getElevation: d => Math.max(10, (d.floors || 2) * 3.4),
-        getFillColor: d => {
-          const tall = Math.min(1, (d.floors || 2) / 40);
-          return [
-            70 + Math.round(tall * 40),
-            92 + Math.round(tall * 50),
-            130 + Math.round(tall * 60),
-            235,
-          ];
-        },
-        material: { ambient: 0.35, diffuse: 0.6, shininess: 60, specularColor: [120,160,220] },
-      }));
-    }
+    // Design note (Tufte): the dark-matter basemap already provides the
+    // "this is NYC" context via its street grid + 2D building footprints.
+    // Our data job is ONLY to show the resources + the flow. No extra
+    // ambient layers (no PLUTO pillars, no vulnerability heatmap).
 
     // All ~2.5K resources as glowing neon "beacon" columns — hexagonal
     // footprint to distinguish them from the square buildings underneath.
@@ -324,24 +290,8 @@
           material: { ambient: 0.7, diffuse: 0.95, shininess: 160, specularColor: [255, 255, 255] },
         }));
       }
-      // Demand dots — people needing help, always visible
-      if (sc.demand && sc.demand.length) {
-        const demandColor = sc.phase === 'migrant_bus'
-          ? [178, 75, 255, 230]
-          : sc.phase === 'citywide_storm' ? [255, 255, 255, 220] : [255, 204, 51, 230];
-        layers.push(new deck.ScatterplotLayer({
-          id: 'sp-demand',
-          data: sc.demand,
-          getPosition: d => [d.lon, d.lat],
-          getRadius: 55,
-          radiusMinPixels: 2.5,
-          radiusMaxPixels: 6,
-          getFillColor: demandColor,
-          stroked: false,
-        }));
-      }
-      // FADED ARC CONTEXT — thin, translucent paths so the viewer sees
-      // the routing structure beneath the flowing particles.
+      // FADED ARC CONTEXT — thin, translucent paths beneath the particles
+      // so the viewer perceives the routing structure.
       layers.push(new deck.ArcLayer({
         id: 'sp-arcs-context',
         data: sc.arcs,
@@ -460,6 +410,7 @@
     state.orbitHandle = setInterval(() => {
       if (!state.map || state.orbitPaused) return;
       if (!state.introComplete) return;   // let cinematic intro finish
+      if (!state.autoplayOn) return;      // only rotate when user wants autoplay
       state.orbitAngle = (state.orbitAngle + 0.55) % 360;
       try { state.map.setBearing(state.orbitAngle); } catch (e) {}
     }, 90);
@@ -658,14 +609,24 @@
       b.dataset.id = id;
       b.onclick = () => {
         if (id === 'auto') {
-          // True toggle — click turns autoplay ON if off, OFF if on
-          state.auto = !state.auto;
-          if (state.auto) { startLoop(); b.classList.add('active'); }
-          else            { stopLoop();  b.classList.remove('active'); }
+          // Master switch — scenario cycle + camera orbit
+          state.autoplayOn = !state.autoplayOn;
+          state.auto = state.autoplayOn;
+          if (state.autoplayOn) {
+            startLoop();
+            state.orbitPaused = false;
+            b.classList.add('active');
+          } else {
+            stopLoop();
+            state.orbitPaused = true;
+            b.classList.remove('active');
+          }
           return;
         }
-        // Any specific scenario click turns autoplay OFF
+        // Any specific scenario pill click disables autoplay + orbit
+        state.autoplayOn = false;
         state.auto = false;
+        state.orbitPaused = true;
         stopLoop();
         const autoBtn = state.pillEls['auto'];
         if (autoBtn) autoBtn.classList.remove('active');
@@ -679,7 +640,7 @@
     p.appendChild(mk('citywide_storm', 'Citywide'));
     p.appendChild(mk('reset', 'Reset'));
     const autoPill = mk('auto', 'AUTO');
-    autoPill.classList.add('active');
+    // starts inactive — default UX is calm/static; user opts in
     p.appendChild(autoPill);
     document.body.appendChild(p);
 
