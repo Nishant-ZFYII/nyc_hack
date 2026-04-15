@@ -40,7 +40,12 @@ except Exception:
     _GUARDRAILS_AVAILABLE = False
 from pipeline.briefing import generate_briefing, _estimate_urgency
 from pipeline.executor import load_state
-from pipeline.form_filler import fill_forms_from_id, extract_id_fields
+
+try:
+    from pipeline.form_filler import fill_forms_from_id, extract_id_fields
+    _FORM_FILLER_AVAILABLE = True
+except Exception:
+    _FORM_FILLER_AVAILABLE = False
 
 # nat (NeMo Agent Toolkit) — optional, degrades gracefully if missing
 import time as _time
@@ -312,6 +317,8 @@ async def fill_forms(case_id: str = Form(...),
         "snap_estimate": 598,  # demo placeholder; real eligibility calc happens in form
     }
 
+    if not _FORM_FILLER_AVAILABLE:
+        raise HTTPException(501, "form_filler module not available")
     form_types = [f.strip() for f in forms.split(",") if f.strip()]
     result = fill_forms_from_id(id_path, case_data=case_data, forms=form_types)
 
@@ -339,6 +346,8 @@ async def ocr_id(id_image: UploadFile = File(...)):
     OCR an ID image without generating forms.
     Returns extracted fields as JSON. Useful for preview before form-fill.
     """
+    if not _FORM_FILLER_AVAILABLE:
+        raise HTTPException(501, "form_filler module not available")
     import tempfile, os
     tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
     tmp.write(await id_image.read())

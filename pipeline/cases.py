@@ -9,6 +9,7 @@ Each case has:
 
 Storage: JSON file in data/cases/ directory.
 """
+from __future__ import annotations
 import json
 import time
 from pathlib import Path
@@ -127,15 +128,38 @@ def mark_resource_visited(case_id: str, resource_name: str, feedback: str = None
 
 def resolve_need(case_id: str, category: str) -> dict:
     """Mark a need as resolved."""
+    return update_need_status(case_id, category, "resolved")
+
+
+def update_need_status(case_id: str, category: str, status: str) -> dict:
+    """Update a need's status. Accepts 'open', 'in_progress', or 'resolved'."""
     case = load_case(case_id)
     if not case:
         return {"error": "Case not found"}
 
     for need in case["needs"]:
         if need["category"] == category:
-            need["status"] = "resolved"
-            need["resolved_at"] = datetime.now().isoformat()
+            need["status"] = status
+            if status == "resolved":
+                need["resolved_at"] = datetime.now().isoformat()
 
+    _save_case(case)
+    return case
+
+
+def sync_needs_from_plan(case: dict, plan: dict) -> dict:
+    """Merge identified_needs from plan into case, deduplicating by category."""
+    existing_cats = {n["category"] for n in case.get("needs", [])}
+    for need in plan.get("identified_needs", []):
+        cat = need.get("category", "")
+        if cat and cat not in existing_cats:
+            case.setdefault("needs", []).append({
+                "category": cat,
+                "priority": need.get("priority", 99),
+                "status": "open",
+                "identified_at": datetime.now().isoformat(),
+            })
+            existing_cats.add(cat)
     _save_case(case)
     return case
 
@@ -375,45 +399,13 @@ def list_cases() -> list:
     return sorted(cases, key=lambda x: x.get("last_visit", ""), reverse=True)
 
 
-# ── Functions used by admin_server.py (teammate's admin portal) ──────────────
-
-def update_need_status(case_id: str, category: str, status: str) -> dict:
-    """Update a need's status. Accepts 'open', 'in_progress', or 'resolved'."""
-    case = load_case(case_id)
-    if not case:
-        return {"error": "Case not found"}
-    for need in case["needs"]:
-        if need["category"] == category:
-            need["status"] = status
-            if status == "resolved":
-                need["resolved_at"] = datetime.now().isoformat()
-    _save_case(case)
-    return case
-
-
-def sync_needs_from_plan(case: dict, plan: dict) -> dict:
-    """Merge identified_needs from plan into case, deduplicating by category."""
-    existing_cats = {n["category"] for n in case.get("needs", [])}
-    for need in plan.get("identified_needs", []):
-        cat = need.get("category", "")
-        if cat and cat not in existing_cats:
-            case.setdefault("needs", []).append({
-                "category": cat,
-                "priority": need.get("priority", 99),
-                "status": "open",
-                "identified_at": datetime.now().isoformat(),
-            })
-            existing_cats.add(cat)
-    _save_case(case)
-    return case
-
-
 def add_destination_intent(case_id: str, resource: dict,
                            state: str = "intent_confirmed") -> dict:
     """Record that the user confirmed intent to visit a resource."""
     case = load_case(case_id)
     if not case:
         case = create_case(case_id)
+
     intent = {
         "resource_name": resource.get("name", ""),
         "resource_type": resource.get("resource_type", resource.get("type", "")),
@@ -427,8 +419,10 @@ def add_destination_intent(case_id: str, resource: dict,
         "thread_url": None,
         "acknowledged": False,
     }
+
     intents = case.setdefault("destination_intents", [])
     today = datetime.now().date().isoformat()
+    # Same resource + same day → update in place instead of appending
     for ex in intents:
         if (ex.get("resource_name") == intent["resource_name"] and
                 ex.get("intent_at", "")[:10] == today):
@@ -485,12 +479,10 @@ def raise_ticket(case_id: str, ticket_type: str = "sponsored_ride",
     it's returned rather than duplicated. Tickets are stored on the case
     under `tickets: [{type, raised_at, status, reason}]`.
     """
-    from datetime import datetime
     case = load_case(case_id)
     if not case:
         return {"error": f"Case '{case_id}' not found"}
     tickets = case.setdefault("tickets", [])
-    # Don't duplicate an open ticket of the same type
     existing = next((t for t in tickets
                      if t.get("type") == ticket_type
                      and t.get("status") == "open"), None)

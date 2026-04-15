@@ -29,7 +29,7 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+MODEL_NAME = "nvidia/nemotron-mini-4b-instruct"
 
 # ---------------------------------------------------------------------------
 # Provider configuration
@@ -56,12 +56,6 @@ PROVIDERS: list[Provider] = [
         base_url="http://127.0.0.1:11434/v1",
         api_key="ollama",
         model="nemotron-mini",
-    ),
-    Provider(
-        name="Ollama Nemotron 70B (DGX Spark)",
-        base_url="http://127.0.0.1:11434/v1",
-        api_key="ollama",
-        model="nemotron",
     ),
     Provider(
         name="NIM (DGX Spark)",
@@ -99,7 +93,7 @@ PROVIDERS: list[Provider] = [
         name="OpenRouter (fallback)",
         base_url="https://openrouter.ai/api/v1",
         api_key=os.environ.get("OPENROUTER_API_KEY", ""),
-        model="nvidia/nemotron-3-nano-30b-a3b:free",
+        model="nvidia/nemotron-mini-4b-instruct:free",
         probe_timeout=10,
     ),
 ]

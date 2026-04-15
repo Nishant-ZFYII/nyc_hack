@@ -21,7 +21,19 @@ from pipeline.synth    import answer
 from pipeline.clarify  import get_clarifying_question, merge_query
 from pipeline.verify   import verify_answer, build_reasoning_path, summarize_reasoning
 from pipeline.feedback import parse_feedback, add_exclusion, get_excluded_resources, generate_alternative_response
+from pipeline.cases    import (create_case, load_case, add_visit, mark_resource_visited,
+                                update_need_status, sync_needs_from_plan,
+                                add_destination_intent, update_destination_state,
+                                get_active_destinations)
+from pipeline.case_notify      import schedule_followup
+from pipeline.destination_notify import (confirm_destination_intent,
+                                          notify_ec_added,
+                                          TELEGRAM_BOT_TOKEN, TELEGRAM_COORD_CHAT_ID)
+from pipeline.tg_poller        import start_polling
 from llm.client        import get_active_provider
+
+# Start Telegram long-poll listener (daemon thread, no-op if already running)
+start_polling(TELEGRAM_BOT_TOKEN)
 import importlib.util
 _spec = importlib.util.spec_from_file_location(
     "kg_embeddings",
@@ -307,11 +319,48 @@ with st.sidebar:
     st.session_state["demo_mode"] = demo_mode
 
     if st.button("Start Over", use_container_width=True):
+        # Clears query state but NOT case state
         for k in ["conv_history", "active_query", "_pending_clarify_q",
                   "_pending_clarify_turn", "_clarify_rerun", "query_input",
-                  "excluded_resources", "feedback_log"]:
+                  "excluded_resources", "feedback_log", "_followup_scheduled"]:
             st.session_state.pop(k, None)
         st.rerun()
+
+    # ── Case info ────────────────────────────────────────────────────────────
+    if st.session_state.get("case_id"):
+        _sc = st.session_state.get("case", {})
+        _sc_name = _sc.get("name", st.session_state["case_id"])
+        _sc_open = len([n for n in _sc.get("needs", []) if n.get("status") == "open"])
+        st.divider()
+        st.markdown(f"""
+        <div style="background:#1a1a24;border:1px solid #2a2a3a;border-radius:8px;padding:12px;margin:4px 0;">
+            <div style="color:#76b900;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Active Case</div>
+            <div style="color:#e0e0e0;font-weight:bold;margin:4px 0;">{_sc_name}</div>
+            <div style="color:#888;font-size:11px;font-family:monospace;">{st.session_state["case_id"]}</div>
+            <div style="color:#aaa;font-size:12px;margin-top:4px;">{_sc_open} open need(s)</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Log Out", use_container_width=True, key="_sidebar_logout"):
+            for k in ["case_id", "case", "onboarding_done", "show_welcome_back",
+                      "_followup_scheduled", "conv_history", "active_query",
+                      "_pending_clarify_q", "_pending_clarify_turn", "_clarify_rerun",
+                      "query_input", "excluded_resources", "feedback_log"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+        with st.expander("Telegram Coordination", expanded=False):
+            st.caption("Bot must be a member of the coordination group.")
+            _tg_tok = st.text_input("Bot token", type="password",
+                                    key="_tg_token_input",
+                                    placeholder="From @BotFather")
+            _tg_cid = st.text_input("Coord group chat ID", key="_tg_chat_input",
+                                    placeholder="-1001234567890")
+            _sla = st.number_input("SLA (minutes before escalation)", min_value=1,
+                                   max_value=120, value=15, key="_sla_min_input")
+            if _tg_tok:
+                st.session_state["_tg_bot_token"] = _tg_tok
+            if _tg_cid:
+                st.session_state["_coord_chat_id"] = _tg_cid
+            st.session_state["_sla_min"] = int(_sla)
 
     # Tech details tucked away
     with st.expander("System Info", expanded=False):
@@ -328,6 +377,148 @@ with st.sidebar:
         except Exception:
             pass
 
+
+# ── Pre-populate Telegram config from Streamlit secrets (once per session) ────
+if "_tg_secrets_loaded" not in st.session_state:
+    try:
+        if "TELEGRAM_BOT_TOKEN" in st.secrets and not st.session_state.get("_tg_bot_token"):
+            st.session_state["_tg_bot_token"] = st.secrets["TELEGRAM_BOT_TOKEN"]
+        if "TELEGRAM_COORD_CHAT_ID" in st.secrets and not st.session_state.get("_coord_chat_id"):
+            st.session_state["_coord_chat_id"] = str(st.secrets["TELEGRAM_COORD_CHAT_ID"])
+    except Exception:
+        pass
+    st.session_state["_tg_secrets_loaded"] = True
+
+# ── Block A: Onboarding Phase Gate ───────────────────────────────────────────
+if not st.session_state.get("onboarding_done"):
+    st.markdown("""
+    <div style="max-width:640px;margin:0 auto;padding:20px 0;">
+        <div style="font-size:22px;font-weight:bold;color:#76b900;margin-bottom:8px;">
+            Welcome to NYC Help Finder
+        </div>
+        <div style="color:#aaa;margin-bottom:24px;">
+            Sign in to track your case across visits, or continue as a guest.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_new, col_ret = st.columns(2)
+
+    with col_new:
+        st.markdown("**New? Create a case**")
+        new_name = st.text_input("Your first name (required)", key="_ob_name",
+                                 placeholder="e.g. Maria")
+        new_ec_name = st.text_input("Emergency contact name (optional)", key="_ob_ec_name",
+                                    placeholder="e.g. Ana (sister)")
+        new_ec_telegram = st.text_input("Their Telegram username (optional)",
+                                        key="_ob_ec_telegram",
+                                        placeholder="e.g. @ana_nyc")
+        if st.button("Get Started", type="primary", use_container_width=True, key="_ob_create"):
+            if not new_name.strip():
+                st.error("Please enter your first name.")
+            else:
+                import uuid
+                cid = new_name.strip().lower().replace(" ", "_") + "_" + uuid.uuid4().hex[:6]
+                case = create_case(cid, name=new_name.strip())
+                if new_ec_name.strip() or new_ec_telegram.strip():
+                    _ec_user = new_ec_telegram.strip().lstrip("@")
+                    case["emergency_contact"] = {
+                        "name": new_ec_name.strip(),
+                        "telegram_username": _ec_user,
+                        "telegram_chat_id": None,
+                    }
+                    from pipeline.cases import _save_case
+                    _save_case(case)
+                    # Notify EC — DM if registered, else post deep link to coord group
+                    if _ec_user:
+                        _bot = st.session_state.get("_tg_bot_token", TELEGRAM_BOT_TOKEN)
+                        _ch  = st.session_state.get("_coord_chat_id", TELEGRAM_COORD_CHAT_ID)
+                        _ec_result = notify_ec_added(case, _ec_user, _bot, str(_ch))
+                        if _ec_result.get("deep_link"):
+                            st.session_state["_ec_deep_link"] = _ec_result["deep_link"]
+                        if _ec_result.get("dm_sent"):
+                            st.session_state["_ec_dm_sent"] = True
+                st.session_state["case_id"] = cid
+                st.session_state["case"] = case
+                st.session_state["onboarding_done"] = True
+                st.rerun()
+
+    with col_ret:
+        st.markdown("**Returning? Resume your case**")
+        ret_id = st.text_input("Enter your case ID", key="_ob_resume_id",
+                               placeholder="e.g. maria_a1b2c3")
+        if st.button("Resume", use_container_width=True, key="_ob_resume"):
+            if not ret_id.strip():
+                st.error("Please enter your case ID.")
+            else:
+                existing = load_case(ret_id.strip())
+                if existing:
+                    st.session_state["case_id"] = existing["case_id"]
+                    st.session_state["case"] = existing
+                    st.session_state["onboarding_done"] = True
+                    st.session_state["show_welcome_back"] = True
+                    st.rerun()
+                else:
+                    st.error(f"No case found with ID '{ret_id.strip()}'. Check your ID and try again.")
+
+    st.markdown("---")
+    if st.button("Continue without signing in (guest mode)", use_container_width=True, key="_ob_skip"):
+        st.session_state["onboarding_done"] = True
+        st.rerun()
+
+    st.stop()
+
+# ── Block B: Sidebar Case Info ────────────────────────────────────────────────
+# (added inside the sidebar block below)
+
+# ── Block E: Welcome-Back Summary ────────────────────────────────────────────
+if st.session_state.get("show_welcome_back"):
+    _case = st.session_state.get("case", {})
+    _name = _case.get("name", "")
+    _needs = _case.get("needs", [])
+    _open = [n for n in _needs if n.get("status") == "open"]
+    _resolved = [n for n in _needs if n.get("status") == "resolved"]
+    _visits = _case.get("visits", [])
+
+    st.markdown(f"""
+    <div style="background:linear-gradient(135deg,#1a2a0a,#0a1a0a);border:1px solid #76b900;
+        border-radius:12px;padding:20px;margin:8px 0;">
+        <div style="font-size:20px;font-weight:bold;color:#76b900;">
+            Welcome back, {_name}!
+        </div>
+    """, unsafe_allow_html=True)
+
+    if _open:
+        cats = ", ".join(
+            f"**{n['category'].replace('_',' ').title()}** (P{n.get('priority','?')})"
+            for n in sorted(_open, key=lambda x: x.get("priority", 99))
+        )
+        st.markdown(f"**{len(_open)} open need(s):** {cats}", unsafe_allow_html=True)
+    if _resolved:
+        st.markdown(f"**{len(_resolved)} resolved:** {', '.join(n['category'] for n in _resolved)}")
+    if _visits:
+        last = _visits[-1]
+        ts = last.get("timestamp", "")[:10]
+        q = last.get("query", "")[:80]
+        st.markdown(f"**Last visit:** {ts} — *\"{q}\"*")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.session_state.pop("show_welcome_back", None)
+
+# ── EC notification status (shown once after onboarding) ─────────────────────
+_ec_deep_link = st.session_state.pop("_ec_deep_link", None)
+_ec_dm_sent   = st.session_state.pop("_ec_dm_sent", None)
+if _ec_dm_sent:
+    _ec_name = st.session_state.get("case", {}).get(
+        "emergency_contact", {}).get("name", "your emergency contact")
+    st.success(f"Telegram DM sent to {_ec_name} — they've been notified.")
+elif _ec_deep_link:
+    _ec_name = st.session_state.get("case", {}).get(
+        "emergency_contact", {}).get("name", "your emergency contact")
+    st.info(
+        f"Ask **{_ec_name}** to click this link and press Start in Telegram so "
+        f"they can receive notifications: [{_ec_deep_link}]({_ec_deep_link})"
+    )
 
 # ── Main query interface ──────────────────────────────────────────────────────
 query = st.text_area(
@@ -405,6 +596,25 @@ if (run or _clarify_rerun) and query.strip():
             synth_time = 0
 
     total_time = time.time() - t0
+
+    # ── Block C: Wire Case Persistence ──────────────────────────────────────
+    if st.session_state.get("case_id"):
+        _cid = st.session_state["case_id"]
+        # Collect resource names from results
+        _res_names = []
+        if result.get("intent") == "lookup":
+            _df = result.get("results")
+            if isinstance(_df, pd.DataFrame) and len(_df):
+                _res_names = _df["name"].tolist()[:10]
+        elif result.get("intent") == "needs_assessment":
+            for _df in result.get("results_by_need", {}).values():
+                if isinstance(_df, pd.DataFrame) and len(_df):
+                    _res_names += _df["name"].tolist()[:5]
+        _resource_dicts = [{"name": n} for n in _res_names]
+        _updated_case = add_visit(_cid, effective_query, response[:300], _resource_dicts, plan=plan)
+        if plan.get("intent") == "needs_assessment":
+            _updated_case = sync_needs_from_plan(_updated_case, plan)
+        st.session_state["case"] = _updated_case
 
     # ── PRIMARY VIEW: Conversation thread + Answer ────────────────────────────
     # Show prior Q&A turns
@@ -555,6 +765,9 @@ if (run or _clarify_rerun) and query.strip():
 
         if fb.get("resource_name") and fb["resource_name"] != "unknown":
             add_exclusion(st.session_state, fb["resource_name"], fb["issue"], fb["detail"])
+            # Block G: persist feedback to case
+            if st.session_state.get("case_id"):
+                mark_resource_visited(st.session_state["case_id"], fb["resource_name"], fb["issue"])
             alt_msg = generate_alternative_response(
                 effective_query, fb, get_excluded_resources(st.session_state)
             )
@@ -570,6 +783,204 @@ if (run or _clarify_rerun) and query.strip():
         else:
             st.warning("I couldn't identify which resource you're reporting about. "
                        "Try mentioning the resource name or address specifically.")
+
+    # ── Block D: Multi-Issue Tracking Cards ──────────────────────────────────
+    _active_case = st.session_state.get("case")
+    if _active_case and _active_case.get("needs"):
+        _cid = st.session_state["case_id"]
+        _case_needs = _active_case["needs"]
+        # Sort: open first (by priority), then in_progress, then resolved
+        _status_order = {"open": 0, "in_progress": 1, "resolved": 2}
+        _sorted_needs = sorted(
+            _case_needs,
+            key=lambda x: (_status_order.get(x.get("status", "open"), 0), x.get("priority", 99))
+        )
+        st.markdown("### Your Issues")
+        for _i, _need in enumerate(_sorted_needs):
+            _cat = _need["category"]
+            _status = _need.get("status", "open")
+            _pri = _need.get("priority", "?")
+            _icon = {"open": "🔴", "in_progress": "🟡", "resolved": "🟢"}.get(_status, "🔴")
+            _label = f"{_icon} {_cat.replace('_', ' ').title()} [P{_pri}] — {_status.replace('_', ' ')}"
+            _expanded = (_status == "open" and _i == 0)
+            with st.expander(_label, expanded=_expanded):
+                # Resources recommended for this need — show rows with "I'm going here"
+                _need_key = f"{_cat}_1"
+                _need_df = result.get("results_by_need", {}).get(_need_key)
+                if isinstance(_need_df, pd.DataFrame) and len(_need_df):
+                    for _ri, _rrow in _need_df.head(3).iterrows():
+                        _rname = str(_rrow.get("name", ""))
+                        _raddr = str(_rrow.get("address", ""))
+                        _rtype = str(_rrow.get("resource_type", ""))
+                        _rboro = str(_rrow.get("borough", ""))
+                        _rc1, _rc2 = st.columns([3, 1])
+                        with _rc1:
+                            st.markdown(
+                                f"**{_rname}** · "
+                                f"<span style='color:#888;font-size:12px;'>"
+                                f"{_rtype.replace('_',' ')}</span>",
+                                unsafe_allow_html=True)
+                            if _raddr:
+                                st.caption(_raddr)
+                        with _rc2:
+                            if st.session_state.get("case_id") and _status != "resolved":
+                                if st.button("I'm going here",
+                                             key=f"_going_{_cat}_{_i}_{_ri}",
+                                             use_container_width=True):
+                                    st.session_state["_confirm_dest_pending"] = {
+                                        "name": _rname,
+                                        "resource_type": _rtype,
+                                        "address": _raddr,
+                                        "borough": _rboro,
+                                        "category": _cat,
+                                    }
+                                    st.rerun()
+                        st.markdown(
+                            '<hr style="border:none;border-top:1px solid #1e1e2a;margin:4px 0;">',
+                            unsafe_allow_html=True)
+
+                _btn_cols = st.columns(3)
+                if _status != "in_progress" and _status != "resolved":
+                    if _btn_cols[0].button("Mark In Progress", key=f"_ip_{_cat}_{_i}"):
+                        _updated = update_need_status(_cid, _cat, "in_progress")
+                        st.session_state["case"] = _updated
+                        st.rerun()
+                if _status != "resolved":
+                    if _btn_cols[1].button("Mark Resolved", key=f"_res_{_cat}_{_i}"):
+                        _updated = update_need_status(_cid, _cat, "resolved")
+                        st.session_state["case"] = _updated
+                        st.rerun()
+
+        # ── Destination intent confirmation ───────────────────────────────────
+        if st.session_state.get("_confirm_dest_pending") and st.session_state.get("case_id"):
+            _pdest = st.session_state["_confirm_dest_pending"]
+            st.markdown(f"""
+            <div style="background:#1a2030;border:2px solid #76b900;border-radius:12px;
+                padding:16px;margin:12px 0;">
+                <div style="color:#76b900;font-weight:bold;font-size:16px;">
+                    Confirm: heading to {_pdest['name']}?
+                </div>
+                <div style="color:#ccc;font-size:13px;margin-top:6px;">
+                    {_pdest.get('address','')}
+                </div>
+                <div style="color:#aaa;font-size:12px;margin-top:4px;">
+                    We'll notify your emergency contact and the destination.
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            _cf1, _cf2 = st.columns(2)
+            if _cf1.button("Yes, I'm going there", type="primary",
+                           key="_dest_confirm_yes", use_container_width=True):
+                _cid2 = st.session_state["case_id"]
+                _case2 = st.session_state["case"]
+                # Record intent to case
+                _case2 = add_destination_intent(_cid2, _pdest)
+                st.session_state["case"] = _case2
+                # Build Telegram config
+                _tg_cfg = {
+                    "bot_token": st.session_state.get("_tg_bot_token", TELEGRAM_BOT_TOKEN),
+                    "coord_chat_id": st.session_state.get("_coord_chat_id", TELEGRAM_COORD_CHAT_ID),
+                    "sla_minutes": st.session_state.get("_sla_min", 15),
+                }
+                _notif = confirm_destination_intent(_case2, _pdest, _tg_cfg)
+                st.session_state["_last_dest_notif"] = _notif
+                st.session_state.pop("_confirm_dest_pending", None)
+                # Refresh case from disk (state may have advanced to "notified")
+                from pipeline.cases import load_case as _lc
+                _refreshed = _lc(_cid2)
+                if _refreshed:
+                    st.session_state["case"] = _refreshed
+                st.rerun()
+            if _cf2.button("Cancel", key="_dest_confirm_no", use_container_width=True):
+                st.session_state.pop("_confirm_dest_pending", None)
+                st.rerun()
+
+        # Show last notification result (transient, clears on next rerun cycle)
+        if st.session_state.get("_last_dest_notif"):
+            _ln = st.session_state.pop("_last_dest_notif")
+            _sent = _ln.get("notifications_sent", [])
+            if _sent:
+                _labels = {"coord_group": "Coordination Group",
+                           "emergency_contact": "Emergency Contact"}
+                st.success("Confirmed! Notified via Telegram: " +
+                           ", ".join(_labels.get(s, s) for s in _sent))
+
+        # ── Block D2: Active Destinations tracker ─────────────────────────────
+        if st.session_state.get("case_id"):
+            _active_dests = get_active_destinations(st.session_state["case_id"])
+            if _active_dests:
+                st.markdown("### Active Destinations")
+                _state_icons = {
+                    "intent_confirmed": "📍",
+                    "notified": "📨",
+                    "acknowledged": "✅",
+                    "en_route": "🚶",
+                    "arrived": "🏠",
+                    "resolved": "🟢",
+                }
+                _state_next = {
+                    "intent_confirmed": "en_route",
+                    "notified": "en_route",
+                    "acknowledged": "en_route",
+                    "en_route": "arrived",
+                    "arrived": "resolved",
+                }
+                for _di, _dest in enumerate(_active_dests):
+                    _dstate = _dest.get("state", "intent_confirmed")
+                    _dname = _dest.get("resource_name", "")
+                    _dicon = _state_icons.get(_dstate, "📍")
+                    _dlabel = (f"{_dicon} {_dname} — "
+                               f"{_dstate.replace('_', ' ').title()}")
+                    with st.expander(_dlabel, expanded=True):
+                        _da1, _da2 = st.columns(2)
+                        _da1.caption(f"Type: {_dest.get('resource_type','').replace('_',' ').title()}")
+                        _da1.caption(f"Address: {_dest.get('address','')}")
+                        _da2.caption(f"Category: {_dest.get('category','').replace('_',' ').title()}")
+                        _da2.caption(f"Since: {_dest.get('intent_at','')[:16]}")
+                        _thread_url = _dest.get("thread_url")
+                        if _thread_url:
+                            st.markdown(f"[Open coordination thread]({_thread_url})")
+                        _dc1, _dc2 = st.columns(2)
+                        _next = _state_next.get(_dstate)
+                        if _next:
+                            _btn_lbl = f"Mark {_next.replace('_', ' ').title()}"
+                            if _dc1.button(_btn_lbl, key=f"_dnext_{_di}",
+                                           use_container_width=True):
+                                _updated_c = update_destination_state(
+                                    st.session_state["case_id"], _dname, _next)
+                                st.session_state["case"] = _updated_c
+                                st.rerun()
+                        if _dstate != "resolved":
+                            if _dc2.button("Mark Resolved", key=f"_dresolve_{_di}",
+                                           use_container_width=True):
+                                _updated_c = update_destination_state(
+                                    st.session_state["case_id"], _dname, "resolved")
+                                st.session_state["case"] = _updated_c
+                                st.rerun()
+
+        # ── Block F: Adaptive Continuation ───────────────────────────────────
+        _refreshed_needs = st.session_state.get("case", {}).get("needs", [])
+        _open_count = len([n for n in _refreshed_needs if n.get("status") == "open"])
+        _total_needs = len(_refreshed_needs)
+        if not st.session_state.get("_followup_scheduled"):
+            _tg_cid = st.session_state.get("_coord_chat_id", TELEGRAM_COORD_CHAT_ID)
+            if _total_needs > 0 and _open_count == 0:
+                st.balloons()
+                st.success("You're all set! All your needs have been addressed.")
+                schedule_followup(st.session_state["case"], delay_minutes=60,
+                                  coord_chat_id=str(_tg_cid))
+            elif _open_count > 0:
+                _highest = sorted(
+                    [n for n in _refreshed_needs if n.get("status") == "open"],
+                    key=lambda x: x.get("priority", 99)
+                )[0]
+                st.info(
+                    f"Next priority: **{_highest['category'].replace('_', ' ').title()}** — "
+                    "use the tracking cards above to update your status."
+                )
+                schedule_followup(st.session_state["case"], delay_minutes=30,
+                                  coord_chat_id=str(_tg_cid))
+            st.session_state["_followup_scheduled"] = True
 
     # ── Multi-turn clarification ──────────────────────────────────────────────
     turn = len(st.session_state.conv_history)

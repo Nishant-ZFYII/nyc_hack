@@ -6,6 +6,7 @@ Uses free Nominatim (OpenStreetMap) API — no API key needed.
 Usage:
     from pipeline.geocode import geocode_location, sort_by_distance
 """
+from __future__ import annotations
 import math
 import re
 import requests

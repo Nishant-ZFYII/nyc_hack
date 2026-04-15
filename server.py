@@ -5,6 +5,7 @@ Serves the custom HTML frontend + REST API for the pipeline.
 
 Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
+from __future__ import annotations
 import sys
 import time
 import json
@@ -29,6 +30,7 @@ from pipeline.feedback import parse_feedback
 from pipeline.cases import (load_case, create_case, add_visit, mark_resource_visited,
                              resolve_need, get_case_summary, list_cases,
                              choose_resource, checkin, get_failed_resources, get_progress,
+                             add_destination_intent,
                              raise_ticket, get_tickets, has_open_ticket)
 from pipeline.eligibility import calculate_eligibility, get_rights, get_stories
 from pipeline.agent import run_autonomous_agent, generate_plan_pdf
@@ -519,6 +521,16 @@ async def case_choose(req: ChooseResourceRequest):
     """User selects a resource for a specific need."""
     case = choose_resource(req.case_id, req.need_category, req.resource_name,
                            req.resource_address, req.resource_type)
+    # Auto-register destination intent so admin dashboard picks it up
+    try:
+        add_destination_intent(req.case_id, {
+            "name": req.resource_name,
+            "resource_type": req.resource_type,
+            "address": req.resource_address,
+            "category": req.need_category,
+        })
+    except Exception:
+        pass
     return {"case": case, "message": f"Got it — heading to {req.resource_name} for {req.need_category}."}
 
 
@@ -1057,3 +1069,4 @@ async def all_resources():
             "latitude", "longitude", "safety_score"]
     df = mart_pd[[c for c in cols if c in mart_pd.columns]].dropna(subset=["latitude", "longitude"])
     return df.head(2000).to_dict("records")
+

@@ -6,6 +6,7 @@ Handles:
   - needs_assessment: run multiple resource_searches, return combined results
   - simulate: placeholder stubs for cold_emergency / resource_gap
 """
+from __future__ import annotations
 import pickle
 from pathlib import Path
 from typing import Any
